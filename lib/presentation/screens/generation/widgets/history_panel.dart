@@ -106,6 +106,7 @@ class HistoryPanel extends ConsumerStatefulWidget {
 
 class _HistoryPanelState extends ConsumerState<HistoryPanel> {
   static const _pinnedHoverActions = [
+    ImageCardActionId.save,
     ImageCardActionId.imageToImage,
     ImageCardActionId.inpaint,
     ImageCardActionId.copy,
