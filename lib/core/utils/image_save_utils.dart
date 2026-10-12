@@ -1,0 +1,905 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
+
+import 'package:path/path.dart' as p;
+
+import '../../data/models/gallery/nai_image_metadata.dart';
+import '../../data/models/fixed_tag/fixed_tag_usage_snapshot.dart';
+import '../../data/models/image/image_params.dart';
+import '../../data/services/fixed_tag/fixed_tag_usage_record_store.dart';
+import '../../data/services/image_metadata_service.dart';
+import '../../data/services/metadata/hash_calculator.dart';
+import '../../data/services/metadata/unified_metadata_parser.dart';
+import '../constants/api_constants.dart';
+import '../enums/image_model_mode.dart';
+import '../enums/precise_ref_type.dart';
+import 'app_logger.dart';
+import 'isolate_pool.dart';
+import 'novelai_dataset_prefix.dart';
+import 'prompt_semantics_utils.dart';
+
+/// 统一图像保存工具类
+///
+/// 整合所有图像保存路径，确保元数据完整嵌入
+/// 替代分散在各处的图像保存逻辑
+class ImageSaveUtils {
+  ImageSaveUtils._();
+
+  /// 构建完整的元数据 Comment JSON
+  ///
+  /// [params] - 图像生成参数
+  /// [actualSeed] - 实际使用的种子
+  /// [charCaptions] - 角色提示词列表（V4多角色）
+  /// [charNegCaptions] - 角色负面提示词列表
+  /// [useCoords] - 是否使用坐标模式
+  static Map<String, dynamic> buildCommentJson({
+    required ImageParams params,
+    required int actualSeed,
+    List<Map<String, dynamic>>? charCaptions,
+    List<Map<String, dynamic>>? charNegCaptions,
+    bool useCoords = false,
+  }) {
+    final request = params.resolveFixedSettings();
+    final recordedPrompt = NovelAiDatasetPrefix.apply(
+      request.prompt,
+      mode: request.modelMode,
+      capabilities: request.capabilities,
+    );
+    final qualityTagHint = QualityTags.toTagHint(
+      model: request.model,
+      enabled: request.qualityToggle,
+      tier: request.qualityTier,
+      omit: request.omitQualityTagHint,
+    );
+    final ucPresetTagHint = UcPresets.toTagHint(
+      request.ucPreset,
+      omit: request.omitUcPresetTagHint,
+    );
+    final commentJson = <String, dynamic>{
+      'prompt': recordedPrompt,
+      'uc': request.negativePrompt,
+      'seed': actualSeed,
+      'steps': request.steps,
+      'width': request.width,
+      'height': request.height,
+      'scale': request.scale,
+      'uncond_scale': 0.0,
+      if (request.capabilities.supportsCfgRescale)
+        'cfg_rescale': request.cfgRescale,
+      'n_samples': 1,
+      'noise_schedule': request.noiseSchedule,
+      'sampler': request.sampler,
+      'sm': request.smea,
+      'sm_dyn': request.smeaDyn,
+      'model': request.model,
+      'quality_toggle': request.qualityToggle,
+      'uc_preset': request.ucPreset,
+      if (qualityTagHint != null) 'tag_hint_qt': qualityTagHint,
+      if (ucPresetTagHint != null) 'tag_hint_uc_preset': ucPresetTagHint,
+      // NAI官方格式字段
+      'version': request.isV4Model ? 1 : 'v3',
+      'legacy_v3_extend': false,
+      // img2img参数
+      if (request.isImg2Img) ...{
+        'strength': request.strength,
+        'noise': request.noise,
+        'extra_noise_seed': actualSeed - 1,
+      },
+      // V5 专属参数：官网写回元数据时保留 upscale 与透明背景，只剔除
+      // upscaled_enhance（增强 max 档是一次性动作，不属于图片参数）。
+      if (request.capabilities.supportsTransparentBackground) ...{
+        'straight_alpha': request.straightAlpha,
+        if (request.transparentBackground)
+          'tag_hint_transparent_background': true,
+      },
+      if (request.effectiveE2eUpscale)
+        'upscale': {'declared_blur_sigma': E2eUpscale.declaredBlurSigma},
+    };
+
+    // V4多角色提示词
+    if (request.isV4Model) {
+      commentJson['v4_prompt'] = {
+        'caption': {
+          'base_caption': recordedPrompt,
+          'char_captions': charCaptions ?? const [],
+        },
+        'use_coords': useCoords,
+        'use_order': true,
+        'legacy_uc': false,
+      };
+      commentJson['v4_negative_prompt'] = {
+        'caption': {
+          'base_caption': request.negativePrompt,
+          'char_captions': charNegCaptions ?? const [],
+        },
+        'use_coords': false,
+        'use_order': false,
+        'legacy_uc': false,
+      };
+    }
+
+    // Vibe Transfer 数据（关键！之前缺失）
+    if (request.hasVibeReferencesV4) {
+      final validVibes = request.enabledVibeReferencesV4
+          .where((v) => v.vibeEncoding.isNotEmpty)
+          .toList();
+
+      if (validVibes.isNotEmpty) {
+        commentJson['reference_image_multiple'] = validVibes
+            .map((v) => v.vibeEncoding)
+            .toList();
+        commentJson['reference_strength_multiple'] = validVibes
+            .map((v) => v.strength)
+            .toList();
+        commentJson['reference_information_extracted_multiple'] = validVibes
+            .map((v) => v.infoExtracted)
+            .toList();
+      }
+    }
+
+    // Precise Reference 数据
+    if (request.hasPreciseReferences) {
+      final preciseReferences = request.enabledPreciseReferences;
+      commentJson['use_precise_ref'] = true;
+      commentJson['precise_ref_type'] = preciseReferences.first.type
+          .toApiString();
+      // 注意：Precise Reference 的图像数据不直接存入元数据，
+      // 因为可能很大。这里只记录配置信息
+    }
+
+    // V4.5 参数
+    if (request.isV45Model) {
+      commentJson['variety_plus'] = request.varietyPlus;
+    }
+
+    return commentJson;
+  }
+
+  /// 构建完整的元数据 Map
+  ///
+  /// [commentJson] - Comment字段的JSON对象
+  /// [params] - 图像生成参数（用于获取模型信息）
+  static Map<String, dynamic> buildMetadata({
+    required Map<String, dynamic> commentJson,
+    required ImageParams params,
+  }) {
+    return {
+      'Description': params.prompt,
+      'Software': 'NovelAI',
+      'Source': getModelSourceName(params.model),
+      'Comment': jsonEncode(commentJson),
+    };
+  }
+
+  /// 根据传入参数重建图像内嵌元数据。
+  ///
+  /// 如果原图已经带有 NovelAI 文本块，则优先保留原有的
+  /// `Description`、`Software`、`Source`，仅用新的参数覆盖 Comment。
+  static Future<Uint8List> rebuildImageBytesWithMetadata({
+    required Uint8List imageBytes,
+    required ImageParams params,
+    int? actualSeed,
+    List<Map<String, dynamic>>? charCaptions,
+    List<Map<String, dynamic>>? charNegCaptions,
+    bool useCoords = false,
+    bool useStealth = false,
+    bool preserveExistingNovelAiMetadata = false,
+  }) async {
+    final existingMetadata = _extractEmbeddedPngMetadata(imageBytes);
+    if (preserveExistingNovelAiMetadata &&
+        _hasReadableNovelAiMetadata(imageBytes, existingMetadata)) {
+      AppLogger.i(
+        'Preserving existing NovelAI metadata without rewriting image bytes',
+        'ImageSaveUtils',
+      );
+      return imageBytes;
+    }
+
+    final embeddedSeed = existingMetadata?.commentJson['seed'];
+    final normalizedSeed =
+        actualSeed ??
+        (embeddedSeed is int
+            ? embeddedSeed
+            : embeddedSeed is num
+            ? embeddedSeed.toInt()
+            : params.seed);
+    final rebuiltCommentJson = buildCommentJson(
+      params: params,
+      actualSeed: normalizedSeed,
+      charCaptions: charCaptions,
+      charNegCaptions: charNegCaptions,
+      useCoords: useCoords,
+    );
+    final commentJson = existingMetadata?.commentJson == null
+        ? rebuiltCommentJson
+        : {...existingMetadata!.commentJson, ...rebuiltCommentJson};
+
+    return _embedNaiAlignedMetadata(
+      imageBytes: imageBytes,
+      commentJson: commentJson,
+      description:
+          existingMetadata?.description ??
+          buildPromptSemanticsSnapshot(
+            prompt: params.prompt,
+            negativePrompt: params.negativePrompt,
+            model: params.model,
+            qualityToggle: params.qualityToggle,
+            ucPreset: params.ucPreset,
+            transparentBackground: params.transparentBackground,
+            qualityTier: params.qualityTier,
+            modelMode: params.modelMode,
+          ).effectivePrompt,
+      source: existingMetadata?.source ?? getModelSourceName(params.model),
+      software: existingMetadata?.software ?? 'NovelAI',
+      useStealth: useStealth,
+    );
+  }
+
+  /// 保存图像并嵌入完整元数据
+  ///
+  /// [imageBytes] - 图像字节数据
+  /// [filePath] - 目标文件路径
+  /// [params] - 图像生成参数
+  /// [actualSeed] - 实际使用的种子
+  /// [charCaptions] - 角色提示词列表
+  /// [charNegCaptions] - 角色负面提示词列表
+  /// [useStealth] - 是否使用stealth编码（默认false）
+  /// [preserveExistingNovelAiMetadata] - 原图已有 NovelAI 元数据时不重写 PNG 字节。
+  ///
+  /// 返回保存后的文件
+  static Future<File> saveImageWithMetadata({
+    required Uint8List imageBytes,
+    required String filePath,
+    required ImageParams params,
+    required int actualSeed,
+    List<Map<String, dynamic>>? charCaptions,
+    List<Map<String, dynamic>>? charNegCaptions,
+    bool useCoords = false,
+    bool useStealth = false,
+    bool preserveExistingNovelAiMetadata = true,
+  }) async {
+    final embeddedBytes = await rebuildImageBytesWithMetadata(
+      imageBytes: imageBytes,
+      params: params,
+      actualSeed: actualSeed,
+      charCaptions: charCaptions,
+      charNegCaptions: charNegCaptions,
+      useCoords: useCoords,
+      useStealth: useStealth,
+      preserveExistingNovelAiMetadata: preserveExistingNovelAiMetadata,
+    );
+
+    // 确保目录存在
+    final file = File(filePath);
+    final dir = file.parent;
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    // 写入文件
+    await file.writeAsBytes(embeddedBytes);
+
+    AppLogger.i('Image saved with metadata: $filePath', 'ImageSaveUtils');
+
+    return file;
+  }
+
+  /// 简化版保存（用于不需要完整参数的场景）
+  ///
+  /// [imageBytes] - 图像字节数据
+  /// [filePath] - 目标文件路径
+  /// [metadata] - 预构建的元数据Map
+  /// [useStealth] - 是否使用stealth编码
+  /// 仅构建嵌入预置元数据的字节（不写文件），供原子保存接口使用。
+  static Future<Uint8List> buildPrebuiltMetadataBytes({
+    required Uint8List imageBytes,
+    required Map<String, dynamic> metadata,
+    bool useStealth = false,
+  }) async {
+    final normalized = _normalizePrebuiltMetadata(metadata);
+    return _embedNaiAlignedMetadata(
+      imageBytes: imageBytes,
+      commentJson: normalized.commentJson,
+      description: normalized.description,
+      software: normalized.software,
+      source: normalized.source,
+      useStealth: useStealth,
+    );
+  }
+
+  static Future<File> saveWithPrebuiltMetadata({
+    required Uint8List imageBytes,
+    required String filePath,
+    required Map<String, dynamic> metadata,
+    bool useStealth = false,
+  }) async {
+    final embeddedBytes = await buildPrebuiltMetadataBytes(
+      imageBytes: imageBytes,
+      metadata: metadata,
+      useStealth: useStealth,
+    );
+
+    // 确保目录存在
+    final file = File(filePath);
+    final dir = file.parent;
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    // 写入文件
+    await file.writeAsBytes(embeddedBytes);
+
+    AppLogger.i(
+      'Image saved with prebuilt metadata: $filePath',
+      'ImageSaveUtils',
+    );
+
+    return file;
+  }
+
+  static bool hasEmbeddedNovelAiMetadata(Uint8List imageBytes) {
+    return _hasReadableNovelAiMetadata(
+      imageBytes,
+      _extractEmbeddedPngMetadata(imageBytes),
+    );
+  }
+
+  /// 从元数据重新构建 ImageParams
+  ///
+  /// 用于导入图像时恢复生成参数
+  static ImageParams? rebuildParamsFromMetadata(NaiImageMetadata metadata) {
+    try {
+      final restoredNegativePrompt = metadata.ucPreset != null
+          ? UcPresets.stripPresetByInt(
+              metadata.negativePrompt,
+              metadata.model ?? 'nai-diffusion-4-full',
+              metadata.ucPreset!,
+            )
+          : metadata.negativePrompt;
+      var params = ImageParams(
+        prompt: metadata.prompt,
+        negativePrompt: restoredNegativePrompt,
+        model: metadata.model ?? 'nai-diffusion-4-full',
+        width: metadata.width ?? 832,
+        height: metadata.height ?? 1216,
+        steps: metadata.steps ?? 28,
+        scale: metadata.scale ?? 5.0,
+        sampler: metadata.sampler ?? 'k_euler_ancestral',
+        seed: metadata.seed ?? -1,
+        cfgRescale: metadata.cfgRescale ?? 0.0,
+        noiseSchedule: metadata.noiseSchedule ?? 'karras',
+        smea: metadata.smea ?? false,
+        smeaDyn: metadata.smeaDyn ?? false,
+        varietyPlus: metadata.varietyPlus ?? false,
+        qualityToggle: metadata.qualityToggle ?? false,
+        qualityTier: metadata.qualityTier ?? QualityTags.standardTier,
+        ucPreset: metadata.ucPreset ?? UcPresets.noneApiValue,
+        transparentBackground: metadata.transparentBackground ?? false,
+        modelMode: metadata.modelMode ?? ImageModelMode.anime,
+      );
+
+      // 恢复Vibe数据
+      if (metadata.vibeReferences.isNotEmpty) {
+        params = params.copyWith(vibeReferencesV4: metadata.vibeReferences);
+      }
+
+      // 恢复多角色数据
+      if (metadata.characterPrompts.isNotEmpty) {
+        final characters = metadata.characterPrompts.map((prompt) {
+          return CharacterPrompt(
+            prompt: prompt,
+            // 其他字段使用默认值，因为元数据中可能不完整
+          );
+        }).toList();
+        params = params.copyWith(characters: characters);
+      }
+
+      return params;
+    } catch (e, stack) {
+      AppLogger.e(
+        'Failed to rebuild params from metadata',
+        e,
+        stack,
+        'ImageSaveUtils',
+      );
+      return null;
+    }
+  }
+
+  /// 获取模型显示名称
+  static String getModelSourceName(String model) {
+    if (model.contains('diffusion-5') || model == ImageModels.v5StagingKey) {
+      // 与服务端实写一致：底模与重绘权重各有指纹，官方解析两者都认，
+      // 不带已知指纹的 V5 一律归 Curated。
+      final inpainting = ImageModels.isInpaintingModel(model);
+      if (model.contains('diffusion-5-full-medium')) {
+        return inpainting
+            ? 'NovelAI Diffusion V5 93F4BD30'
+            : 'NovelAI Diffusion V5 70AB5786';
+      }
+      if (model.contains('diffusion-5-full')) {
+        return inpainting
+            ? 'NovelAI Diffusion V5 657484A5'
+            : 'NovelAI Diffusion V5 0ADF9AB7';
+      }
+      return 'NovelAI Diffusion V5';
+    } else if (model.contains('diffusion-4-5')) {
+      return model.contains('curated')
+          ? 'NovelAI Diffusion V4.5 Curated'
+          : 'NovelAI Diffusion V4.5 Full';
+    } else if (model.contains('diffusion-4')) {
+      return model.contains('curated')
+          ? 'NovelAI Diffusion V4 Curated'
+          : 'NovelAI Diffusion V4 Full';
+    } else if (model.contains('furry') && model.contains('-3')) {
+      return 'NovelAI Furry Diffusion V3';
+    } else if (model.contains('diffusion-3')) {
+      return 'NovelAI Diffusion V3';
+    } else if (model.contains('diffusion-2')) {
+      return 'NovelAI Diffusion V2';
+    } else if (model.contains('furry')) {
+      return 'NovelAI Furry Diffusion';
+    }
+    return 'NovelAI';
+  }
+
+  static _EmbeddedPngMetadata? _extractEmbeddedPngMetadata(Uint8List bytes) {
+    if (!UnifiedMetadataParser.isPngHeader(bytes)) {
+      return null;
+    }
+
+    try {
+      final textData = UnifiedMetadataParser.extractPngTextData(bytes);
+      final rawComment = textData['Comment'];
+      if (rawComment == null || rawComment.isEmpty) {
+        return null;
+      }
+
+      final commentJson = _tryDecodeJsonMap(rawComment);
+      if (commentJson == null || !commentJson.containsKey('prompt')) {
+        return null;
+      }
+
+      return _EmbeddedPngMetadata(
+        commentJson: commentJson,
+        description:
+            textData['Description'] ?? (commentJson['prompt'] as String? ?? ''),
+        software: textData['Software'] ?? 'NovelAI',
+        source: textData['Source'] ?? 'NovelAI',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _hasReadableNovelAiMetadata(
+    Uint8List imageBytes,
+    _EmbeddedPngMetadata? embeddedMetadata,
+  ) {
+    if (embeddedMetadata != null) {
+      return true;
+    }
+
+    final result = UnifiedMetadataParser.parseFromPng(imageBytes);
+    if (!result.success) {
+      return false;
+    }
+    final sourceFormat = result.sourceFormat?.toLowerCase() ?? '';
+    final software = result.metadata?.software?.toLowerCase() ?? '';
+    final source = result.metadata?.source?.toLowerCase() ?? '';
+    return sourceFormat.contains('novelai') ||
+        software.contains('novelai') ||
+        source.contains('novelai');
+  }
+
+  /// 对齐 NAI 官网格式写入 PNG 文本块：
+  /// - Comment: 纯参数 JSON（根级含 prompt/seed/...）
+  /// - Description/Software/Source: 独立 tEXt 字段
+  static Future<Uint8List> _embedNaiAlignedMetadata({
+    required Uint8List imageBytes,
+    required Map<String, dynamic> commentJson,
+    required String description,
+    String software = 'NovelAI',
+    required String source,
+    bool useStealth = false,
+  }) async {
+    final result = await ComputeGate().runCompute(
+      _writeAlignedMetadata,
+      _MetadataWriteRequest(
+        bytes: TransferableTypedData.fromList([imageBytes]),
+        commentJson: commentJson,
+        description: description,
+        software: software,
+        source: source,
+        useStealth: useStealth,
+      ),
+      debugLabel: 'save-image-metadata',
+    );
+    return result.materialize().asUint8List();
+  }
+
+  static _NormalizedPrebuiltMetadata _normalizePrebuiltMetadata(
+    Map<String, dynamic> metadata,
+  ) {
+    final description =
+        (metadata['Description'] as String?) ??
+        (metadata['prompt'] as String?) ??
+        '';
+    final software = (metadata['Software'] as String?) ?? 'NovelAI';
+    final source = (metadata['Source'] as String?) ?? 'NovelAI';
+
+    final commentJson = _extractCommentJson(metadata);
+    return _NormalizedPrebuiltMetadata(
+      description: description,
+      software: software,
+      source: source,
+      commentJson: commentJson,
+    );
+  }
+
+  static Map<String, dynamic> _extractCommentJson(
+    Map<String, dynamic> metadata,
+  ) {
+    final rawComment = metadata['Comment'];
+    if (rawComment is Map<String, dynamic>) {
+      return rawComment;
+    }
+    if (rawComment is String && rawComment.isNotEmpty) {
+      final decoded = _tryDecodeJsonMap(rawComment);
+      if (decoded != null) {
+        return _unwrapCommentIfWrapped(decoded);
+      }
+    }
+
+    if (metadata.containsKey('prompt')) {
+      return Map<String, dynamic>.from(metadata);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  static Map<String, dynamic>? _tryDecodeJsonMap(String source) {
+    try {
+      final decoded = jsonDecode(source);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {
+      // noop
+    }
+    return null;
+  }
+
+  /// 原子保存图片到日期分类目录：<根目录>/yyyy-MM-dd/<文件名>.png
+  ///
+  /// 所有图库保存入口必须走这里：路径选择、独占防冲突、写入、
+  /// 失败清理都在一个方法内完成，调用方无需感知占位文件。
+  /// - [preferredFileName] 存在时使用清理后的文件名；适用于水印等派生副本
+  /// - 否则 [seed] 为 null 或小于 0 时用毫秒时间戳代替，保证文件名唯一
+  /// - 独占创建原子保留路径，并发保存不会拿到同一路径后相互覆盖
+  /// - 写入失败时删除占位文件后重新抛出，不留空 PNG 进图库扫描
+  /// - 仅名称冲突（候选已存在）才追加 -2、-3 序号；目录只读、磁盘满等
+  ///   不可恢复错误直接抛出，避免无限循环
+  static Future<String> saveBytesToDatedPath({
+    required String rootPath,
+    required Uint8List bytes,
+    int? seed,
+    String? preferredFileName,
+    DateTime? now,
+  }) async {
+    final time = now ?? DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final dateFolder = '${time.year}-${two(time.month)}-${two(time.day)}';
+    final dir = Directory(p.join(rootPath, dateFolder));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    final preferredStem = preferredFileName == null
+        ? ''
+        : p
+              .basenameWithoutExtension(p.basename(preferredFileName))
+              .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
+              .trim();
+    final baseName = preferredStem.isNotEmpty
+        ? preferredStem
+        : _galleryFileStem(seed: seed, time: time);
+    var candidate = p.join(dir.path, '$baseName.png');
+    var suffix = 2;
+    File file;
+    while (true) {
+      try {
+        // 阶段一：独占创建。仅此阶段捕获“路径已存在”，
+        // 其他 FileSystemException（权限、只读等）直接抛出，避免无限循环。
+        file = await File(candidate).create(exclusive: true);
+        break;
+      } on FileSystemException {
+        if (!await File(candidate).exists()) rethrow;
+        candidate = p.join(dir.path, '$baseName-$suffix.png');
+        suffix++;
+      }
+    }
+    // 阶段二：写入。失败时尽力删除占位文件，再抛出原始写入异常。
+    // 写入异常不进入创建阶段的冲突重试，避免清理失败时误判为名称冲突而循环。
+    try {
+      await file.writeAsBytes(bytes);
+    } catch (e) {
+      try {
+        await file.delete();
+      } catch (_) {
+        // 清理失败不掩盖原始写入异常
+      }
+      rethrow;
+    }
+    return candidate;
+  }
+
+  /// 图库保存时的默认文件名 `时-分-秒-seed.png`，另存为的建议文件名与它一致。
+  static String galleryFileName({int? seed, DateTime? now}) =>
+      '${_galleryFileStem(seed: seed, time: now ?? DateTime.now())}.png';
+
+  static String _galleryFileStem({int? seed, required DateTime time}) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final seedPart = (seed != null && seed >= 0)
+        ? '$seed'
+        : '${time.millisecondsSinceEpoch}';
+    return '${two(time.hour)}-${two(time.minute)}-${two(time.second)}-$seedPart';
+  }
+
+  /// 生成结果最终落盘的字节，保存与另存为共用以得到同一份文件。
+  ///
+  /// 字节已带 NovelAI 元数据时原样返回；否则仅按 [metadata] 补写，没有就原样返回。
+  static Future<PreparedResultImage> prepareResultBytes({
+    required Uint8List imageBytes,
+    required bool preserveOriginalBytes,
+    NaiImageMetadata? metadata,
+  }) async {
+    final rebuilt =
+        !preserveOriginalBytes &&
+        metadata != null &&
+        !hasEmbeddedNovelAiMetadata(imageBytes);
+    if (!rebuilt) return PreparedResultImage._(imageBytes, null);
+    return PreparedResultImage._(
+      await _embedOwnMetadata(imageBytes: imageBytes, metadata: metadata),
+      metadata,
+    );
+  }
+
+  /// 生成结果的唯一落盘入口，只认图像自身数据，不读当前生成参数。
+  ///
+  /// 最终字节见 [prepareResultBytes]。
+  /// 固定词快照只进旁路记录库。
+  static Future<SavedResultImage> saveResultImage({
+    required String rootPath,
+    required Uint8List imageBytes,
+    required bool preserveOriginalBytes,
+    NaiImageMetadata? metadata,
+    FixedTagUsageSnapshot? fixedTagUsageSnapshot,
+    String? preferredFileName,
+    DateTime? now,
+  }) async {
+    final prepared = await prepareResultBytes(
+      imageBytes: imageBytes,
+      preserveOriginalBytes: preserveOriginalBytes,
+      metadata: metadata,
+    );
+    final bytes = prepared.bytes;
+    final path = await saveBytesToDatedPath(
+      rootPath: rootPath,
+      bytes: bytes,
+      seed: await prepared.resolveSeed(),
+      preferredFileName: preferredFileName,
+      now: now,
+    );
+    final contentHash = FileHashCalculator().calculateFromBytes(bytes);
+    FileHashCalculator().registerPathHash(path, contentHash);
+    final snapshot = fixedTagUsageSnapshot ?? metadata?.fixedTagUsageSnapshot;
+    if (!preserveOriginalBytes && snapshot != null) {
+      try {
+        await FixedTagUsageRecordStore().record(
+          contentHash: contentHash,
+          snapshot: snapshot,
+        );
+      } catch (error, stack) {
+        // 文件已落盘，记录失败不能让调用方把这次保存报成失败。
+        AppLogger.e(
+          'Failed to record fixed-tag usage for $path',
+          error,
+          stack,
+          'ImageSaveUtils',
+        );
+      }
+    }
+    return SavedResultImage(path: path, bytes: bytes, contentHash: contentHash);
+  }
+
+  /// 解析图片的真实 seed：优先用已有元数据，否则从 PNG 字节解析。
+  ///
+  /// 用于保存入口的日期分类文件名，保证非自动保存路径（详情页保存、
+  /// 历史补存、批量保存、定位前补存等）也能拿到真实 seed。
+  /// 解析不到时返回 null，由调用方决定文件名兜底。
+  static Future<int?> resolveSeed({
+    NaiImageMetadata? metadata,
+    Uint8List? bytes,
+  }) async {
+    if (metadata?.seed != null && metadata!.seed! >= 0) {
+      return metadata.seed;
+    }
+    if (bytes != null) {
+      final extracted = await ImageMetadataService().getMetadataFromBytes(
+        bytes,
+      );
+      if (extracted?.seed != null && extracted!.seed! >= 0) {
+        return extracted.seed;
+      }
+    }
+    return null;
+  }
+
+  static Future<Uint8List> _embedOwnMetadata({
+    required Uint8List imageBytes,
+    required NaiImageMetadata metadata,
+  }) => _embedNaiAlignedMetadata(
+    imageBytes: imageBytes,
+    commentJson: _commentJsonOf(metadata),
+    description: metadata.prompt,
+    software: metadata.software ?? 'NovelAI',
+    source: metadata.source ?? 'NovelAI Diffusion',
+  );
+
+  // rawJson 是完整 Comment；字段投影会丢掉 v4_prompt、预设与 tag_hint 等。
+  static Map<String, dynamic> _commentJsonOf(NaiImageMetadata metadata) {
+    final raw = metadata.rawJson;
+    final decoded = raw == null ? null : _tryDecodeJsonMap(raw);
+    if (decoded != null) {
+      final comment = _unwrapCommentIfWrapped(decoded);
+      if (comment.containsKey('prompt')) return comment;
+    }
+    return _commentJsonFromFields(metadata);
+  }
+
+  static Map<String, dynamic> _commentJsonFromFields(
+    NaiImageMetadata metadata,
+  ) {
+    final commentJson = <String, dynamic>{
+      'prompt': metadata.prompt,
+      'uc': metadata.negativePrompt,
+      'seed': metadata.seed ?? -1,
+      'steps': metadata.steps ?? 28,
+      'width': metadata.width ?? 832,
+      'height': metadata.height ?? 1216,
+      'scale': metadata.scale ?? 5.0,
+      'uncond_scale': 0.0,
+      'cfg_rescale': metadata.cfgRescale ?? 0.0,
+      'n_samples': 1,
+      'noise_schedule': metadata.noiseSchedule ?? 'native',
+      'sampler': metadata.sampler ?? 'k_euler_ancestral',
+      'sm': metadata.smea ?? false,
+      'sm_dyn': metadata.smeaDyn ?? false,
+    };
+    final vibes = metadata.vibeReferences
+        .where((v) => v.vibeEncoding.isNotEmpty)
+        .toList();
+    if (vibes.isNotEmpty) {
+      commentJson['reference_image_multiple'] = vibes
+          .map((v) => v.vibeEncoding)
+          .toList();
+      commentJson['reference_strength_multiple'] = vibes
+          .map((v) => v.strength)
+          .toList();
+      commentJson['reference_information_extracted_multiple'] = vibes
+          .map((v) => v.infoExtracted)
+          .toList();
+    }
+    return commentJson;
+  }
+
+  /// 兼容历史“外层包装”结构：{Description, Software, Source, Comment:"{...}"}
+  static Map<String, dynamic> _unwrapCommentIfWrapped(
+    Map<String, dynamic> map,
+  ) {
+    final nested = map['Comment'];
+    if (map.containsKey('prompt')) {
+      return map;
+    }
+    if (nested is Map<String, dynamic>) {
+      return nested;
+    }
+    if (nested is String && nested.isNotEmpty) {
+      return _tryDecodeJsonMap(nested) ?? map;
+    }
+    return map;
+  }
+}
+
+/// 结果图落盘产物：最终字节、路径与内容哈希（固定词记录键）。
+class PreparedResultImage {
+  const PreparedResultImage._(this.bytes, this._embeddedMetadata);
+
+  final Uint8List bytes;
+  final NaiImageMetadata? _embeddedMetadata;
+
+  // 文件名里的 seed 必须与最终落盘字节内的元数据一致；只在按 seed 命名时才解析。
+  Future<int?> resolveSeed() =>
+      ImageSaveUtils.resolveSeed(metadata: _embeddedMetadata, bytes: bytes);
+}
+
+class SavedResultImage {
+  const SavedResultImage({
+    required this.path,
+    required this.bytes,
+    required this.contentHash,
+  });
+
+  final String path;
+  final Uint8List bytes;
+  final String contentHash;
+}
+
+class _MetadataWriteRequest {
+  const _MetadataWriteRequest({
+    required this.bytes,
+    required this.commentJson,
+    required this.description,
+    required this.software,
+    required this.source,
+    required this.useStealth,
+  });
+
+  final TransferableTypedData bytes;
+  final Map<String, dynamic> commentJson;
+  final String description;
+  final String software;
+  final String source;
+  final bool useStealth;
+}
+
+Future<TransferableTypedData> _writeAlignedMetadata(
+  _MetadataWriteRequest request,
+) async {
+  var bytes = request.bytes.materialize().asUint8List();
+  final commentText = jsonEncode(request.commentJson);
+  if (request.useStealth) {
+    bytes = await UnifiedMetadataParser.embedMetadata(
+      bytes,
+      commentText,
+      useStealth: true,
+    );
+  }
+  final output = UnifiedMetadataParser.embedTextChunks(bytes, {
+    'Comment': commentText,
+    'Description': request.description,
+    'Software': request.software,
+    'Source': request.source,
+  });
+  return TransferableTypedData.fromList([output]);
+}
+
+class _NormalizedPrebuiltMetadata {
+  final String description;
+  final String software;
+  final String source;
+  final Map<String, dynamic> commentJson;
+
+  const _NormalizedPrebuiltMetadata({
+    required this.description,
+    required this.software,
+    required this.source,
+    required this.commentJson,
+  });
+}
+
+class _EmbeddedPngMetadata {
+  final Map<String, dynamic> commentJson;
+  final String description;
+  final String software;
+  final String source;
+
+  const _EmbeddedPngMetadata({
+    required this.commentJson,
+    required this.description,
+    required this.software,
+    required this.source,
+  });
+}

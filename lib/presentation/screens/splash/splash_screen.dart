@@ -1,0 +1,395 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/constants/app_version.dart';
+import '../../../core/utils/localization_extension.dart';
+import '../../adaptive/adaptive_layout.dart';
+import '../../providers/warmup_provider.dart';
+import '../../utils/warmup_message_localizer.dart';
+
+/// 启动画面
+/// 显示应用品牌和预加载进度
+class SplashScreen extends ConsumerStatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _breathController;
+  late Animation<double> _breathAnimation;
+  late Animation<double> _glowAnimation;
+  bool? _motionEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Logo 呼吸动画
+    _breathController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
+
+    _breathAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _breathController, curve: Curves.easeInOut),
+    );
+
+    _glowAnimation = Tween<double>(begin: 0.3, end: 0.8).animate(
+      CurvedAnimation(parent: _breathController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final motionEnabled = !MediaQuery.disableAnimationsOf(context);
+    if (_motionEnabled == motionEnabled) return;
+    _motionEnabled = motionEnabled;
+    if (motionEnabled) {
+      _breathController.repeat(reverse: true);
+    } else {
+      _breathController
+        ..stop()
+        ..value = 0.5;
+    }
+  }
+
+  @override
+  void dispose() {
+    _breathController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final warmupState = ref.watch(warmupNotifierProvider);
+    final progress = warmupState.progress;
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+    final backgroundColor = theme.colorScheme.surface;
+
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      body: Stack(
+        children: [
+          _buildBackground(primaryColor, backgroundColor),
+          SafeArea(
+            child: AdaptiveSlotLayout(
+              builder: (context, areas) => SingleChildScrollView(
+                key: const ValueKey('splash_scroll_view'),
+                padding: EdgeInsets.fromLTRB(
+                  areas.horizontalPadding,
+                  16,
+                  areas.horizontalPadding,
+                  48,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (areas.constraints.maxHeight - 64)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: AdaptiveContentBounds(
+                    maxWidth: 640,
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildLogo(primaryColor),
+                        const SizedBox(height: 24),
+                        _buildTitle(theme, primaryColor),
+                        const SizedBox(height: 48),
+                        _buildProgressSection(
+                          theme,
+                          primaryColor,
+                          progress,
+                          warmupState.subTaskMessage,
+                          warmupState.error,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 16 + MediaQuery.paddingOf(context).right,
+            bottom: 16 + MediaQuery.paddingOf(context).bottom,
+            child: Text(
+              AppVersion.versionName,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackground(Color primaryColor, Color backgroundColor) {
+    return AnimatedBuilder(
+      animation: _glowAnimation,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(0, -0.3),
+              radius: 1.5,
+              colors: [
+                primaryColor.withValues(alpha: _glowAnimation.value * 0.15),
+                backgroundColor,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLogo(Color primaryColor) {
+    return AnimatedBuilder(
+      animation: _breathAnimation,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _breathAnimation.value,
+          child: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [primaryColor, primaryColor.withValues(alpha: 0.6)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withValues(
+                    alpha: _glowAnimation.value * 0.5,
+                  ),
+                  blurRadius: 40,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              size: 56,
+              color: Colors.white,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTitle(ThemeData theme, Color primaryColor) {
+    final lighterColor = Color.lerp(primaryColor, Colors.white, 0.4)!;
+
+    return Column(
+      children: [
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [primaryColor, lighterColor],
+          ).createShader(bounds),
+          child: const Text(
+            'NAI Launcher',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: 2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'NovelAI Image Generation',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            letterSpacing: 1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgressSection(
+    ThemeData theme,
+    Color primaryColor,
+    WarmupProgress progress,
+    String? subTaskMessage,
+    String? error,
+  ) {
+    final l10n = context.l10n;
+    final translatedTask = WarmupMessageLocalizer.localizeTask(
+      l10n,
+      progress.currentTask,
+    );
+    final percentage = (progress.progress * 100).toInt();
+
+    return AdaptiveContentBounds(
+      maxWidth: 520,
+      child: Column(
+        children: [
+          if (error != null) ...[
+            Icon(Icons.error_outline, color: theme.colorScheme.error, size: 28),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Text(
+                WarmupMessageLocalizer.localizeError(l10n, error),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const ValueKey('warmup_retry'),
+              onPressed: () {
+                ref.read(warmupNotifierProvider.notifier).retry();
+              },
+              icon: const Icon(Icons.refresh),
+              label: Text(l10n.common_retry),
+            ),
+          ] else ...[
+            // 进度条 + 百分比
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 260),
+                    child: _buildProgressBar(
+                      theme,
+                      primaryColor,
+                      progress.progress,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // 百分比文字（使用等宽数字特性）
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 42),
+                  child: Text(
+                    '$percentage%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: primaryColor,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // 当前任务（带加载指示器）
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Row(
+                key: ValueKey(progress.currentTask),
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!progress.isComplete) ...[
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Text(
+                      translatedTask,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.6,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 子任务进度（如"下载中... 50%"）
+            if (subTaskMessage != null && !progress.isComplete) ...[
+              const SizedBox(height: 8),
+              Text(
+                WarmupMessageLocalizer.localizeSubTask(l10n, subTaskMessage),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(ThemeData theme, Color primaryColor, double value) {
+    final lighterColor = Color.lerp(primaryColor, Colors.white, 0.4)!;
+
+    return Container(
+      height: 4,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(2),
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            children: [
+              // 进度填充
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                width: constraints.maxWidth * value,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  gradient: LinearGradient(
+                    colors: [primaryColor, lighterColor],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withValues(alpha: 0.5),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}

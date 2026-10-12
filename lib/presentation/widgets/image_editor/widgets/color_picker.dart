@@ -1,0 +1,332 @@
+import 'package:flutter/material.dart';
+import 'package:nai_launcher/presentation/widgets/common/themed_input.dart';
+
+/// HSV 颜色选择器
+class HSVColorPicker extends StatefulWidget {
+  final Color color;
+  final ValueChanged<Color> onColorChanged;
+  final String hexLabel;
+  final String saturationBrightnessLabel;
+  final String hueLabel;
+  final double hueHeight;
+
+  const HSVColorPicker({
+    super.key,
+    required this.color,
+    required this.onColorChanged,
+    required this.hexLabel,
+    required this.saturationBrightnessLabel,
+    required this.hueLabel,
+    this.hueHeight = 20,
+  });
+
+  @override
+  State<HSVColorPicker> createState() => _HSVColorPickerState();
+}
+
+class _HSVColorPickerState extends State<HSVColorPicker> {
+  late HSVColor _hsvColor;
+  late TextEditingController _hexController;
+
+  @override
+  void initState() {
+    super.initState();
+    _hsvColor = HSVColor.fromColor(widget.color);
+    _hexController = TextEditingController(text: _colorToHex(widget.color));
+  }
+
+  @override
+  void didUpdateWidget(HSVColorPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.color != widget.color) {
+      _hsvColor = HSVColor.fromColor(widget.color);
+      _hexController.text = _colorToHex(widget.color);
+    }
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  String _colorToHex(Color color) {
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+  }
+
+  Color? _hexToColor(String hex) {
+    hex = hex.replaceAll('#', '');
+    if (hex.length == 6) {
+      hex = 'ff$hex';
+    }
+    if (hex.length != 8) return null;
+    final intValue = int.tryParse(hex, radix: 16);
+    if (intValue == null) return null;
+    return Color(intValue);
+  }
+
+  void _onColorChanged(HSVColor color) {
+    setState(() {
+      _hsvColor = color;
+      _hexController.text = _colorToHex(color.toColor());
+    });
+    widget.onColorChanged(color.toColor());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hexInput = Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: _hsvColor.toColor(),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ThemedInput(
+                controller: _hexController,
+                semanticLabel: widget.hexLabel,
+                borderRadius: 4,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                ),
+                onSubmitted: (value) {
+                  final color = _hexToColor(value);
+                  if (color != null) {
+                    _onColorChanged(HSVColor.fromColor(color));
+                  }
+                },
+              ),
+            ),
+          ],
+        );
+        final saturationValuePanel = SizedBox(
+          key: const ValueKey('hsv-color-picker-sv-panel'),
+          height: 120,
+          child: _SVPanel(
+            hsvColor: _hsvColor,
+            semanticLabel: widget.saturationBrightnessLabel,
+            onChanged: _onColorChanged,
+          ),
+        );
+        final hueSlider = SizedBox(
+          key: const ValueKey('hsv-color-picker-hue-slider'),
+          height: widget.hueHeight,
+          child: _HueSlider(
+            hue: _hsvColor.hue,
+            semanticLabel: widget.hueLabel,
+            onChanged: (hue) {
+              _onColorChanged(_hsvColor.withHue(hue));
+            },
+          ),
+        );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            hexInput,
+            const SizedBox(height: 12),
+            // 浮层可能给出短而有界的高度；保留 Hex 与 Hue 操作，
+            // 由二维色板吸收剩余空间，避免任一控制被裁掉。
+            if (constraints.hasBoundedHeight)
+              Expanded(child: saturationValuePanel)
+            else
+              saturationValuePanel,
+            const SizedBox(height: 8),
+            hueSlider,
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// SV 面板
+class _SVPanel extends StatelessWidget {
+  final HSVColor hsvColor;
+  final String semanticLabel;
+  final ValueChanged<HSVColor> onChanged;
+
+  const _SVPanel({
+    required this.hsvColor,
+    required this.semanticLabel,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Semantics(
+        slider: true,
+        label: semanticLabel,
+        value:
+            '${(hsvColor.saturation * 100).round()}%, ${(hsvColor.value * 100).round()}%',
+        increasedValue:
+            '${(hsvColor.saturation * 100).round()}%, ${((hsvColor.value + 0.05).clamp(0, 1) * 100).round()}%',
+        decreasedValue:
+            '${(hsvColor.saturation * 100).round()}%, ${((hsvColor.value - 0.05).clamp(0, 1) * 100).round()}%',
+        onIncrease: () =>
+            onChanged(hsvColor.withValue((hsvColor.value + 0.05).clamp(0, 1))),
+        onDecrease: () =>
+            onChanged(hsvColor.withValue((hsvColor.value - 0.05).clamp(0, 1))),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) =>
+              _handleTouch(details.localPosition, constraints),
+          onPanUpdate: (details) =>
+              _handleTouch(details.localPosition, constraints),
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Colors.white,
+                      HSVColor.fromAHSV(1, hsvColor.hue, 1, 1).toColor(),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: hsvColor.saturation * constraints.maxWidth - 8,
+                top: (1 - hsvColor.value) * constraints.maxHeight - 8,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleTouch(Offset position, BoxConstraints constraints) {
+    final saturation = (position.dx / constraints.maxWidth).clamp(0.0, 1.0);
+    final value = 1 - (position.dy / constraints.maxHeight).clamp(0.0, 1.0);
+    onChanged(hsvColor.withSaturation(saturation).withValue(value));
+  }
+}
+
+/// Hue 滑块
+class _HueSlider extends StatelessWidget {
+  final double hue;
+  final String semanticLabel;
+  final ValueChanged<double> onChanged;
+
+  const _HueSlider({
+    required this.hue,
+    required this.semanticLabel,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Semantics(
+        slider: true,
+        label: semanticLabel,
+        value: '${hue.round()}°',
+        increasedValue: '${(hue + 5).clamp(0, 360).round()}°',
+        decreasedValue: '${(hue - 5).clamp(0, 360).round()}°',
+        onIncrease: () => onChanged((hue + 5).clamp(0, 360)),
+        onDecrease: () => onChanged((hue - 5).clamp(0, 360)),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) =>
+              _handleTouch(details.localPosition, constraints),
+          onPanUpdate: (details) =>
+              _handleTouch(details.localPosition, constraints),
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFFFF0000),
+                      Color(0xFFFFFF00),
+                      Color(0xFF00FF00),
+                      Color(0xFF00FFFF),
+                      Color(0xFF0000FF),
+                      Color(0xFFFF00FF),
+                      Color(0xFFFF0000),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: (hue / 360) * constraints.maxWidth - 4,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 8,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleTouch(Offset position, BoxConstraints constraints) {
+    final newHue = (position.dx / constraints.maxWidth * 360).clamp(0.0, 360.0);
+    onChanged(newHue);
+  }
+}

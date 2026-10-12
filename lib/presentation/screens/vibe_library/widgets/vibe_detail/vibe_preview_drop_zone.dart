@@ -1,0 +1,372 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:nai_launcher/core/utils/localization_extension.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
+
+import '../../../../../core/platform/platform_capabilities.dart';
+import '../../../../../core/utils/app_logger.dart';
+import '../../../../adaptive/interaction_policy.dart';
+import '../../../../utils/card_drop_reader.dart';
+import '../../../../widgets/common/app_toast.dart';
+import '../../../../themes/design_tokens.dart';
+import '../../../../widgets/common/decoded_memory_image.dart';
+import '../../../../widgets/common/image_picker_card/_internal/picker_handler.dart';
+
+/// Vibe 预览图拖拽区
+///
+/// 支持：
+/// - InteractiveViewer 缩放/平移
+/// - DropRegion 拖拽设置预览图
+/// - 右下角"更换预览图"按钮
+/// - 拖拽覆盖层（虚线边框 + 提示）
+/// - 图片自动缩放到最大 512×512
+class VibePreviewDropZone extends StatefulWidget {
+  /// 当前预览图数据
+  final Uint8List? imageBytes;
+
+  /// 预览图变更回调
+  final ValueChanged<Uint8List>? onThumbnailChanged;
+
+  /// 关闭回调
+  final VoidCallback? onClose;
+
+  const VibePreviewDropZone({
+    super.key,
+    this.imageBytes,
+    this.onThumbnailChanged,
+    this.onClose,
+  });
+
+  @override
+  State<VibePreviewDropZone> createState() => _VibePreviewDropZoneState();
+}
+
+class _VibePreviewDropZoneState extends State<VibePreviewDropZone> {
+  final TransformationController _transformationController =
+      TransformationController();
+  bool _isDragging = false;
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _resetZoom() {
+    _transformationController.value = Matrix4.identity();
+  }
+
+  void _zoomIn() {
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final newScale = (currentScale * 1.2).clamp(0.5, 4.0);
+    _applyScale(newScale);
+  }
+
+  void _zoomOut() {
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final newScale = (currentScale / 1.2).clamp(0.5, 4.0);
+    _applyScale(newScale);
+  }
+
+  void _applyScale(double scale) {
+    final size = context.size;
+    if (size == null) return;
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+
+    final matrix = Matrix4.identity()
+      ..translateByDouble(
+        centerX - centerX * scale,
+        centerY - centerY * scale,
+        0,
+        1,
+      )
+      ..scaleByDouble(scale, scale, scale, 1);
+
+    _transformationController.value = matrix;
+  }
+
+  Future<void> _pickImage() async {
+    final result = await PickerHandler.pickImage(
+      l10n: context.l10n,
+      onError: (msg) => AppLogger.w(msg, 'VibePreviewDropZone'),
+    );
+    if (result == null) return;
+
+    final resized = await _resizeImage(result.bytes);
+    widget.onThumbnailChanged?.call(resized);
+  }
+
+  static const _dropPolicy = CardDropPolicy(allowMultiple: false);
+
+  Future<void> _handleDrop(PerformDropEvent event) async {
+    setState(() => _isDragging = false);
+    try {
+      final resources = await readCardDrop(
+        context,
+        event.session.items,
+        policy: _dropPolicy,
+      );
+      final resized = await _resizeImage(resources.single.image.bytes);
+      if (mounted) widget.onThumbnailChanged?.call(resized);
+    } catch (error, stack) {
+      AppLogger.e(
+        'Vibe preview drop failed',
+        error,
+        stack,
+        'VibePreviewDropZone',
+      );
+      if (mounted) {
+        AppToast.error(context, '${context.l10n.common_error}: $error');
+      }
+    }
+  }
+
+  /// 缩放图片到最大 512×512
+  static Future<Uint8List> _resizeImage(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+
+      final srcW = image.width;
+      final srcH = image.height;
+
+      if (srcW <= 512 && srcH <= 512) {
+        image.dispose();
+        return bytes;
+      }
+
+      final scale = 512.0 / (srcW > srcH ? srcW : srcH);
+      final dstW = (srcW * scale).round();
+      final dstH = (srcH * scale).round();
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(
+        recorder,
+        Rect.fromLTWH(0, 0, dstW.toDouble(), dstH.toDouble()),
+      );
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, srcW.toDouble(), srcH.toDouble()),
+        Rect.fromLTWH(0, 0, dstW.toDouble(), dstH.toDouble()),
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+
+      final picture = recorder.endRecording();
+      final resized = await picture.toImage(dstW, dstH);
+      final byteData = await resized.toByteData(format: ui.ImageByteFormat.png);
+
+      image.dispose();
+      resized.dispose();
+      picture.dispose();
+
+      return byteData?.buffer.asUint8List() ?? bytes;
+    } catch (e) {
+      AppLogger.w('Failed to resize image: $e', 'VibePreviewDropZone');
+      return bytes;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final capabilities = PlatformCapabilities.current;
+    final interactionPolicy = context.interactionPolicy;
+    final content = Stack(
+      children: [
+        // 图片预览
+        GestureDetector(
+          onDoubleTap: _resetZoom,
+          child: InteractiveViewer(
+            transformationController: _transformationController,
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Center(
+              child: widget.imageBytes != null
+                  ? DecodedMemoryImage(
+                      bytes: widget.imageBytes!,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                    )
+                  : _buildPlaceholder(),
+            ),
+          ),
+        ),
+
+        if (_isDragging) _buildDragOverlay(),
+
+        Positioned(
+          top: DesignTokens.spacingMd,
+          left: DesignTokens.spacingMd,
+          child: _buildCircularCloseButton(
+            onPressed: widget.onClose ?? () => Navigator.of(context).pop(),
+          ),
+        ),
+
+        Positioned(
+          bottom: DesignTokens.spacingMd,
+          right: DesignTokens.spacingMd,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (interactionPolicy.precisePointerAvailable) ...[
+                _buildIconButton(
+                  icon: Icons.add,
+                  onPressed: _zoomIn,
+                  tooltip: context.l10n.editor_zoomIn,
+                ),
+                const SizedBox(height: DesignTokens.spacingXs),
+                _buildIconButton(
+                  icon: Icons.remove,
+                  onPressed: _zoomOut,
+                  tooltip: context.l10n.editor_zoomOut,
+                ),
+                const SizedBox(height: DesignTokens.spacingXs),
+              ],
+              _buildIconButton(
+                icon: Icons.fit_screen,
+                onPressed: _resetZoom,
+                tooltip: context.l10n.editor_shortcut100Zoom,
+              ),
+              if (widget.onThumbnailChanged != null) ...[
+                const SizedBox(height: DesignTokens.spacingMd),
+                _buildIconButton(
+                  icon: Icons.image_outlined,
+                  onPressed: _pickImage,
+                  tooltip: context.l10n.vibeBulkTag_actionPreview,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (!capabilities.supportsExternalFileDrop) return content;
+    return DropRegion(
+      formats: cardDropFormats,
+      hitTestBehavior: HitTestBehavior.opaque,
+      onDropOver: (event) {
+        if (widget.onThumbnailChanged != null &&
+            event.session.allowedOperations.contains(DropOperation.copy) &&
+            _dropPolicy.accepts(event.session.items)) {
+          if (!_isDragging) setState(() => _isDragging = true);
+          return DropOperation.copy;
+        }
+        return DropOperation.none;
+      },
+      onDropLeave: (_) {
+        if (_isDragging) setState(() => _isDragging = false);
+      },
+      onPerformDrop: (event) async {
+        await _handleDrop(event);
+      },
+      child: content,
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.auto_awesome, size: 64, color: Colors.white54),
+        const SizedBox(height: DesignTokens.spacingMd),
+        Text(
+          context.l10n.vibeDetail_noPreviewImage,
+          style: const TextStyle(color: Colors.white54, fontSize: 16),
+        ),
+        const SizedBox(height: DesignTokens.spacingXs),
+        Text(
+          PlatformCapabilities.current.supportsExternalFileDrop
+              ? context.l10n.vibeDetail_dropPreviewImage
+              : context.l10n.vibeDetail_choosePreviewImage,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white38, fontSize: 13),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDragOverlay() {
+    return Positioned.fill(
+      child: Container(
+        margin: const EdgeInsets.all(DesignTokens.spacingLg),
+        decoration: BoxDecoration(
+          borderRadius: DesignTokens.borderRadiusXl,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.6),
+            width: 2,
+            strokeAlign: BorderSide.strokeAlignInside,
+          ),
+          color: Colors.white.withValues(alpha: 0.08),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.file_download_outlined,
+                size: 48,
+                color: Colors.white70,
+              ),
+              const SizedBox(height: DesignTokens.spacingSm),
+              Text(
+                context.l10n.vibeDetail_releasePreviewImage,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.5),
+        borderRadius: DesignTokens.borderRadiusLg,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: DesignTokens.borderRadiusLg,
+          child: SizedBox.square(
+            dimension: 48,
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建左上角圆形关闭按钮
+  Widget _buildCircularCloseButton({required VoidCallback onPressed}) {
+    return Tooltip(
+      message: '${context.l10n.common_close} (Esc)',
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.5),
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: const Padding(
+            padding: EdgeInsets.all(12),
+            child: Icon(Icons.close, color: Colors.white, size: 24),
+          ),
+        ),
+      ),
+    );
+  }
+}

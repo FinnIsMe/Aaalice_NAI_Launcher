@@ -1,0 +1,150 @@
+import 'package:flutter/material.dart';
+import '../../adaptive/interaction_policy.dart';
+
+import '../shortcuts/shortcut_tooltip.dart';
+
+/// 工具栏紧凑操作。
+///
+/// 默认态不绘制完整边框；激活、危险、悬停和键盘焦点通过语义色面表达。
+class CompactIconButton extends StatelessWidget {
+  const CompactIconButton({
+    super.key,
+    required this.icon,
+    this.label,
+    this.trailingIcon,
+    this.tooltip,
+    this.onPressed,
+    this.isActive = false,
+    this.toggleable = false,
+    this.isDanger = false,
+    this.isLoading = false,
+    this.shortcutId,
+  });
+
+  final IconData icon;
+  final String? label;
+  final IconData? trailingIcon;
+  final String? tooltip;
+  final VoidCallback? onPressed;
+  final bool isActive;
+
+  /// 为 true 时 [isActive] 同时作为读屏的开关状态
+  final bool toggleable;
+  final bool isDanger;
+  final bool isLoading;
+  final String? shortcutId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final interaction = context.interactionPolicy;
+    final colorScheme = theme.colorScheme;
+    final message = tooltip ?? label;
+    final enabled = onPressed != null && !isLoading;
+    final hasLabel = label?.isNotEmpty ?? false;
+
+    Color foreground(Set<WidgetState> states) {
+      if (states.contains(WidgetState.disabled)) {
+        return colorScheme.onSurface.withValues(alpha: 0.38);
+      }
+      if (isDanger) return colorScheme.error;
+      if (isActive) return colorScheme.onPrimaryContainer;
+      return colorScheme.onSurfaceVariant;
+    }
+
+    Color background(Set<WidgetState> states) {
+      if (states.contains(WidgetState.disabled)) return Colors.transparent;
+      if (isActive) {
+        return interaction.isControlHighlighted(states)
+            ? colorScheme.primaryContainer
+            : colorScheme.primaryContainer.withValues(alpha: 0.72);
+      }
+      if (isDanger) {
+        return interaction.isControlHighlighted(states)
+            ? colorScheme.errorContainer
+            : Colors.transparent;
+      }
+      if (states.contains(WidgetState.pressed)) {
+        return colorScheme.surfaceContainerHighest;
+      }
+      if (states.contains(WidgetState.hovered) ||
+          interaction.isFocusVisible(states)) {
+        return colorScheme.surfaceContainerHigh;
+      }
+      return Colors.transparent;
+    }
+
+    final style = ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith(foreground),
+      backgroundColor: WidgetStateProperty.resolveWith(background),
+      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      side: const WidgetStatePropertyAll(BorderSide.none),
+      elevation: const WidgetStatePropertyAll(0),
+      minimumSize: WidgetStatePropertyAll(Size(hasLabel ? 0 : 40, 36)),
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: hasLabel ? 10 : 8, vertical: 6),
+      ),
+      tapTargetSize: MaterialTapTargetSize.padded,
+      visualDensity: VisualDensity.compact,
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+
+    final iconWidget = isLoading
+        ? SizedBox.square(
+            dimension: 18,
+            child: CircularProgressIndicator(
+              value: MediaQuery.disableAnimationsOf(context) ? 0.75 : null,
+              strokeWidth: 2,
+            ),
+          )
+        : Icon(icon, size: 18);
+
+    Widget button;
+    if (hasLabel) {
+      button = TextButton.icon(
+        onPressed: enabled ? onPressed : null,
+        style: style,
+        icon: iconWidget,
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 受限宽度下换行；无界时（横向滚动工具栏）仍按自然宽度排布
+            Flexible(child: Text(label!)),
+            if (trailingIcon != null) ...[
+              const SizedBox(width: 4),
+              Icon(trailingIcon, size: 18),
+            ],
+          ],
+        ),
+      );
+    } else {
+      button = IconButton(
+        onPressed: enabled ? onPressed : null,
+        style: style,
+        icon: iconWidget,
+        tooltip: shortcutId == null ? message : null,
+      );
+    }
+
+    if (shortcutId != null) {
+      button = ShortcutTooltip(
+        message: message ?? '',
+        shortcutId: shortcutId,
+        child: button,
+      );
+    } else if (hasLabel && message != null && message != label) {
+      button = Tooltip(message: message, child: button);
+    }
+
+    if (toggleable) {
+      // 按钮自成语义节点，外包 Semantics 须合并才能落到按钮上
+      button = MergeSemantics(
+        child: Semantics(toggled: isActive, child: button),
+      );
+    }
+
+    return button;
+  }
+}

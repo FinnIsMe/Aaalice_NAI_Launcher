@@ -1,0 +1,254 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nai_launcher/l10n/app_localizations.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+
+import '../../adaptive/interaction_policy.dart';
+import '../../themes/core/layered_surface_style.dart';
+import '../../widgets/statistics/export_dialog.dart';
+import 'statistics_state.dart';
+import 'widgets/widgets.dart';
+
+/// 统计屏幕 - 单页瀑布流仪表盘布局
+class StatisticsScreen extends ConsumerStatefulWidget {
+  const StatisticsScreen({super.key});
+
+  @override
+  ConsumerState<StatisticsScreen> createState() => _StatisticsScreenState();
+}
+
+class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(statisticsNotifierProvider.notifier).whenLoaded();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    final data = ref.watch(statisticsNotifierProvider);
+
+    return Scaffold(
+      body: Column(
+        children: [
+          _buildHeader(context, theme, l10n, data),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  _buildContent(context, l10n, data, ref, constraints.maxWidth),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l10n,
+    StatisticsData data,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final exportAction = data.statistics == null
+        ? null
+        : () => StatisticsExportDialog.show(
+            context,
+            statistics: data.statistics!,
+          );
+
+    return Container(
+      key: const ValueKey('statistics-toolbar-tonal-surface'),
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      color: sectionSurfaceColor(colorScheme),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          final stackActions = constraints.maxWidth < 320 || textScale > 1.5;
+          final title = Row(
+            children: [
+              Icon(
+                Icons.bar_chart_rounded,
+                size: 24,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  l10n.statistics_title,
+                  maxLines: stackActions ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          );
+          final actions = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (context.interactionPolicy.shouldExposeTouchAlternatives &&
+                  !stackActions)
+                TextButton.icon(
+                  onPressed: exportAction,
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: Text(l10n.common_export),
+                )
+              else
+                IconButton(
+                  onPressed: exportAction,
+                  tooltip: l10n.common_export,
+                  icon: const Icon(Icons.download_outlined),
+                ),
+              const AnimatedRefreshButton(),
+            ],
+          );
+          if (stackActions) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                title,
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: title),
+              actions,
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    AppLocalizations l10n,
+    StatisticsData data,
+    WidgetRef ref,
+    double availableWidth,
+  ) {
+    if (data.isLoading && data.statistics == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (data.error != null && data.statistics == null) {
+      return _buildErrorState(context, l10n, data.error!, ref);
+    }
+
+    final stats = data.statistics;
+    if (stats == null || stats.totalImages == 0) {
+      return _buildEmptyState(l10n);
+    }
+
+    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final crossAxisCount = statisticsDashboardColumnCount(
+      availableWidth,
+      textScale,
+    );
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: StaggeredGrid.count(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        children: [
+          StaggeredGridTile.fit(
+            crossAxisCellCount: crossAxisCount,
+            child: OverviewStatsRow(stats: stats),
+          ),
+          StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: OtherStatsCard(stats: stats),
+          ),
+          const StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: AnlasCostCard(),
+          ),
+          StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: SamplerDistributionCard(stats: stats),
+          ),
+          StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: AspectRatioCard(stats: stats),
+          ),
+          StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: ActivityHeatmapCard(dailyTrends: stats.dailyTrends),
+          ),
+          StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: HourlyDistributionCard(hourlyData: stats.hourlyDistribution),
+          ),
+          StaggeredGridTile.fit(
+            crossAxisCellCount: 1,
+            child: WeekdayDistributionCard(
+              weekdayData: stats.weekdayDistribution,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(
+    BuildContext context,
+    AppLocalizations l10n,
+    String error,
+    WidgetRef ref,
+  ) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(l10n.statistics_error(error)),
+            const SizedBox(height: 16),
+            FilledButton.tonal(
+              onPressed: () =>
+                  ref.read(statisticsNotifierProvider.notifier).refresh(),
+              child: Text(l10n.statistics_retry),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(AppLocalizations l10n) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ChartEmptyState(
+          icon: Icons.bar_chart_outlined,
+          title: l10n.statistics_noData,
+          subtitle: l10n.statistics_generateFirst,
+        ),
+      ),
+    );
+  }
+}
+
+int statisticsDashboardColumnCount(double availableWidth, double textScale) {
+  final effectiveWidth = availableWidth / textScale.clamp(1.0, 3.0);
+  if (effectiveWidth < 600) return 1;
+  if (effectiveWidth < 900) return 2;
+  return 3;
+}

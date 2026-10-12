@@ -1,0 +1,186 @@
+import 'dart:typed_data';
+import 'dart:ui';
+
+import '../../../../core/utils/focused_inpaint_utils.dart';
+import '../../../../core/utils/inpaint_mask_utils.dart';
+import '../../../../core/utils/nai_resolution_adapter.dart';
+
+typedef FocusedPreviewFrameResolver =
+    FocusedInpaintFrame? Function({
+      required Uint8List sourceImage,
+      Uint8List? maskImage,
+      Rect? focusedSelectionRect,
+      required double minContextMegaPixels,
+    });
+
+typedef SelectionPreviewFrameResolver =
+    FocusedInpaintFrame? Function({
+      required int sourceWidth,
+      required int sourceHeight,
+      required Rect selectionRect,
+      required double minContextMegaPixels,
+    });
+
+typedef CropPreviewFrameResolver =
+    FocusedInpaintFrame? Function({
+      required int sourceWidth,
+      required int sourceHeight,
+      required Rect crop,
+    });
+
+typedef MaskOverlayBuilder = Uint8List Function(Uint8List maskImage);
+
+typedef SourcePreviewSizeReader = (int, int)? Function(Uint8List sourceImage);
+
+(int, int) resolveSourcePreviewDimensions({
+  required Uint8List sourceBytes,
+  int? sourceWidth,
+  int? sourceHeight,
+  int? fallbackWidth,
+  int? fallbackHeight,
+  SourcePreviewSizeReader? imageSizeReader,
+}) {
+  if (sourceWidth != null &&
+      sourceHeight != null &&
+      sourceWidth > 0 &&
+      sourceHeight > 0) {
+    return (sourceWidth, sourceHeight);
+  }
+
+  final encodedSize = (imageSizeReader ?? NaiResolutionAdapter.readImageSize)(
+    sourceBytes,
+  );
+  if (encodedSize != null && encodedSize.$1 > 0 && encodedSize.$2 > 0) {
+    return encodedSize;
+  }
+
+  if (fallbackWidth != null &&
+      fallbackHeight != null &&
+      fallbackWidth > 0 &&
+      fallbackHeight > 0) {
+    return (fallbackWidth, fallbackHeight);
+  }
+
+  return (1, 1);
+}
+
+class Img2ImgPreviewDerivedData {
+  const Img2ImgPreviewDerivedData({this.maskOverlayBytes, this.focusedFrame});
+
+  final Uint8List? maskOverlayBytes;
+  final FocusedInpaintFrame? focusedFrame;
+}
+
+/// 缓存图生图预览区的重型派生数据，避免无关重建时反复解码大图。
+class Img2ImgPreviewCache {
+  Img2ImgPreviewCache({
+    FocusedPreviewFrameResolver? focusedFrameResolver,
+    SelectionPreviewFrameResolver? selectionPreviewFrameResolver,
+    CropPreviewFrameResolver? cropPreviewFrameResolver,
+    MaskOverlayBuilder? maskOverlayBuilder,
+  }) : _focusedFrameResolver =
+           focusedFrameResolver ?? FocusedInpaintUtils.resolvePreviewFrame,
+       _selectionPreviewFrameResolver =
+           selectionPreviewFrameResolver ??
+           FocusedInpaintUtils.resolvePreviewFrameForSelection,
+       _cropPreviewFrameResolver =
+           cropPreviewFrameResolver ??
+           FocusedInpaintUtils.resolveGeometryForCrop,
+       _maskOverlayBuilder =
+           maskOverlayBuilder ?? InpaintMaskUtils.maskToEditorOverlay;
+
+  final FocusedPreviewFrameResolver _focusedFrameResolver;
+  final SelectionPreviewFrameResolver _selectionPreviewFrameResolver;
+  final CropPreviewFrameResolver _cropPreviewFrameResolver;
+  final MaskOverlayBuilder _maskOverlayBuilder;
+
+  Uint8List? _lastMaskImageForOverlay;
+  Uint8List? _cachedMaskOverlayBytes;
+
+  Uint8List? _lastSourceImageForFrame;
+  Uint8List? _lastMaskImageForFrame;
+  Rect? _lastFocusedSelectionRect;
+  Rect? _lastFocusedContextCrop;
+  double? _lastMinimumContextMegaPixels;
+  bool? _lastFocusedInpaintEnabled;
+  int? _lastSourceWidth;
+  int? _lastSourceHeight;
+  FocusedInpaintFrame? _cachedFocusedFrame;
+
+  Img2ImgPreviewDerivedData resolve({
+    required Uint8List sourceImage,
+    Uint8List? maskImage,
+    required bool focusedInpaintEnabled,
+    Rect? focusedSelectionRect,
+    Rect? focusedContextCrop,
+    required double minContextMegaPixels,
+    int? sourceWidth,
+    int? sourceHeight,
+  }) {
+    if (!identical(maskImage, _lastMaskImageForOverlay)) {
+      _lastMaskImageForOverlay = maskImage;
+      _cachedMaskOverlayBytes = maskImage == null
+          ? null
+          : _maskOverlayBuilder(maskImage);
+    }
+
+    final shouldResolveFocusedFrame =
+        focusedInpaintEnabled &&
+        (maskImage != null ||
+            focusedSelectionRect != null ||
+            focusedContextCrop != null);
+    final frameInputsChanged =
+        !identical(sourceImage, _lastSourceImageForFrame) ||
+        !identical(maskImage, _lastMaskImageForFrame) ||
+        _lastFocusedSelectionRect != focusedSelectionRect ||
+        _lastFocusedContextCrop != focusedContextCrop ||
+        _lastMinimumContextMegaPixels != minContextMegaPixels ||
+        _lastFocusedInpaintEnabled != focusedInpaintEnabled ||
+        _lastSourceWidth != sourceWidth ||
+        _lastSourceHeight != sourceHeight;
+
+    if (!shouldResolveFocusedFrame) {
+      _cachedFocusedFrame = null;
+    } else if (frameInputsChanged) {
+      if (focusedContextCrop != null) {
+        _cachedFocusedFrame = sourceWidth == null || sourceHeight == null
+            ? null
+            : _cropPreviewFrameResolver(
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight,
+                crop: focusedContextCrop,
+              );
+      } else if (focusedSelectionRect != null &&
+          sourceWidth != null &&
+          sourceHeight != null) {
+        _cachedFocusedFrame = _selectionPreviewFrameResolver(
+          sourceWidth: sourceWidth,
+          sourceHeight: sourceHeight,
+          selectionRect: focusedSelectionRect,
+          minContextMegaPixels: minContextMegaPixels,
+        );
+      } else {
+        _cachedFocusedFrame = _focusedFrameResolver(
+          sourceImage: sourceImage,
+          maskImage: maskImage,
+          focusedSelectionRect: focusedSelectionRect,
+          minContextMegaPixels: minContextMegaPixels,
+        );
+      }
+    }
+
+    _lastSourceImageForFrame = sourceImage;
+    _lastMaskImageForFrame = maskImage;
+    _lastFocusedSelectionRect = focusedSelectionRect;
+    _lastFocusedContextCrop = focusedContextCrop;
+    _lastMinimumContextMegaPixels = minContextMegaPixels;
+    _lastFocusedInpaintEnabled = focusedInpaintEnabled;
+    _lastSourceWidth = sourceWidth;
+    _lastSourceHeight = sourceHeight;
+
+    return Img2ImgPreviewDerivedData(
+      maskOverlayBytes: _cachedMaskOverlayBytes,
+      focusedFrame: _cachedFocusedFrame,
+    );
+  }
+}

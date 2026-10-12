@@ -1,0 +1,473 @@
+import 'dart:typed_data';
+
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+import '../../../core/constants/api_constants.dart';
+import '../../../core/constants/model_capabilities.dart';
+import '../../../core/enums/image_model_mode.dart';
+import '../../../core/enums/precise_ref_type.dart';
+import '../vibe/vibe_reference.dart';
+
+part 'image_params.freezed.dart';
+part 'image_params.g.dart';
+
+/// 图像生成动作类型
+enum ImageGenerationAction { generate, img2img, infill }
+
+extension ImageGenerationActionExtension on ImageGenerationAction {
+  String get value {
+    switch (this) {
+      case ImageGenerationAction.generate:
+        return 'generate';
+      case ImageGenerationAction.img2img:
+        return 'img2img';
+      case ImageGenerationAction.infill:
+        return 'infill';
+    }
+  }
+}
+
+/// Precise Reference 配置 (仅 V4+ 模型支持)
+/// 支持 Character/Style/CharacterAndStyle 三种类型
+@freezed
+class PreciseReference with _$PreciseReference {
+  const factory PreciseReference({
+    /// 参考图像数据
+    required Uint8List image,
+
+    /// Precise Reference 类型
+    required PreciseRefType type,
+
+    /// 参考强度（数值输入不设前端上下限，滑条范围 0-1）
+    @Default(1.0) double strength,
+
+    /// 保真度（数值输入不设前端上下限，滑条范围 0-1）
+    @Default(1.0) double fidelity,
+
+    /// 是否参与下一次生成请求。
+    @Default(true) bool enabled,
+  }) = _PreciseReference;
+}
+
+/// 多角色提示词配置 (仅 V4 模型支持)
+@freezed
+class CharacterPrompt with _$CharacterPrompt {
+  const CharacterPrompt._();
+
+  const factory CharacterPrompt({
+    /// 角色描述提示词
+    required String prompt,
+
+    /// 角色负向提示词
+    @Default('') String negativePrompt,
+
+    /// 角色位置 X (0-1, 可选)
+    double? positionX,
+
+    /// 角色位置 Y (0-1, 可选)
+    double? positionY,
+
+    /// 角色位置 (A1-E5 网格, 可选, V4+ 使用)
+    String? position,
+  }) = _CharacterPrompt;
+
+  /// 转换为 API 请求格式
+  Map<String, dynamic> toApiJson() => {
+    'prompt': prompt,
+    if (negativePrompt.isNotEmpty) 'uc': negativePrompt,
+    if (position != null) 'position': position,
+    // 如果使用旧版坐标格式
+    if (position == null && positionX != null && positionY != null)
+      'position': {'x': positionX, 'y': positionY},
+  };
+}
+
+/// 图像生成参数模型
+@freezed
+class ImageParams with _$ImageParams {
+  const factory ImageParams({
+    // ========== 基础参数 ==========
+
+    /// 正向提示词
+    @Default('') String prompt,
+
+    /// 负向提示词 (空字符串让后端根据 ucPreset 自动填充)
+    @Default('') String negativePrompt,
+
+    /// 模型
+    @Default(ImageModels.animeDiffusionV5Full) String model,
+
+    /// 图像宽度 (必须是64的倍数)
+    @Default(832) int width,
+
+    /// 图像高度 (必须是64的倍数)
+    @Default(1216) int height,
+
+    /// 采样步数
+    @Default(28) int steps,
+
+    /// CFG Scale
+    @Default(4.0) double scale,
+
+    /// 采样器
+    @Default('k_euler_ancestral') String sampler,
+
+    /// 随机种子 (-1 表示随机)
+    @Default(-1) int seed,
+
+    /// 生成数量
+    @Default(1) int nSamples,
+
+    /// SMEA Auto (V3 模型，自动根据分辨率启用 SMEA)
+    @Default(true) bool smeaAuto,
+
+    /// SMEA 优化 (V3 模型)
+    @Default(false) bool smea,
+
+    /// SMEA DYN 变体 (V3 模型)
+    @Default(false) bool smeaDyn,
+
+    /// CFG Rescale (V4 模型)
+    @Default(0.0) double cfgRescale,
+
+    /// 噪声调度 (V4+ 模型默认 karras，V3 默认 native)
+    @Default('karras') String noiseSchedule,
+
+    // ========== 高级参数 ==========
+
+    /// UC 预设 (0=Heavy, 1=Light, 2=Human Focus, 3=None)
+    @Default(0) int ucPreset,
+
+    /// 质量标签开关
+    @Default(true) bool qualityToggle,
+
+    /// 官方质量词档位 (standard/light，light 仅 V5 提供)
+    @Default(QualityTags.standardTier) String qualityTier,
+
+    /// Anime / Furry 模式，仅对 [ModelCapabilities.hasFurryMode] 的模型生效。
+    @Default(ImageModelMode.anime)
+    @JsonKey(unknownEnumValue: ImageModelMode.anime)
+    ImageModelMode modelMode,
+
+    /// 自定义质量词没有官网预设 ID，请求中应省略 `tag_hint_qt`。
+    @Default(false)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    bool omitQualityTagHint,
+
+    /// 自定义负面预设没有官网预设 ID，请求中应省略 `tag_hint_uc_preset`。
+    @Default(false)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    bool omitUcPresetTagHint,
+
+    /// 添加原始图像
+    @Default(true) bool addOriginalImage,
+
+    /// 参数版本 (V4+ 使用 3)
+    @Default(3) int paramsVersion,
+
+    /// 多样性增强 (V4+ 夏季更新)
+    @Default(false) bool varietyPlus,
+
+    /// Decrisp 动态阈值 (V3 模型)
+    @Default(false) bool decrisp,
+
+    /// 使用坐标模式 (V4+ 多角色)
+    @Default(false) bool useCoords,
+
+    /// 透明像素的 RGB 表示方式（仅 V5）。
+    ///
+    /// true 为 Straight，false 为 Premultiplied，对应 `straight_alpha`。
+    @Default(true) bool straightAlpha,
+
+    /// 透明背景生成提示（仅 V5），对应 `tag_hint_transparent_background`
+    @Default(false) bool transparentBackground,
+
+    /// 端到端二倍放大 (仅 V5)，对应 `parameters.upscale`
+    @Default(false) bool e2eUpscale,
+
+    /// 增强 max 档 (仅 V5)，对应 `upscaled_enhance`
+    ///
+    /// 单次请求的临时开关，官网也不会把它写进图片元数据。
+    @Default(false)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    bool upscaledEnhance,
+
+    /// 当前 img2img 请求是否来自增强面板。
+    ///
+    /// 官网的增强是独立入口，会自动往提示词补降权词；启动器复用普通
+    /// img2img 通道，靠这个一次性标记区分。
+    @Default(false)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    bool isEnhanceRequest,
+
+    // ========== 生成动作 ==========
+
+    /// 生成动作类型
+    @Default(ImageGenerationAction.generate) ImageGenerationAction action,
+
+    // ========== img2img 参数 ==========
+
+    /// 源图像 (img2img/inpainting 使用)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    Uint8List? sourceImage,
+
+    /// 变化强度 (0-1)，越高变化越大
+    @Default(0.7) double strength,
+
+    /// 噪声量 (0-1)
+    @Default(0.0) double noise,
+
+    // ========== Inpainting 参数 ==========
+
+    /// 蒙版图像 (白色区域为修补区域)
+    @JsonKey(includeFromJson: false, includeToJson: false) Uint8List? maskImage,
+
+    /// 局部重绘强度 (0-1)
+    @Default(1.0) double inpaintStrength,
+
+    /// Inpaint 蒙版闭运算迭代次数
+    @Default(0)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    int inpaintMaskClosingIterations,
+
+    /// Inpaint 蒙版扩边迭代次数
+    @Default(0)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    int inpaintMaskExpansionIterations,
+
+    /// 当前 infill 请求是否来自扩图画布。
+    @Default(false)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    bool isOutpaint,
+
+    // ========== Vibe Transfer 参数 ==========
+
+    /// V4 Vibe 参考列表 (支持预编码和原始图片)
+    @Default([])
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    List<VibeReference> vibeReferencesV4,
+
+    /// 是否标准化多个 Vibe 参考的强度值
+    @Default(true) bool normalizeVibeStrength,
+
+    // ========== Precise Reference 参数 (仅 V4+ 模型) ==========
+
+    /// Precise Reference 图列表
+    @Default([])
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    List<PreciseReference> preciseReferences,
+
+    // ========== 多角色参数 (仅 V4 模型) ==========
+
+    /// 角色列表
+    @Default([])
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    List<CharacterPrompt> characters,
+
+    // ========== UI 状态 ==========
+
+    /// 高级选项面板展开状态
+    @Default(true)
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    bool advancedOptionsExpanded,
+  }) = _ImageParams;
+
+  factory ImageParams.fromJson(Map<String, dynamic> json) =>
+      _$ImageParamsFromJson(json);
+}
+
+/// ImageParams 扩展方法
+extension ImageParamsExtension on ImageParams {
+  /// 当前模型的能力描述
+  ModelCapabilities get capabilities => ModelCapabilityRegistry.of(model);
+
+  /// 检查是否为 V3 模型
+  bool get isV3Model =>
+      model.contains('diffusion-3') || model.contains('diffusion-furry-3');
+
+  /// 检查是否为 V4+ 模型
+  bool get isV4Model => ImageModels.isV4Model(model);
+
+  /// 检查是否为 V4.5 模型
+  bool get isV45Model => ImageModels.isV45Model(model);
+
+  /// 检查是否为 Inpainting 模型
+  bool get isInpaintingModel => ImageModels.isInpaintingModel(model);
+
+  /// 透明背景是否真的会写进请求。
+  ///
+  /// 官网对不支持透明输出的模型直接删掉相关参数，开关本身可以保持开着，
+  /// 换回 V4.5 再换回来时用户的选择不会丢。
+  bool get effectiveTransparentBackground =>
+      transparentBackground && capabilities.supportsTransparentBackground;
+
+  /// 端到端 ×2 放大是否真的会写进请求。
+  ///
+  /// 官网在局部重绘时无条件丢弃 `upscale`（infill 已有自己的尺寸约束）。
+  bool get effectiveE2eUpscale =>
+      e2eUpscale &&
+      capabilities.supportsE2eUpscale &&
+      action != ImageGenerationAction.infill;
+
+  /// 增强 max 档是否真的会写进请求。
+  bool get effectiveUpscaledEnhance =>
+      upscaledEnhance && capabilities.supportsMaxEnhance;
+
+  /// 是否要给本次请求的提示词补 `-2::upscaled, blurry::`。
+  ///
+  /// 官网只在非 max 档的增强请求上补：max 档本身就是重新放大，
+  /// 再压 upscaled 会互相打架。
+  bool get shouldApplyEnhancePromptAddition =>
+      isEnhanceRequest &&
+      !effectiveUpscaledEnhance &&
+      capabilities.supportsEnhancePromptAdd;
+
+  /// 实际发送的步数。
+  int get effectiveSteps => capabilities.fixedSettings?.steps ?? steps;
+
+  /// 实际发送的采样器（V4 起的 DDIM 回退由请求服务处理）。
+  String get effectiveSampler => capabilities.fixedSettings?.sampler ?? sampler;
+
+  /// 实际发送的噪声调度：模型不开放选择时与网页端一样固定为 karras。
+  String get effectiveNoiseSchedule => capabilities.supportsNoiseSchedule
+      ? NoiseSchedules.resolve(
+          noiseSchedule,
+          allowNative: capabilities.allowsNativeNoiseSchedule,
+        )
+      : NoiseSchedules.karras;
+
+  /// 是否有参数被模型固定，界面据此把对应控件显示为锁定。
+  bool get usesFixedSettings => capabilities.fixedSettings != null;
+
+  /// 套用模型固定参数后的请求参数，只用于构造与记录请求，不回写界面状态。
+  ImageParams resolveFixedSettings() {
+    final fixed = capabilities.fixedSettings;
+    if (fixed == null) return this;
+    return copyWith(
+      steps: fixed.steps,
+      sampler: fixed.sampler,
+      ucPreset: fixed.ucPreset,
+      omitUcPresetTagHint: false,
+      negativePrompt: '',
+      characters: [
+        for (final character in characters)
+          character.copyWith(negativePrompt: ''),
+      ],
+    );
+  }
+
+  /// 开启端到端放大后服务端实际输出的尺寸。
+  (int, int) get outputSize => effectiveE2eUpscale
+      ? (width * E2eUpscale.factor, height * E2eUpscale.factor)
+      : (width, height);
+
+  /// 网页端在重绘、局部重绘、DDIM 和 V4+ 请求中禁用 SMEA。
+  /// V3 自动模式只在超过 1472×1472 时启用，旧模型阈值为 832×1280。
+  bool get effectiveSmea {
+    if (isV4Model ||
+        action != ImageGenerationAction.generate ||
+        sampler.contains('ddim')) {
+      return false;
+    }
+    if (!smeaAuto) return smea;
+
+    final autoThreshold = isV3Model ? 2166785 : 1064961;
+    return width * height >= autoThreshold;
+  }
+
+  bool get effectiveSmeaDyn {
+    if (isV4Model ||
+        action != ImageGenerationAction.generate ||
+        sampler.contains('ddim') ||
+        smeaAuto) {
+      return false;
+    }
+    return smea && smeaDyn;
+  }
+
+  /// 检查是否启用了多角色
+  bool get hasCharacters => characters.isNotEmpty;
+
+  /// 检查是否启用了 V4 Vibe Transfer
+  bool get hasVibeReferencesV4 => enabledVibeReferencesV4.isNotEmpty;
+
+  /// 检查是否有任何 Vibe 参考
+  bool get hasAnyVibeReferences => enabledVibeReferencesV4.isNotEmpty;
+
+  /// 检查是否启用了 Precise Reference
+  bool get hasPreciseReferences => enabledPreciseReferences.isNotEmpty;
+
+  /// 计算 Precise Reference 数量 (消耗 Anlas)
+  int get preciseReferenceCount => enabledPreciseReferences.length;
+
+  /// 计算 Precise Reference 成本 (每张 5 Anlas)
+  int get preciseReferenceCost => preciseReferenceCount * 5;
+
+  /// 启用的 V4 Vibe Transfer 参考。
+  List<VibeReference> get enabledVibeReferencesV4 =>
+      vibeReferencesV4.where((reference) => reference.enabled).toList();
+
+  /// 启用的 Precise Reference 参考。
+  List<PreciseReference> get enabledPreciseReferences =>
+      preciseReferences.where((reference) => reference.enabled).toList();
+
+  /// 检查是否为 img2img 模式
+  bool get isImg2Img =>
+      action == ImageGenerationAction.img2img && sourceImage != null;
+
+  /// 检查是否为 inpainting 模式
+  bool get isInpainting =>
+      action == ImageGenerationAction.infill &&
+      sourceImage != null &&
+      maskImage != null;
+}
+
+/// 图像生成请求模型
+@freezed
+class ImageGenerationRequest with _$ImageGenerationRequest {
+  const factory ImageGenerationRequest({
+    required String input,
+    required String model,
+    required String action,
+    required ImageGenerationParameters parameters,
+  }) = _ImageGenerationRequest;
+
+  factory ImageGenerationRequest.fromJson(Map<String, dynamic> json) =>
+      _$ImageGenerationRequestFromJson(json);
+}
+
+/// 图像生成参数（API 请求格式）
+@freezed
+class ImageGenerationParameters with _$ImageGenerationParameters {
+  const factory ImageGenerationParameters({
+    required int width,
+    required int height,
+    required int steps,
+    required double scale,
+    required String sampler,
+    required int seed,
+    @JsonKey(name: 'n_samples') required int nSamples,
+    @JsonKey(name: 'negative_prompt') required String negativePrompt,
+    @Default(false) bool smea,
+    @JsonKey(name: 'smea_dyn') @Default(false) bool smeaDyn,
+    @JsonKey(name: 'cfg_rescale') @Default(0.0) double cfgRescale,
+    @JsonKey(name: 'noise_schedule') @Default('native') String noiseSchedule,
+    // img2img 参数
+    String? image,
+    double? strength,
+    double? noise,
+    // inpainting 参数
+    String? mask,
+    @JsonKey(name: 'inpaintImg2ImgStrength') double? inpaintStrength,
+    // vibe transfer 参数
+    @JsonKey(name: 'reference_image_multiple')
+    List<String>? referenceImageMultiple,
+    @JsonKey(name: 'reference_strength_multiple')
+    List<double>? referenceStrengthMultiple,
+    @JsonKey(name: 'reference_information_extracted_multiple')
+    List<double>? referenceInformationExtractedMultiple,
+  }) = _ImageGenerationParameters;
+
+  factory ImageGenerationParameters.fromJson(Map<String, dynamic> json) =>
+      _$ImageGenerationParametersFromJson(json);
+}

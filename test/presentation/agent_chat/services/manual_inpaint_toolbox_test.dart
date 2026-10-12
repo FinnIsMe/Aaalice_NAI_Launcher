@@ -1,0 +1,966 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' show Rect;
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:nai_launcher/core/agent/agent_types.dart';
+import 'package:nai_launcher/core/agent/resources/agent_chat_resource_reference.dart';
+import 'package:nai_launcher/core/agent/resources/agent_chat_resource_reference_codec.dart';
+import 'package:nai_launcher/core/utils/display_thumbnail_utils.dart';
+import 'package:nai_launcher/data/models/image/image_params.dart';
+import 'package:nai_launcher/data/models/inpaint/inpaint_draft.dart';
+import 'package:nai_launcher/data/models/inpaint/inpaint_draft_status.dart';
+import 'package:nai_launcher/data/services/inpaint_draft_file_repository.dart';
+import 'package:nai_launcher/presentation/agent_chat/services/agent_image_observation_ledger.dart';
+import 'package:nai_launcher/presentation/agent_chat/services/manual_inpaint_toolbox.dart';
+import 'package:nai_launcher/presentation/providers/generation/generation_params_notifier.dart';
+import 'package:nai_launcher/presentation/widgets/image_editor/image_editor_types.dart';
+
+final _refProvider = Provider<Ref>((ref) => ref);
+
+const _observationGuidance =
+    'Call inspect_images with the image resource_ref first; it returns the '
+    'full-resolution image.';
+
+void main() {
+  late Directory root;
+  late ProviderContainer container;
+  late InpaintDraftFileRepository repository;
+
+  setUp(() async {
+    root = await Directory.systemTemp.createTemp('manual_inpaint_tool_test_');
+    container = ProviderContainer(
+      overrides: [
+        generationParamsNotifierProvider.overrideWith(
+          _TestGenerationParamsNotifier.new,
+        ),
+      ],
+    );
+    repository = InpaintDraftFileRepository(
+      rootDirectory: Directory('${root.path}/drafts'),
+    );
+  });
+
+  tearDown(() async {
+    container.dispose();
+    if (await root.exists()) await root.delete(recursive: true);
+  });
+
+  for (final cost in [0, 7]) {
+    test(
+      'ready draft costing $cost Anlas uses the appropriate confirmation',
+      () async {
+        final source = _png(value: 30);
+        final mask = _png(value: 255);
+        final sourceFile = File('${root.path}/source.png');
+        await sourceFile.writeAsBytes(source);
+        final editorResult = Completer<ImageEditorResult?>();
+        ImageParams? submittedParams;
+        final updates = <(String, InpaintDraftStatus)>[];
+        final toolbox = ManualInpaintToolbox(
+          container.read(_refProvider),
+          supportDirectory: root,
+          anlasEstimator: (_, _) => cost,
+          workspaceDir: root.path,
+          repository: repository,
+          editorLauncher: (_, __, ___) => ManualInpaintEditorSession(
+            result: editorResult.future,
+            close: () {},
+          ),
+          submitter: (params) async {
+            submittedParams = params;
+            return const ManualInpaintSubmissionResult(accepted: true);
+          },
+          activeSessionId: () => 'session-a',
+          onDraftChanged: (sessionId, draft) {
+            updates.add((sessionId, draft.status));
+          },
+        );
+        final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+        expect(tools, contains('reedit_manual_inpaint_draft'));
+
+        final createResult = await tools['create_manual_inpaint_draft']!
+            .execute('create', {
+              'source_image': sourceFile.path,
+              'prompt': ' repair face ',
+              'params': {'steps': 31, 'inpaintStrength': 0.65},
+            });
+        final created = _json(createResult)['draft'] as Map<String, dynamic>;
+        final id = created['draftId'] as String;
+        expect(created['status'], 'editing');
+        expect(editorResult.isCompleted, isFalse);
+        expect(
+          (await repository.get(id))!.parameterSnapshot['prompt'],
+          'repair face',
+        );
+        expect((await repository.get(id))!.estimatedAnlas, cost);
+        expect(await toolbox.estimateAnlasForDraft(id), cost);
+
+        editorResult.complete(
+          ImageEditorResult(
+            maskImage: mask,
+            inpaintSourceImage: source,
+            hasMaskChanges: true,
+          ),
+        );
+        await _waitForStatus(repository, id, InpaintDraftStatus.ready);
+        expect(updates, contains(('session-a', InpaintDraftStatus.ready)));
+
+        final getResult = await tools['get_manual_inpaint_draft']!.execute(
+          'get',
+          {'draft_id': id},
+        );
+        expect((_json(getResult)['draft'] as Map)['status'], 'ready');
+        expect(
+          getResult.content.whereType<ToolResultImageContent>(),
+          hasLength(2),
+        );
+        final listResult = await tools['list_manual_inpaint_drafts']!.execute(
+          'list',
+          const {},
+        );
+        expect((_json(listResult)['drafts'] as List), hasLength(1));
+
+        if (cost > 0) {
+          final unconfirmed = await tools['submit_manual_inpaint_draft']!
+              .execute('submit-no', {'draft_id': id, 'confirm': false});
+          expect(unconfirmed.isError, isTrue);
+          expect((await repository.get(id))!.status, InpaintDraftStatus.ready);
+        }
+        final submitted = await tools['submit_manual_inpaint_draft']!.execute(
+          'submit',
+          {'draft_id': id, if (cost > 0) 'confirm': true},
+        );
+        expect(submitted.isError, isFalse);
+        expect((_json(submitted)['draft'] as Map)['status'], 'submitting');
+        expect(_json(submitted)['asynchronous'], isTrue);
+        await _waitForStatus(repository, id, InpaintDraftStatus.submitted);
+        expect(updates, contains(('session-a', InpaintDraftStatus.submitted)));
+        expect(
+          (await repository.get(id))!.status,
+          InpaintDraftStatus.submitted,
+        );
+        expect(submittedParams!.action, ImageGenerationAction.infill);
+        expect(submittedParams!.prompt, 'repair face');
+        expect(submittedParams!.steps, 31);
+        expect(submittedParams!.inpaintStrength, 0.65);
+        expect(submittedParams!.sourceImage, source);
+        expect(submittedParams!.maskImage, mask);
+      },
+    );
+  }
+
+  test('cancel closes editor and persists cancelled status', () async {
+    final sourceFile = File('${root.path}/source.png');
+    await sourceFile.writeAsBytes(_png());
+    final editorResult = Completer<ImageEditorResult?>();
+    var closed = false;
+    final toolbox = ManualInpaintToolbox(
+      container.read(_refProvider),
+      supportDirectory: root,
+      anlasEstimator: (_, _) => 0,
+      workspaceDir: root.path,
+      repository: repository,
+      editorLauncher: (_, __, ___) => ManualInpaintEditorSession(
+        result: editorResult.future,
+        close: () {
+          closed = true;
+          editorResult.complete(null);
+        },
+      ),
+      submitter: (_) async =>
+          const ManualInpaintSubmissionResult(accepted: true),
+    );
+    final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+    final created = _json(
+      await tools['create_manual_inpaint_draft']!.execute('create', {
+        'source_image': sourceFile.path,
+        'prompt': 'repair',
+      }),
+    );
+    final id = (created['draft'] as Map)['draftId'] as String;
+
+    await tools['cancel_manual_inpaint_draft']!.execute('cancel', {
+      'draft_id': id,
+    });
+
+    expect(closed, isTrue);
+    expect((await repository.get(id))!.status, InpaintDraftStatus.cancelled);
+  });
+
+  test(
+    'session switch stops resource-backed draft before editor launch',
+    () async {
+      var sessionId = 'session-a';
+      final pendingSource = Completer<Uint8List?>();
+      var editorLaunches = 0;
+      final reference = AgentChatResourceReference(
+        kind: AgentChatResourceKind.generatedImage,
+        source: 'generation_history',
+        resourceId: 'generated-1',
+      );
+      final toolbox = ManualInpaintToolbox(
+        container.read(_refProvider),
+        supportDirectory: root,
+        anlasEstimator: (_, _) => 0,
+        repository: repository,
+        resourceLoader: (value) async => (
+          bytes: (await pendingSource.future)!,
+          filePath: null,
+          reference: value,
+        ),
+        activeSessionId: () => sessionId,
+        editorLauncher: (_, __, ___) {
+          editorLaunches += 1;
+          return ManualInpaintEditorSession(
+            result: Future<ImageEditorResult?>.value(),
+            close: () {},
+          );
+        },
+      );
+
+      final resultFuture = toolbox.createDraftFromResource(reference);
+      sessionId = 'session-b';
+      pendingSource.complete(_png());
+
+      final result = await resultFuture;
+      expect(result.details['code'], 'session_switched');
+      expect(editorLaunches, 0);
+      expect(await repository.list(), isEmpty);
+    },
+  );
+
+  test('create resolves and persists a stable source reference', () async {
+    final source = _png(value: 72);
+    final editorResult = Completer<ImageEditorResult?>();
+    final reference = AgentChatResourceReference(
+      kind: AgentChatResourceKind.localGalleryImage,
+      source: 'local_gallery',
+      resourceId: '42',
+      display: const {'name': 'source.png'},
+    );
+    final toolbox = ManualInpaintToolbox(
+      container.read(_refProvider),
+      supportDirectory: root,
+      anlasEstimator: (_, _) => 0,
+      repository: repository,
+      resourceLoader: (value) async => value == reference
+          ? (bytes: source, filePath: null, reference: value)
+          : null,
+      editorLauncher: (_, __, ___) =>
+          ManualInpaintEditorSession(result: editorResult.future, close: () {}),
+    );
+    final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+
+    final result = await tools['create_manual_inpaint_draft']!.execute(
+      'create-ref',
+      {
+        'source_ref': AgentChatResourceReferenceCodec.encodeJsonMap(reference),
+        'prompt': 'repair',
+      },
+    );
+
+    expect(result.isError, isFalse);
+    final draftJson = _json(result)['draft'] as Map<String, dynamic>;
+    expect(draftJson['sourceReference'], {
+      'version': 1,
+      'kind': 'localGalleryImage',
+      'source': 'local_gallery',
+      'resourceId': '42',
+      'display': {'name': 'source.png'},
+    });
+    final persisted = await repository.get(draftJson['draftId'] as String);
+    expect(
+      persisted!.parameterSnapshot['_agentSourceReference'],
+      draftJson['sourceReference'],
+    );
+    editorResult.complete(null);
+    await _waitForStatus(
+      repository,
+      persisted.id,
+      InpaintDraftStatus.cancelled,
+    );
+  });
+
+  group('authored masks', () {
+    late Directory workspace;
+    late AgentImageObservationLedger ledger;
+    late File sourceFile;
+
+    Future<ManualInpaintToolbox> buildToolbox({
+      ManualInpaintAnlasEstimator? anlasEstimator,
+      ManualInpaintResourceLoader? resourceLoader,
+    }) async {
+      final toolbox = ManualInpaintToolbox(
+        container.read(_refProvider),
+        supportDirectory: root,
+        workspaceDir: workspace.path,
+        repository: repository,
+        anlasEstimator: anlasEstimator ?? (_, _) => 5,
+        resourceLoader: resourceLoader,
+        activeSessionId: () => 'session-a',
+      );
+      toolbox.configureObservationLedger(
+        ledger,
+        activeSessionId: () => 'session-a',
+        observationGuidance: _observationGuidance,
+      );
+      return toolbox;
+    }
+
+    void markObserved(Map<String, dynamic> details, {int size = 512}) =>
+        ledger.recordToolResult(
+          'session-a',
+          AgentToolResult(
+            content: [
+              ToolResultImageContent(
+                ImageContent(
+                  source: ImageSource.base64(
+                    mimeType: 'image/png',
+                    base64Data: base64Encode(_png(width: size, height: size)),
+                  ),
+                ),
+              ),
+            ],
+            details: details,
+          ),
+        );
+
+    void markObservedPath(String path, {int size = 512}) => markObserved({
+      'files': [path],
+    }, size: size);
+
+    void markObservedReference(
+      AgentChatResourceReference reference, {
+      int size = 512,
+    }) => markObserved({
+      'images': [
+        {
+          'resource_ref': AgentChatResourceReferenceCodec.encodeJsonMap(
+            reference,
+          ),
+        },
+      ],
+    }, size: size);
+
+    setUp(() async {
+      workspace = await Directory('${root.path}/workspace').create();
+      ledger = AgentImageObservationLedger();
+      sourceFile = File('${workspace.path}/source.png');
+      await sourceFile.writeAsBytes(_png(value: 40, width: 512, height: 512));
+    });
+
+    test('refuses a source the model has not actually read', () async {
+      final toolbox = await buildToolbox();
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+
+      final result = await tools['create_inpaint_mask']!.execute('c1', {
+        'source_image': 'source.png',
+        'prompt': 'fix the hand',
+        'focused': false,
+        'regions': const [
+          {'shape': 'rect', 'x': 0.4, 'y': 0.4, 'width': 0.2, 'height': 0.2},
+        ],
+      });
+
+      expect(result.details['code'], 'image_not_observed');
+      expect(await repository.list(), isEmpty);
+    });
+
+    test('refuses a source seen only as a display thumbnail', () async {
+      final toolbox = await buildToolbox();
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      markObservedPath(
+        sourceFile.path,
+        size: DisplayThumbnailUtils.maxDimension,
+      );
+
+      final result = await tools['create_inpaint_mask']!.execute('c1b', {
+        'source_image': 'source.png',
+        'prompt': 'fix the hand',
+        'focused': false,
+        'regions': const [
+          {'shape': 'rect', 'x': 0.4, 'y': 0.4, 'width': 0.2, 'height': 0.2},
+        ],
+      });
+
+      expect(result.details['code'], 'image_not_observed');
+      expect(result.details['message'], contains(_observationGuidance));
+      expect(await repository.list(), isEmpty);
+    });
+
+    test('accepts a source_ref observed at full resolution', () async {
+      final reference = AgentChatResourceReference(
+        kind: AgentChatResourceKind.generatedImage,
+        source: 'generation_history',
+        resourceId: 'generated-7',
+      );
+      final source = _png(value: 40, width: 512, height: 512);
+      final toolbox = await buildToolbox(
+        resourceLoader: (value) async =>
+            (bytes: source, filePath: null, reference: value),
+      );
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      markObservedReference(reference);
+
+      final result = await tools['create_inpaint_mask']!.execute('c1c', {
+        'source_ref': AgentChatResourceReferenceCodec.encodeJsonMap(reference),
+        'prompt': 'fix the hand',
+        'focused': false,
+        'preview': false,
+        'regions': const [
+          {'shape': 'rect', 'x': 0.4, 'y': 0.4, 'width': 0.2, 'height': 0.2},
+        ],
+      });
+
+      expect(result.details['ok'], isTrue);
+      final drafts = await repository.list();
+      expect(drafts, hasLength(1));
+      expect(drafts.single.status, InpaintDraftStatus.ready);
+    });
+
+    test(
+      'commits a ready draft with a mask once the source was read',
+      () async {
+        final toolbox = await buildToolbox();
+        final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+        markObservedPath(sourceFile.path);
+
+        final result = await tools['create_inpaint_mask']!.execute('c2', {
+          'source_image': 'source.png',
+          'prompt': 'fix the hand',
+          'focused': false,
+          'regions': const [
+            {'shape': 'rect', 'x': 0.4, 'y': 0.4, 'width': 0.2, 'height': 0.2},
+          ],
+        });
+
+        expect(result.details['ok'], isTrue);
+        expect(result.details['focusedInpaint'], isFalse);
+        expect(result.details['maskCoverage'], closeTo(0.04, 0.005));
+        expect(
+          result.content.whereType<ToolResultImageContent>(),
+          hasLength(1),
+          reason: 'an overlay preview should let the model verify placement',
+        );
+
+        final drafts = await repository.list();
+        expect(drafts, hasLength(1));
+        expect(drafts.single.status, InpaintDraftStatus.ready);
+        expect(await repository.readMask(drafts.single.id), isNotNull);
+      },
+    );
+
+    test(
+      'prices focused drafts on the upscaled request, not the source',
+      () async {
+        final sizes = <(int, int)>[];
+        final toolbox = await buildToolbox(
+          anlasEstimator: (params, _) {
+            sizes.add((params.width, params.height));
+            return 11;
+          },
+        );
+        final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+        markObservedPath(sourceFile.path);
+
+        await tools['create_inpaint_mask']!.execute('c3', {
+          'source_image': 'source.png',
+          'prompt': 'fix the hand',
+          'focused': true,
+          'preview': false,
+          'regions': const [
+            {
+              'shape': 'rect',
+              'x': 0.45,
+              'y': 0.45,
+              'width': 0.1,
+              'height': 0.1,
+            },
+          ],
+        });
+
+        expect(sizes, isNotEmpty);
+        final (width, height) = sizes.first;
+        expect(
+          width * height,
+          greaterThan(512 * 512),
+          reason:
+              'focused inpaint upscales a small crop past the source size, '
+              'so pricing it at 512x512 would undercharge the confirmation',
+        );
+      },
+    );
+
+    test('loads a ready draft into the generation panel', () async {
+      ({bool focused, Rect? rect, bool outpaint, int width, int height})?
+      handoff;
+      final toolbox = await buildToolbox();
+      toolbox.configurePanelHandoff(({
+        required source,
+        required sourceWidth,
+        required sourceHeight,
+        required mask,
+        required focusedInpaintEnabled,
+        required focusedSelectionRect,
+        required minimumContextMegaPixels,
+        required sourceIsOutpaint,
+      }) async {
+        handoff = (
+          focused: focusedInpaintEnabled,
+          rect: focusedSelectionRect,
+          outpaint: sourceIsOutpaint,
+          width: sourceWidth,
+          height: sourceHeight,
+        );
+      });
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      markObservedPath(sourceFile.path);
+
+      final created = await tools['create_inpaint_mask']!.execute('p1', {
+        'source_image': 'source.png',
+        'prompt': 'fix the hand',
+        'focused': true,
+        'preview': false,
+        'regions': const [
+          {'shape': 'rect', 'x': 0.45, 'y': 0.45, 'width': 0.1, 'height': 0.1},
+        ],
+      });
+      final draftId = created.details['draft']['draftId'] as String;
+
+      final loaded = await tools['load_inpaint_draft_into_panel']!.execute(
+        'p2',
+        {'draft_id': draftId},
+      );
+
+      expect(loaded.details['ok'], isTrue);
+      expect(loaded.details['focusedInpaint'], isTrue);
+      expect(handoff, isNotNull);
+      expect(handoff!.width, 512);
+      expect(handoff!.height, 512);
+      expect(handoff!.outpaint, isFalse);
+      // 面板在 rect 为空时会把聚焦判为关闭，必须补上蒙版外接框，
+      // 否则同一张草稿在面板与聊天两条路径下行为不一致。
+      expect(handoff!.focused, isTrue);
+      expect(handoff!.rect, isNotNull);
+    });
+
+    test('fails cleanly for malformed and missing draft ids', () async {
+      final toolbox = await buildToolbox();
+      toolbox.configurePanelHandoff(
+        ({
+          required source,
+          required sourceWidth,
+          required sourceHeight,
+          required mask,
+          required focusedInpaintEnabled,
+          required focusedSelectionRect,
+          required minimumContextMegaPixels,
+          required sourceIsOutpaint,
+        }) async => fail('handoff must not run for a missing draft'),
+      );
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+
+      final malformed = await tools['load_inpaint_draft_into_panel']!.execute(
+        'p3',
+        {'draft_id': 'does-not-exist'},
+      );
+      expect(malformed.details['code'], 'invalid_draft_id');
+
+      final missing = await tools['load_inpaint_draft_into_panel']!.execute(
+        'p4',
+        {'draft_id': '3f2504e0-4f89-41d3-9a0c-0305e82c3301'},
+      );
+      expect(missing.details['code'], 'not_found');
+    });
+
+    test(
+      'expand_inpaint_canvas needs no prior read and builds its own mask',
+      () async {
+        final toolbox = await buildToolbox();
+        final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+
+        final result = await tools['expand_inpaint_canvas']!.execute('c4', {
+          'source_image': 'source.png',
+          'prompt': 'extend the scenery',
+          'preview': false,
+          'edges': const {'left': 64, 'right': 64},
+        });
+
+        expect(result.details['ok'], isTrue);
+        expect(result.details['focusedInpaint'], isFalse);
+        expect(result.details['appliedEdges'], isA<Map<String, dynamic>>());
+
+        final drafts = await repository.list();
+        expect(drafts, hasLength(1));
+        expect(drafts.single.status, InpaintDraftStatus.ready);
+        expect(await repository.readMask(drafts.single.id), isNotNull);
+      },
+    );
+  });
+
+  group('editor results', () {
+    late Completer<ImageEditorResult?> editorResult;
+    late List<(int, int)> pricedSizes;
+    late List<ImageParams> submissions;
+
+    setUp(() {
+      pricedSizes = [];
+      submissions = [];
+    });
+
+    ManualInpaintToolbox buildToolbox({required int paidAbovePixels}) =>
+        ManualInpaintToolbox(
+          container.read(_refProvider),
+          supportDirectory: root,
+          workspaceDir: root.path,
+          repository: repository,
+          anlasEstimator: (params, _) {
+            pricedSizes.add((params.width, params.height));
+            return params.width * params.height > paidAbovePixels ? 9 : 0;
+          },
+          editorLauncher: (_, __, ___) {
+            editorResult = Completer<ImageEditorResult?>();
+            return ManualInpaintEditorSession(
+              result: editorResult.future,
+              close: () {},
+            );
+          },
+          submitter: (params) async {
+            submissions.add(params);
+            return const ManualInpaintSubmissionResult(accepted: true);
+          },
+        );
+
+    Future<File> writeSource(int width, int height) async {
+      final file = File('${root.path}/source_${width}x$height.png');
+      await file.writeAsBytes(_png(value: 30, width: width, height: height));
+      return file;
+    }
+
+    Future<String> createDraft(
+      Map<String, AgentTool> tools,
+      File source,
+    ) async {
+      final created = await tools['create_manual_inpaint_draft']!.execute(
+        'create',
+        {'source_image': source.path, 'prompt': 'extend the scene'},
+      );
+      return (_json(created)['draft'] as Map)['draftId'] as String;
+    }
+
+    Future<String> expandCanvas(Map<String, AgentTool> tools) async {
+      final source = await writeSource(512, 512);
+      final expanded = await tools['expand_inpaint_canvas']!.execute('expand', {
+        'source_image': source.path,
+        'prompt': 'extend the scene',
+        'preview': false,
+        'edges': const {'left': 64, 'right': 64},
+      });
+      return (expanded.details['draft'] as Map)['draftId'] as String;
+    }
+
+    Future<InpaintDraft> completeEditor(
+      String id,
+      ImageEditorResult result,
+    ) async {
+      editorResult.complete(result);
+      await _waitForStatus(repository, id, InpaintDraftStatus.ready);
+      return (await repository.get(id))!;
+    }
+
+    Future<ImageParams> submit(
+      Map<String, AgentTool> tools,
+      String id, {
+      bool confirm = false,
+    }) async {
+      final result = await tools['submit_manual_inpaint_draft']!.execute(
+        'submit',
+        {'draft_id': id, if (confirm) 'confirm': true},
+      );
+      expect(result.isError, isFalse, reason: '${result.details}');
+      await _waitForStatus(repository, id, InpaintDraftStatus.submitted);
+      return submissions.last;
+    }
+
+    (Object?, Object?) requestSize(InpaintDraft draft) =>
+        (draft.parameterSnapshot['width'], draft.parameterSnapshot['height']);
+
+    test('outpaint result resizes, flags and reprices the draft', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 512 * 512);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final id = await createDraft(tools, await writeSource(512, 512));
+      final created = (await repository.get(id))!;
+      expect(requestSize(created), (512, 512));
+      expect(created.estimatedAnlas, 0);
+
+      final ready = await completeEditor(id, _outpaintResult(768, 512));
+
+      expect(requestSize(ready), (768, 512));
+      expect(ready.parameterSnapshot['_agentSourceIsOutpaint'], isTrue);
+      expect(
+        ready.parameterSnapshot['_agentBatchSize'],
+        created.parameterSnapshot['_agentBatchSize'],
+      );
+      expect(ready.parameterSnapshot['prompt'], 'extend the scene');
+      expect(ready.estimatedAnlas, 9);
+      expect(pricedSizes.last, (768, 512));
+      expect(await toolbox.estimateAnlasForDraft(id), ready.estimatedAnlas);
+
+      final submitted = await submit(tools, id, confirm: true);
+      expect((submitted.width, submitted.height), (768, 512));
+      expect(submitted.isOutpaint, isTrue);
+    });
+
+    test(
+      'an edited source without a mask is kept on the cancelled draft',
+      () async {
+        final toolbox = buildToolbox(paidAbovePixels: 512 * 512);
+        final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+        final id = await createDraft(tools, await writeSource(512, 512));
+        final edited = _png(value: 90, width: 512, height: 512);
+
+        editorResult.complete(
+          ImageEditorResult(
+            hasSourceImageChanges: true,
+            inpaintSourceImage: edited,
+            inpaintSourceWidth: 512,
+            inpaintSourceHeight: 512,
+            outputWidth: 512,
+            outputHeight: 512,
+          ),
+        );
+        await _waitForStatus(repository, id, InpaintDraftStatus.cancelled);
+
+        final cancelled = (await repository.get(id))!;
+        expect(cancelled.mask, isNull);
+        expect(await repository.readSource(id), edited);
+        expect(requestSize(cancelled), (512, 512));
+        expect(cancelled.parameterSnapshot['prompt'], 'extend the scene');
+        expect(
+          await toolbox.estimateAnlasForDraft(id),
+          cancelled.estimatedAnlas,
+        );
+      },
+    );
+
+    test('an untouched source without a mask just cancels', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 512 * 512);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final source = await writeSource(512, 512);
+      final id = await createDraft(tools, source);
+
+      editorResult.complete(
+        ImageEditorResult(
+          inpaintSourceImage: _png(value: 90, width: 512, height: 512),
+          inpaintSourceWidth: 512,
+          inpaintSourceHeight: 512,
+          outputWidth: 512,
+          outputHeight: 512,
+        ),
+      );
+      await _waitForStatus(repository, id, InpaintDraftStatus.cancelled);
+
+      expect(await repository.readSource(id), await source.readAsBytes());
+    });
+
+    test('confirmation gate follows the repriced draft', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 512 * 512);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final id = await createDraft(tools, await writeSource(512, 512));
+      await completeEditor(id, _outpaintResult(768, 512));
+
+      final unconfirmed = await tools['submit_manual_inpaint_draft']!.execute(
+        'submit-unconfirmed',
+        {'draft_id': id},
+      );
+
+      expect(
+        unconfirmed.details['code'],
+        'confirmation_required',
+        reason: 'the draft was free when created, the outpainted canvas is not',
+      );
+      expect((await repository.get(id))!.status, InpaintDraftStatus.ready);
+      expect(submissions, isEmpty);
+    });
+
+    test('compressed result is sent at the size picked in the editor', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 384 * 384);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final id = await createDraft(tools, await writeSource(512, 512));
+      expect((await repository.get(id))!.estimatedAnlas, 9);
+
+      final ready = await completeEditor(
+        id,
+        _inpaintResult(384, 384, compressionApplied: true),
+      );
+
+      expect(
+        requestSize(ready),
+        (384, 384),
+        reason:
+            'import sizing reuses the larger same-aspect draft size and would '
+            'upscale the compressed source back',
+      );
+      expect(ready.estimatedAnlas, 0);
+      final submitted = await submit(tools, id);
+      expect((submitted.width, submitted.height), (384, 384));
+      expect(submitted.isOutpaint, isFalse);
+    });
+
+    test('plain inpaint result keeps the draft request size', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 832 * 1216);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final id = await createDraft(tools, await writeSource(416, 608));
+      final created = (await repository.get(id))!;
+      expect(
+        requestSize(created),
+        (832, 1216),
+        reason: 'a smaller same-aspect source reuses the generation page size',
+      );
+
+      final ready = await completeEditor(id, _inpaintResult(416, 608));
+
+      expect(requestSize(ready), (832, 1216));
+      expect(ready.parameterSnapshot['_agentSourceIsOutpaint'], isFalse);
+      expect(ready.estimatedAnlas, created.estimatedAnlas);
+      final submitted = await submit(tools, id);
+      expect((submitted.width, submitted.height), (832, 1216));
+      expect(submitted.isOutpaint, isFalse);
+    });
+
+    test('expand_inpaint_canvas drafts are submitted as outpaint', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 1 << 30);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final id = await expandCanvas(tools);
+
+      final submitted = await submit(tools, id);
+
+      expect((submitted.width, submitted.height), (640, 512));
+      expect(submitted.isOutpaint, isTrue);
+    });
+
+    test(
+      're-editing without a new expansion clears the outpaint flag',
+      () async {
+        final toolbox = buildToolbox(paidAbovePixels: 1 << 30);
+        final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+        final id = await expandCanvas(tools);
+        expect(
+          (await repository.get(
+            id,
+          ))!.parameterSnapshot['_agentSourceIsOutpaint'],
+          isTrue,
+        );
+
+        await tools['reedit_manual_inpaint_draft']!.execute('reedit', {
+          'draft_id': id,
+        });
+        final ready = await completeEditor(id, _inpaintResult(640, 512));
+
+        expect(ready.parameterSnapshot['_agentSourceIsOutpaint'], isFalse);
+        expect((await submit(tools, id)).isOutpaint, isFalse);
+      },
+    );
+
+    test('outpainting a focused draft turns focused inpaint off', () async {
+      final toolbox = buildToolbox(paidAbovePixels: 1 << 30);
+      final tools = {for (final tool in toolbox.tools()) tool.name: tool};
+      final source = await writeSource(512, 512);
+      final created = await tools['create_inpaint_mask']!.execute('mask', {
+        'source_image': source.path,
+        'prompt': 'fix the hand',
+        'focused': true,
+        'context_padding': 120,
+        'preview': false,
+        'regions': const [
+          {'shape': 'rect', 'x': 0.45, 'y': 0.45, 'width': 0.1, 'height': 0.1},
+        ],
+      });
+      final id = (created.details['draft'] as Map)['draftId'] as String;
+
+      Future<InpaintDraft> reEditWith(ImageEditorResult result) async {
+        await tools['reedit_manual_inpaint_draft']!.execute('reedit', {
+          'draft_id': id,
+        });
+        return completeEditor(id, result);
+      }
+
+      final inpainted = await reEditWith(_inpaintResult(512, 512));
+      expect(inpainted.parameterSnapshot['_agentFocusedInpaint'], {
+        'enabled': true,
+        'contextPadding': 120,
+      });
+
+      final outpainted = await reEditWith(_outpaintResult(768, 512));
+      expect(outpainted.parameterSnapshot['_agentFocusedInpaint'], {
+        'enabled': false,
+        'contextPadding': 120,
+      });
+      expect(outpainted.parameterSnapshot['_agentSourceIsOutpaint'], isTrue);
+      expect(
+        pricedSizes.last,
+        (768, 512),
+        reason: 'without focus the whole outpainted canvas is priced',
+      );
+    });
+  });
+}
+
+Map<String, dynamic> _json(AgentToolResult result) =>
+    jsonDecode(result.content.whereType<ToolResultTextContent>().single.text)
+        as Map<String, dynamic>;
+
+Future<void> _waitForStatus(
+  InpaintDraftFileRepository repository,
+  String id,
+  InpaintDraftStatus expected,
+) async {
+  for (var attempt = 0; attempt < 50; attempt++) {
+    if ((await repository.get(id))?.status == expected) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('Draft $id did not reach ${expected.name}.');
+}
+
+Uint8List _png({int value = 128, int width = 8, int height = 8}) {
+  final image = img.Image(width: width, height: height);
+  img.fill(image, color: img.ColorRgb8(value, value, value));
+  return Uint8List.fromList(img.encodePng(image));
+}
+
+ImageEditorResult _outpaintResult(int width, int height) => ImageEditorResult(
+  maskImage: _png(value: 255, width: width, height: height),
+  hasMaskChanges: true,
+  outpaintSourceImage: _png(value: 30, width: width, height: height),
+  outpaintSourceWidth: width,
+  outpaintSourceHeight: height,
+  hasOutpaintChanges: true,
+  outputWidth: width,
+  outputHeight: height,
+);
+
+ImageEditorResult _inpaintResult(
+  int width,
+  int height, {
+  bool compressionApplied = false,
+}) => ImageEditorResult(
+  maskImage: _png(value: 255, width: width, height: height),
+  hasMaskChanges: true,
+  inpaintSourceImage: _png(value: 30, width: width, height: height),
+  inpaintSourceWidth: width,
+  inpaintSourceHeight: height,
+  sourceWasNormalized: compressionApplied,
+  outputWidth: width,
+  outputHeight: height,
+  compressionApplied: compressionApplied,
+);
+
+class _TestGenerationParamsNotifier extends GenerationParamsNotifier {
+  @override
+  ImageParams build() => const ImageParams(negativePrompt: 'bad anatomy');
+}

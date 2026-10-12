@@ -1,0 +1,32 @@
+{
+  "package": "@earendil-works/pi-ai",
+  "version": "1.0.0",
+  "files": {
+    "package.json": "62c8159c939f1f9fae53a9b003e7bd9136979bcceeca61bd1f2cf41082763736",
+    "dist/models.js": "2efdb7beab5730e2a77163c807b3648a97cd4593d0bda462eb79f69f0630613f",
+    "dist/api/simple-options.js": "36cec6b6c3c58a47ae2f902cc39e1601fdaf7ed5b0e99e3577089c036ad14805",
+    "dist/api/anthropic-messages.js": "a0644ab05cf7ee3e4d566f21113d5b6c2361588237c999a45fa0d7935b68af10",
+    "dist/api/google-generative-ai.js": "3a19fb56e96e60751a27a19f891264a3ab471cf4973307308ffdc8f8d2669397",
+    "dist/api/google-shared.js": "0254007d8b7f0ebeb2b00f6a940041012c45220369f604f999c8e7019d36972a",
+    "dist/api/mistral-conversations.js": "e043c1c06427a0384d6e7d416c8d019d6342fb6f729fa80430c7cff43fc82d25",
+    "dist/api/openai-completions.js": "8167bfe47b0c9cc99a653d84f24ad055128e66888429f9f954e063918c074ea0",
+    "dist/api/openai-responses.js": "8a294f760ea70459c6d41c83878a8d0cda5dd4780c46b490c85e0d3495471e3e",
+    "dist/providers/data/anthropic.json": "3ff00b68990382e42626ebd1b65dcc28ae3cad9e6faa8920331ba92f067f1b3a",
+    "dist/providers/data/cerebras.json": "3eccb58c5de3d0dc7ba49dc6e477ba29f00cb3150ce0a35cc90d59e6b5ab368e",
+    "dist/providers/data/deepseek.json": "10a296fb3e898f7715c80890c8af0af4f5fd58f22dbcd6612fdc5d762157ccdc",
+    "dist/providers/data/google.json": "c0f5a633e5e5a5044432db3e537f4bc674d4de18df09325c6349547fcc13cabe",
+    "dist/providers/data/groq.json": "910952ad9dad07856983459d63fce0148dba1203edd7b10d801a77c5824f3405",
+    "dist/providers/data/kimi-coding.json": "582250b920454d98940da3e7e99d30b807edbea28f2eb8ac15f658d2ef41e8fc",
+    "dist/providers/data/minimax-cn.json": "f962c20ee6a6a342820f778e9dc363a18a524bf11998f6e2c57f2989915d62e5",
+    "dist/providers/data/minimax.json": "17a432f80d0ea6dd26eade80a4314250d3a855678601728a5f70dd8fa0d21dd2",
+    "dist/providers/data/mistral.json": "10f33bff9adf1248f7e6848e5890c265399f1f94e5b42cfdc28c109d547af98d",
+    "dist/providers/data/moonshotai-cn.json": "79c9585dc84ee525ebaebbc78b3c55f3d369ec884d4f943488f1e0b14e3587f5",
+    "dist/providers/data/moonshotai.json": "1da2c4e34f22aef17a07c974d85bdee8e1b68b6dc712e3769c935b3f1e7dadca",
+    "dist/providers/data/openai.json": "87faafcdd168c9b6fdaef521137834a207437daf0d71641fd0a2f3dddf4d1ecb",
+    "dist/providers/data/openrouter.json": "767e2ea83edbbdfcc9e9d66a2d4e9eae9b14589fb97e137daebef7958b1b0283",
+    "dist/providers/data/qwen-token-plan-cn.json": "2469a4091c474ec3db0a49a9962d8d2726c074ad9065b96bc4e0c87861c4c6c5",
+    "dist/providers/data/qwen-token-plan-individual.json": "0fb7cf64faf39d1a3b0a884210a86c87084b805eda15644f5f39293287b959dd",
+    "dist/providers/data/qwen-token-plan.json": "eff10620cb577142de4ec02698d5961a71fda2fe4f6ae7ea9432bad9d6844176",
+    "dist/providers/data/xai.json": "879c49b78b663a52a220ac4ee013e726b10c4f50aaa03bc58ee53a4b54c76928"
+  }
+}

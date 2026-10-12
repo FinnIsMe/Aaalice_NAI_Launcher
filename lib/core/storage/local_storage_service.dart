@@ -1,0 +1,1139 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import '../constants/api_constants.dart';
+import '../constants/model_capabilities.dart';
+import '../constants/storage_keys.dart';
+import '../enums/image_model_mode.dart';
+
+part 'local_storage_service.g.dart';
+
+/// 本地存储服务 - 存储非敏感配置数据
+class LocalStorageService {
+  static const String _fallbackModel = ImageModels.animeDiffusionV5Full;
+
+  /// 获取已打开的 settings box (在 main.dart 中预先打开)
+  Box get _settingsBox => Hive.box(StorageKeys.settingsBox);
+
+  /// 获取已打开的 history box (在 main.dart 中预先打开)
+  Box get _historyBox => Hive.box(StorageKeys.historyBox);
+
+  // ==================== Settings ====================
+
+  /// 获取设置值
+  T? getSetting<T>(String key, {T? defaultValue}) {
+    if (!Hive.isBoxOpen(StorageKeys.settingsBox)) {
+      return defaultValue;
+    }
+    return _settingsBox.get(key, defaultValue: defaultValue) as T?;
+  }
+
+  /// 保存设置值
+  Future<void> setSetting<T>(String key, T value) async {
+    await _settingsBox.put(key, value);
+  }
+
+  Future<void> setSettings(Map<String, Object?> values) async {
+    await _settingsBox.putAll(values);
+  }
+
+  /// 删除设置
+  Future<void> deleteSetting(String key) async {
+    await _settingsBox.delete(key);
+  }
+
+  // ==================== Theme ====================
+
+  /// 获取风格类型索引
+  int getThemeIndex() {
+    // 默认值 0 对应 AppStyle.grungeCollage (拼贴朋克风格)
+    return getSetting<int>(StorageKeys.themeType, defaultValue: 0) ?? 0;
+  }
+
+  /// 保存主题类型索引
+  Future<void> setThemeIndex(int index) async {
+    await setSetting(StorageKeys.themeType, index);
+  }
+
+  // ==================== Font ====================
+
+  /// 获取字体名称
+  String getFontFamily() {
+    return getSetting<String>(StorageKeys.fontFamily, defaultValue: 'system') ??
+        'system';
+  }
+
+  /// 保存字体名称
+  Future<void> setFontFamily(String fontFamily) async {
+    await setSetting(StorageKeys.fontFamily, fontFamily);
+  }
+
+  /// 获取字体缩放比例 (默认 1.0)
+  double getFontScale() {
+    final value = getSetting(StorageKeys.fontScale);
+    if (value == null) return 1.0;
+    // 处理可能存储为 int 的情况
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    return 1.0;
+  }
+
+  /// 保存字体缩放比例
+  Future<void> setFontScale(double scale) async {
+    await setSetting(StorageKeys.fontScale, scale);
+  }
+
+  // ==================== Locale ====================
+
+  /// 获取语言代码
+  String getLocaleCode() {
+    return getSetting<String>(StorageKeys.locale, defaultValue: 'zh') ?? 'zh';
+  }
+
+  /// 保存语言代码
+  Future<void> setLocaleCode(String code) async {
+    await setSetting(StorageKeys.locale, code);
+  }
+
+  // ==================== Navigation ====================
+
+  /// 获取桌面主导航栏展开状态（默认收起）
+  bool getMainNavRailExpanded() {
+    return getSetting<bool>(
+          StorageKeys.mainNavRailExpanded,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存桌面主导航栏展开状态
+  Future<void> setMainNavRailExpanded(bool expanded) async {
+    await setSetting(StorageKeys.mainNavRailExpanded, expanded);
+  }
+
+  // ==================== Diagnostics ====================
+
+  /// 获取是否记录文件日志 (默认关闭)
+  bool getFileLoggingEnabled() {
+    return getSetting<bool>(
+          StorageKeys.fileLoggingEnabled,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存是否记录文件日志
+  Future<void> setFileLoggingEnabled(bool value) async {
+    await setSetting(StorageKeys.fileLoggingEnabled, value);
+  }
+
+  // ==================== Default Generation Params ====================
+
+  /// 获取默认模型
+  String getDefaultModel() {
+    return getSetting<String>(
+          StorageKeys.defaultModel,
+          defaultValue: _fallbackModel,
+        ) ??
+        _fallbackModel;
+  }
+
+  /// 保存默认模型
+  Future<void> setDefaultModel(String model) async {
+    await setSetting(StorageKeys.defaultModel, model);
+  }
+
+  /// 获取默认采样器
+  String getDefaultSampler() {
+    return getSetting<String>(
+          StorageKeys.defaultSampler,
+          defaultValue: 'k_euler_ancestral',
+        ) ??
+        'k_euler_ancestral';
+  }
+
+  /// 保存默认采样器
+  Future<void> setDefaultSampler(String sampler) async {
+    await setSetting(StorageKeys.defaultSampler, sampler);
+  }
+
+  /// 获取默认步数
+  int getDefaultSteps() {
+    final fallback = ModelCapabilityRegistry.of(getDefaultModel()).defaultSteps;
+    return getSetting<int>(StorageKeys.defaultSteps, defaultValue: fallback) ??
+        fallback;
+  }
+
+  /// 保存默认步数
+  Future<void> setDefaultSteps(int steps) async {
+    await setSetting(StorageKeys.defaultSteps, steps);
+  }
+
+  /// 获取默认 Scale
+  double getDefaultScale() {
+    final fallback = ModelCapabilityRegistry.of(getDefaultModel()).defaultScale;
+    final value = getSetting(StorageKeys.defaultScale);
+    if (value == null) return fallback;
+    // 处理可能存储为 int 的情况
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    return fallback;
+  }
+
+  /// 保存默认 Scale
+  Future<void> setDefaultScale(double scale) async {
+    await setSetting(StorageKeys.defaultScale, scale);
+  }
+
+  /// 获取默认宽度
+  int getDefaultWidth() {
+    return getSetting<int>(StorageKeys.defaultWidth, defaultValue: 832) ?? 832;
+  }
+
+  /// 保存默认宽度
+  Future<void> setDefaultWidth(int width) async {
+    await setSetting(StorageKeys.defaultWidth, width);
+  }
+
+  /// 获取默认高度
+  int getDefaultHeight() {
+    return getSetting<int>(StorageKeys.defaultHeight, defaultValue: 1216) ??
+        1216;
+  }
+
+  /// 保存默认高度
+  Future<void> setDefaultHeight(int height) async {
+    await setSetting(StorageKeys.defaultHeight, height);
+  }
+
+  /// 获取选中的分辨率预设 ID
+  String? getSelectedResolutionPresetId() {
+    return getSetting<String>(StorageKeys.selectedResolutionPresetId);
+  }
+
+  /// 保存选中的分辨率预设 ID
+  Future<void> setSelectedResolutionPresetId(String? presetId) async {
+    if (presetId != null) {
+      await setSetting(StorageKeys.selectedResolutionPresetId, presetId);
+    } else {
+      await deleteSetting(StorageKeys.selectedResolutionPresetId);
+    }
+  }
+
+  // ==================== Image Save ====================
+
+  /// 获取图片保存路径
+  String? getImageSavePath() {
+    return getSetting<String>(StorageKeys.imageSavePath);
+  }
+
+  /// 保存图片保存路径
+  Future<void> setImageSavePath(String path) async {
+    await setSetting(StorageKeys.imageSavePath, path);
+  }
+
+  /// 获取是否自动保存图片
+  bool getAutoSaveImages() {
+    return getSetting<bool>(StorageKeys.autoSaveImages, defaultValue: true) ??
+        true;
+  }
+
+  /// 保存是否自动保存图片
+  Future<void> setAutoSaveImages(bool value) async {
+    await setSetting(StorageKeys.autoSaveImages, value);
+  }
+
+  /// 保存图片时是否同时发布到系统相册（仅 Android 生效）
+  bool getSyncImagesToSystemGallery() {
+    return getSetting<bool>(
+          StorageKeys.syncImagesToSystemGallery,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  Future<void> setSyncImagesToSystemGallery(bool value) async {
+    await setSetting(StorageKeys.syncImagesToSystemGallery, value);
+  }
+
+  /// 获取透明图像的 Alpha 模式（true=Straight，false=Premultiplied）。
+  bool getImageStraightAlpha() {
+    return getSetting<bool>(
+          StorageKeys.imageStraightAlpha,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存透明图像的 Alpha 模式。
+  Future<void> setImageStraightAlpha(bool value) async {
+    await setSetting(StorageKeys.imageStraightAlpha, value);
+  }
+
+  // ==================== Quality Tags ====================
+
+  /// 获取是否添加质量标签 (默认开启)
+  bool getAddQualityTags() {
+    return getSetting<bool>(StorageKeys.addQualityTags, defaultValue: true) ??
+        true;
+  }
+
+  /// 保存是否添加质量标签
+  Future<void> setAddQualityTags(bool value) async {
+    await setSetting(StorageKeys.addQualityTags, value);
+  }
+
+  // ==================== UC Preset ====================
+
+  /// 获取 UC 预设类型 (默认 0 = Heavy)
+  int getUcPresetType() {
+    return getSetting<int>(StorageKeys.ucPresetType, defaultValue: 0) ?? 0;
+  }
+
+  /// 保存 UC 预设类型
+  Future<void> setUcPresetType(int value) async {
+    await setSetting(StorageKeys.ucPresetType, value);
+  }
+
+  /// 获取 UC 预设自定义条目 ID
+  String? getUcPresetCustomId() {
+    return getSetting<String>(StorageKeys.ucPresetCustomId);
+  }
+
+  /// 保存 UC 预设自定义条目 ID
+  Future<void> setUcPresetCustomId(String? value) async {
+    if (value != null) {
+      await setSetting(StorageKeys.ucPresetCustomId, value);
+    } else {
+      await deleteSetting(StorageKeys.ucPresetCustomId);
+    }
+  }
+
+  /// 获取 UC 预设自定义条目 ID 列表
+  List<String> getUcPresetCustomIds() {
+    final data = getSetting<List<dynamic>>(StorageKeys.ucPresetCustomIds);
+    return data?.cast<String>() ?? [];
+  }
+
+  /// 保存 UC 预设自定义条目 ID 列表
+  Future<void> setUcPresetCustomIds(List<String> ids) async {
+    await setSetting(StorageKeys.ucPresetCustomIds, ids);
+  }
+
+  // ==================== Quality Preset (新版) ====================
+
+  /// 获取质量词预设模式 (默认 0 = naiDefault)
+  int getQualityPresetMode() {
+    return getSetting<int>(StorageKeys.qualityPresetMode, defaultValue: 0) ?? 0;
+  }
+
+  /// 保存质量词预设模式
+  Future<void> setQualityPresetMode(int value) async {
+    await setSetting(StorageKeys.qualityPresetMode, value);
+  }
+
+  /// 获取官方质量词档位（standard/light，默认 standard）
+  String getQualityPresetNaiTier() {
+    return getSetting<String>(
+          StorageKeys.qualityPresetNaiTier,
+          defaultValue: QualityTags.standardTier,
+        ) ??
+        QualityTags.standardTier;
+  }
+
+  /// 保存官方质量词档位
+  Future<void> setQualityPresetNaiTier(String value) async {
+    await setSetting(StorageKeys.qualityPresetNaiTier, value);
+  }
+
+  /// 获取质量词预设自定义条目 ID
+  String? getQualityPresetCustomId() {
+    return getSetting<String>(StorageKeys.qualityPresetCustomId);
+  }
+
+  /// 保存质量词预设自定义条目 ID
+  Future<void> setQualityPresetCustomId(String? value) async {
+    if (value != null) {
+      await setSetting(StorageKeys.qualityPresetCustomId, value);
+    } else {
+      await deleteSetting(StorageKeys.qualityPresetCustomId);
+    }
+  }
+
+  /// 获取质量词自定义条目 ID 列表
+  List<String> getQualityPresetCustomIds() {
+    final data = getSetting<List<dynamic>>(StorageKeys.qualityPresetCustomIds);
+    return data?.cast<String>() ?? [];
+  }
+
+  /// 保存质量词自定义条目 ID 列表
+  Future<void> setQualityPresetCustomIds(List<String> ids) async {
+    await setSetting(StorageKeys.qualityPresetCustomIds, ids);
+  }
+
+  // ==================== Random Prompt Mode ====================
+
+  /// 获取抽卡模式 (默认关闭)
+  bool getRandomPromptMode() {
+    return getSetting<bool>(
+          StorageKeys.randomPromptMode,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存抽卡模式
+  Future<void> setRandomPromptMode(bool value) async {
+    await setSetting(StorageKeys.randomPromptMode, value);
+  }
+
+  /// 获取是否显示随机提示词工具入口 (默认开启)
+  bool getShowRandomPromptTools() {
+    return getSetting<bool>(
+          StorageKeys.showRandomPromptTools,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存是否显示随机提示词工具入口
+  Future<void> setShowRandomPromptTools(bool value) async {
+    await setSetting(StorageKeys.showRandomPromptTools, value);
+  }
+
+  /// 获取生成时是否启用流式预览（默认开启）
+  bool getGenerationStreamPreviewEnabled() {
+    return getSetting<bool>(
+          StorageKeys.generationStreamPreviewEnabled,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存生成时是否启用流式预览
+  Future<void> setGenerationStreamPreviewEnabled(bool value) async {
+    await setSetting(StorageKeys.generationStreamPreviewEnabled, value);
+  }
+
+  /// 获取每次请求生成的图片数量 (默认1，最大4)
+  int getImagesPerRequest() {
+    return getSetting<int>(StorageKeys.imagesPerRequest, defaultValue: 1) ?? 1;
+  }
+
+  /// 保存每次请求生成的图片数量
+  Future<void> setImagesPerRequest(int value) async {
+    await setSetting(StorageKeys.imagesPerRequest, value.clamp(1, 4));
+  }
+
+  // ==================== Autocomplete ====================
+
+  /// 获取是否启用自动补全 (默认开启)
+  bool getEnableAutocomplete() {
+    return getSetting<bool>(
+          StorageKeys.enableAutocomplete,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存是否启用自动补全
+  Future<void> setEnableAutocomplete(bool value) async {
+    await setSetting(StorageKeys.enableAutocomplete, value);
+  }
+
+  // ==================== Auto Format ====================
+
+  /// 获取是否启用自动格式化 (默认开启)
+  bool getAutoFormatPrompt() {
+    return getSetting<bool>(StorageKeys.autoFormatPrompt, defaultValue: true) ??
+        true;
+  }
+
+  /// 保存是否启用自动格式化
+  Future<void> setAutoFormatPrompt(bool value) async {
+    await setSetting(StorageKeys.autoFormatPrompt, value);
+  }
+
+  /// 获取是否启用高亮强调 (默认开启)
+  bool getHighlightEmphasis() {
+    return getSetting<bool>(
+          StorageKeys.highlightEmphasis,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存是否启用高亮强调
+  Future<void> setHighlightEmphasis(bool value) async {
+    await setSetting(StorageKeys.highlightEmphasis, value);
+  }
+
+  // ==================== SD Syntax Auto Convert ====================
+
+  /// 获取是否启用SD语法自动转换 (默认关闭)
+  bool getSdSyntaxAutoConvert() {
+    return getSetting<bool>(
+          StorageKeys.sdSyntaxAutoConvert,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存是否启用SD语法自动转换
+  Future<void> setSdSyntaxAutoConvert(bool value) async {
+    await setSetting(StorageKeys.sdSyntaxAutoConvert, value);
+  }
+
+  // ==================== Resolve Alias On Copy ====================
+
+  /// 获取复制时是否展开词库别名 (默认关闭)
+  bool getResolveAliasOnCopy() {
+    return getSetting<bool>(
+          StorageKeys.resolveAliasOnCopy,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存复制时是否展开词库别名
+  Future<void> setResolveAliasOnCopy(bool value) async {
+    await setSetting(StorageKeys.resolveAliasOnCopy, value);
+  }
+
+  // ==================== Prompt Regex Replace ====================
+
+  /// 获取正则替换规则（每项为一条规则的 JSON 字符串）
+  ///
+  /// 这里只存字符串，模型的序列化由调用方负责，避免存储层依赖数据模型。
+  List<String> getPromptRegexRules() {
+    final data = getSetting<List<dynamic>>(StorageKeys.promptRegexRules);
+    if (data == null) return const [];
+    return data.whereType<String>().toList();
+  }
+
+  /// 保存正则替换规则
+  Future<void> setPromptRegexRules(List<String> encodedRules) async {
+    await setSetting(StorageKeys.promptRegexRules, encodedRules);
+  }
+
+  // ==================== Prompt Weight Scroll ====================
+
+  /// 获取是否启用滚轮调整提示词权重（默认开启）
+  bool getEnablePromptWeightScroll() {
+    return getSetting<bool>(
+          StorageKeys.enablePromptWeightScroll,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存是否启用滚轮调整提示词权重
+  Future<void> setEnablePromptWeightScroll(bool value) async {
+    await setSetting(StorageKeys.enablePromptWeightScroll, value);
+  }
+
+  // ==================== Cooccurrence Recommendation ====================
+
+  /// 获取是否启用共现推荐 (默认开启)
+  bool getEnableCooccurrenceRecommendation() {
+    return getSetting<bool>(
+          StorageKeys.enableCooccurrenceRecommendation,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存是否启用共现推荐
+  Future<void> setEnableCooccurrenceRecommendation(bool value) async {
+    await setSetting(StorageKeys.enableCooccurrenceRecommendation, value);
+  }
+
+  // ==================== Last Generation Params ====================
+
+  /// 获取上次的正向提示词
+  String getLastPrompt() {
+    return getSetting<String>(StorageKeys.lastPrompt, defaultValue: '') ?? '';
+  }
+
+  /// 保存正向提示词
+  Future<void> setLastPrompt(String prompt) async {
+    await setSetting(StorageKeys.lastPrompt, prompt);
+  }
+
+  /// 获取上次的负向提示词
+  String getLastNegativePrompt() {
+    return getSetting<String>(
+          StorageKeys.lastNegativePrompt,
+          defaultValue: '',
+        ) ??
+        '';
+  }
+
+  /// 保存负向提示词
+  Future<void> setLastNegativePrompt(String negativePrompt) async {
+    await setSetting(StorageKeys.lastNegativePrompt, negativePrompt);
+  }
+
+  /// 获取上次的 SMEA 设置
+  bool getLastSmea() {
+    return getSetting<bool>(StorageKeys.lastSmea, defaultValue: true) ?? true;
+  }
+
+  /// 保存 SMEA 设置
+  Future<void> setLastSmea(bool smea) async {
+    await setSetting(StorageKeys.lastSmea, smea);
+  }
+
+  /// 获取上次的 SMEA DYN 设置
+  bool getLastSmeaDyn() {
+    return getSetting<bool>(StorageKeys.lastSmeaDyn, defaultValue: false) ??
+        false;
+  }
+
+  /// 保存 SMEA DYN 设置
+  Future<void> setLastSmeaDyn(bool smeaDyn) async {
+    await setSetting(StorageKeys.lastSmeaDyn, smeaDyn);
+  }
+
+  /// 获取上次的 CFG Rescale 值
+  double getLastCfgRescale() {
+    return getSetting<double>(StorageKeys.lastCfgRescale, defaultValue: 0.0) ??
+        0.0;
+  }
+
+  /// 保存 CFG Rescale 值
+  Future<void> setLastCfgRescale(double cfgRescale) async {
+    await setSetting(StorageKeys.lastCfgRescale, cfgRescale);
+  }
+
+  /// 获取上次的噪声计划
+  String getLastNoiseSchedule() {
+    return getSetting<String>(
+          StorageKeys.lastNoiseSchedule,
+          defaultValue: 'native',
+        ) ??
+        'native';
+  }
+
+  /// 保存噪声计划
+  Future<void> setLastNoiseSchedule(String noiseSchedule) async {
+    await setSetting(StorageKeys.lastNoiseSchedule, noiseSchedule);
+  }
+
+  /// 获取上次的 Variety+ 设置
+  bool getLastVarietyPlus() {
+    return getSetting<bool>(StorageKeys.lastVarietyPlus, defaultValue: false) ??
+        false;
+  }
+
+  /// 保存 Variety+ 设置
+  Future<void> setLastVarietyPlus(bool value) async {
+    await setSetting(StorageKeys.lastVarietyPlus, value);
+  }
+
+  /// 获取上次的透明背景开关 (仅 V5 生效)
+  bool getLastTransparentBackground() {
+    return getSetting<bool>(
+          StorageKeys.lastTransparentBackground,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存透明背景开关
+  Future<void> setLastTransparentBackground(bool value) async {
+    await setSetting(StorageKeys.lastTransparentBackground, value);
+  }
+
+  /// 获取上次的端到端 ×2 放大开关 (仅 V5 生效)
+  bool getLastE2eUpscale() {
+    return getSetting<bool>(StorageKeys.lastE2eUpscale, defaultValue: false) ??
+        false;
+  }
+
+  /// 保存端到端 ×2 放大开关
+  Future<void> setLastE2eUpscale(bool value) async {
+    await setSetting(StorageKeys.lastE2eUpscale, value);
+  }
+
+  /// 获取 Anime / Furry 模式 (V4 起生效)
+  ImageModelMode getImageModelMode() {
+    return ImageModelMode.fromName(
+      getSetting<String>(StorageKeys.imageModelMode),
+    );
+  }
+
+  /// 保存 Anime / Furry 模式
+  Future<void> setImageModelMode(ImageModelMode mode) async {
+    await setSetting(StorageKeys.imageModelMode, mode.name);
+  }
+
+  // ==================== Seed Lock ====================
+
+  /// 获取种子是否锁定 (默认关闭)
+  bool getSeedLocked() {
+    return getSetting<bool>(StorageKeys.seedLocked, defaultValue: false) ??
+        false;
+  }
+
+  /// 保存种子锁定状态
+  Future<void> setSeedLocked(bool locked) async {
+    await setSetting(StorageKeys.seedLocked, locked);
+  }
+
+  /// 获取锁定的种子值 (默认为null)
+  int? getLockedSeedValue() {
+    return getSetting<int>(StorageKeys.lockedSeedValue);
+  }
+
+  /// 保存锁定的种子值
+  Future<void> setLockedSeedValue(int? seed) async {
+    if (seed != null) {
+      await setSetting(StorageKeys.lockedSeedValue, seed);
+    } else {
+      await deleteSetting(StorageKeys.lockedSeedValue);
+    }
+  }
+
+  // ==================== UI Layout State ====================
+
+  /// 获取左侧面板展开状态 (默认展开)
+  bool getLeftPanelExpanded() {
+    return getSetting<bool>(
+          StorageKeys.leftPanelExpanded,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存左侧面板展开状态
+  Future<void> setLeftPanelExpanded(bool expanded) async {
+    await setSetting(StorageKeys.leftPanelExpanded, expanded);
+  }
+
+  /// 获取右侧面板展开状态 (默认展开)
+  bool getRightPanelExpanded() {
+    return getSetting<bool>(
+          StorageKeys.rightPanelExpanded,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存右侧面板展开状态
+  Future<void> setRightPanelExpanded(bool expanded) async {
+    await setSetting(StorageKeys.rightPanelExpanded, expanded);
+  }
+
+  /// 获取左侧面板宽度 (默认300)
+  double getLeftPanelWidth() {
+    return getSetting<double>(
+          StorageKeys.leftPanelWidth,
+          defaultValue: 300.0,
+        ) ??
+        300.0;
+  }
+
+  /// 保存左侧面板宽度
+  Future<void> setLeftPanelWidth(double width) async {
+    await setSetting(StorageKeys.leftPanelWidth, width);
+  }
+
+  /// 获取右侧面板宽度 (默认280, 使用 historyPanelWidth key)
+  double getRightPanelWidth() {
+    return getSetting<double>(
+          StorageKeys.historyPanelWidth,
+          defaultValue: 280.0,
+        ) ??
+        280.0;
+  }
+
+  /// 保存右侧面板宽度 (使用 historyPanelWidth key)
+  Future<void> setRightPanelWidth(double width) async {
+    await setSetting(StorageKeys.historyPanelWidth, width);
+  }
+
+  /// 获取提示区域高度 (默认200)
+  double getPromptAreaHeight() {
+    return getSetting<double>(
+          StorageKeys.promptAreaHeight,
+          defaultValue: 200.0,
+        ) ??
+        200.0;
+  }
+
+  /// 保存提示区域高度
+  Future<void> setPromptAreaHeight(double height) async {
+    await setSetting(StorageKeys.promptAreaHeight, height);
+  }
+
+  /// 获取提示区域最大化状态 (默认关闭)
+  bool getPromptMaximized() {
+    return getSetting<bool>(StorageKeys.promptMaximized, defaultValue: false) ??
+        false;
+  }
+
+  /// 保存提示区域最大化状态
+  Future<void> setPromptMaximized(bool maximized) async {
+    await setSetting(StorageKeys.promptMaximized, maximized);
+  }
+
+  /// 获取生成页布局模式 (默认 'web_style')
+  String getGenerationLayoutMode() {
+    // 官网式布局体验更好，未主动设置过的用户默认使用官网式
+    return getSetting<String>(
+          StorageKeys.generationLayoutMode,
+          defaultValue: 'web_style',
+        ) ??
+        'web_style';
+  }
+
+  /// 保存生成页布局模式
+  Future<void> setGenerationLayoutMode(String mode) async {
+    await setSetting(StorageKeys.generationLayoutMode, mode);
+  }
+
+  /// 获取历史记录点击行为 (默认经典行为)
+  String getHistoryClickBehavior() {
+    return getSetting<String>(
+          StorageKeys.historyClickBehavior,
+          defaultValue: 'open_detail',
+        ) ??
+        'open_detail';
+  }
+
+  /// 保存历史记录点击行为
+  Future<void> setHistoryClickBehavior(String behavior) async {
+    await setSetting(StorageKeys.historyClickBehavior, behavior);
+  }
+
+  /// 获取预览区透明底色样式
+  ///
+  /// 未设置时返回 null，默认值与合法性由 `TransparencyBackgrounds` 归一化，
+  /// 避免在 core 层重复定义样式表。
+  String? getPreviewTransparencyBackground() {
+    return getSetting<String>(StorageKeys.previewTransparencyBackground);
+  }
+
+  /// 保存预览区透明底色样式
+  Future<void> setPreviewTransparencyBackground(String style) async {
+    await setSetting(StorageKeys.previewTransparencyBackground, style);
+  }
+
+  /// 获取构图参考线档位
+  ///
+  /// 未设置时返回 null，默认值与合法性由 `CompositionGuideMode` 解析，
+  /// 避免在 core 层重复定义档位表。
+  String? getCompositionGuideMode() {
+    return getSetting<String>(StorageKeys.compositionGuideMode);
+  }
+
+  /// 保存构图参考线档位
+  Future<void> setCompositionGuideMode(String mode) async {
+    await setSetting(StorageKeys.compositionGuideMode, mode);
+  }
+
+  /// 获取构图参考线自定义网格列数 (默认3)
+  int getCompositionGuideColumns() {
+    return getSetting<int>(
+          StorageKeys.compositionGuideColumns,
+          defaultValue: 3,
+        ) ??
+        3;
+  }
+
+  /// 保存构图参考线自定义网格列数
+  Future<void> setCompositionGuideColumns(int columns) async {
+    await setSetting(StorageKeys.compositionGuideColumns, columns);
+  }
+
+  /// 获取构图参考线自定义网格行数 (默认3)
+  int getCompositionGuideRows() {
+    return getSetting<int>(StorageKeys.compositionGuideRows, defaultValue: 3) ??
+        3;
+  }
+
+  /// 保存构图参考线自定义网格行数
+  Future<void> setCompositionGuideRows(int rows) async {
+    await setSetting(StorageKeys.compositionGuideRows, rows);
+  }
+
+  /// 获取官网式布局左栏宽度 (默认400)
+  double getWebLeftPanelWidth() {
+    return getSetting<double>(
+          StorageKeys.webLeftPanelWidth,
+          defaultValue: 400.0,
+        ) ??
+        400.0;
+  }
+
+  /// 保存官网式布局左栏宽度
+  Future<void> setWebLeftPanelWidth(double width) async {
+    await setSetting(StorageKeys.webLeftPanelWidth, width);
+  }
+
+  /// 获取官网式布局左栏展开状态 (默认展开)
+  bool getWebLeftPanelExpanded() {
+    return getSetting<bool>(
+          StorageKeys.webLeftPanelExpanded,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存官网式布局左栏展开状态
+  Future<void> setWebLeftPanelExpanded(bool expanded) async {
+    await setSetting(StorageKeys.webLeftPanelExpanded, expanded);
+  }
+
+  /// 获取固定词侧边栏展开状态 (默认收起)
+  bool getFixedTagsSidebarExpanded() {
+    return getSetting<bool>(
+          StorageKeys.fixedTagsSidebarExpanded,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存固定词侧边栏展开状态
+  Future<void> setFixedTagsSidebarExpanded(bool expanded) async {
+    await setSetting(StorageKeys.fixedTagsSidebarExpanded, expanded);
+  }
+
+  /// 获取固定词侧边栏宽度 (默认280)
+  double getFixedTagsSidebarWidth() {
+    final value = getSetting(StorageKeys.fixedTagsSidebarWidth);
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    return 280.0;
+  }
+
+  /// 保存固定词侧边栏宽度
+  Future<void> setFixedTagsSidebarWidth(double width) async {
+    await setSetting(StorageKeys.fixedTagsSidebarWidth, width);
+  }
+
+  /// 获取固定词侧边栏视图模式
+  String getFixedTagsSidebarViewMode() {
+    final mode = getSetting<String>(
+      StorageKeys.fixedTagsSidebarViewMode,
+      defaultValue: 'list',
+    );
+    return mode == 'grid' ? 'grid' : 'list';
+  }
+
+  /// 保存固定词侧边栏视图模式
+  Future<void> setFixedTagsSidebarViewMode(String mode) async {
+    await setSetting(
+      StorageKeys.fixedTagsSidebarViewMode,
+      mode == 'grid' ? 'grid' : 'list',
+    );
+  }
+
+  /// 获取负向固定词区域高度 (默认180)
+  double getFixedTagsNegativeHeight() {
+    final value = getSetting(StorageKeys.fixedTagsNegativeHeight);
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    return 180.0;
+  }
+
+  /// 保存负向固定词区域高度
+  Future<void> setFixedTagsNegativeHeight(double height) async {
+    await setSetting(StorageKeys.fixedTagsNegativeHeight, height);
+  }
+
+  // ==================== Lifecycle ====================
+
+  /// 关闭存储
+  Future<void> close() async {
+    await _settingsBox.close();
+    await _historyBox.close();
+  }
+
+  // ==================== Fixed Tags ====================
+
+  /// 获取固定词列表 JSON
+  String? getFixedTagsJson() {
+    return getSetting<String>(StorageKeys.fixedTagsData);
+  }
+
+  /// 保存固定词列表 JSON
+  Future<void> setFixedTagsJson(String json) async {
+    await setSetting(StorageKeys.fixedTagsData, json);
+  }
+
+  /// 获取固定词联动关系 JSON
+  String? getFixedTagLinksJson() {
+    return getSetting<String>(StorageKeys.fixedTagLinksData);
+  }
+
+  /// 保存固定词联动关系 JSON
+  Future<void> setFixedTagLinksJson(String json) async {
+    await setSetting(StorageKeys.fixedTagLinksData, json);
+  }
+
+  /// 获取负向固定词面板展开状态
+  bool getFixedTagsNegativePanelExpanded() {
+    return getSetting<bool>(
+          StorageKeys.fixedTagsNegativePanelExpanded,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存负向固定词面板展开状态
+  Future<void> setFixedTagsNegativePanelExpanded(bool expanded) async {
+    await setSetting(StorageKeys.fixedTagsNegativePanelExpanded, expanded);
+  }
+
+  /// 获取固定词分类列表 JSON
+  String? getFixedTagCategoriesJson() {
+    return getSetting<String>(StorageKeys.fixedTagCategoriesData);
+  }
+
+  /// 保存固定词分类列表 JSON
+  Future<void> setFixedTagCategoriesJson(String json) async {
+    await setSetting(StorageKeys.fixedTagCategoriesData, json);
+  }
+
+  // ==================== Tag Library (User) ====================
+
+  /// 获取用户词库条目列表 JSON
+  String? getTagLibraryEntriesJson() {
+    return getSetting<String>(StorageKeys.tagLibraryEntriesData);
+  }
+
+  /// 保存用户词库条目列表 JSON
+  Future<void> setTagLibraryEntriesJson(String json) async {
+    await setSetting(StorageKeys.tagLibraryEntriesData, json);
+  }
+
+  /// 获取用户词库分类列表 JSON
+  String? getTagLibraryCategoriesJson() {
+    return getSetting<String>(StorageKeys.tagLibraryCategoriesData);
+  }
+
+  /// 保存用户词库分类列表 JSON
+  Future<void> setTagLibraryCategoriesJson(String json) async {
+    await setSetting(StorageKeys.tagLibraryCategoriesData, json);
+  }
+
+  /// 获取词库视图模式 (0=card, 1=list)
+  int getTagLibraryViewMode() {
+    return getSetting<int>(StorageKeys.tagLibraryViewMode) ?? 0;
+  }
+
+  /// 保存词库视图模式
+  Future<void> setTagLibraryViewMode(int mode) async {
+    await setSetting(StorageKeys.tagLibraryViewMode, mode);
+  }
+
+  // ==================== Update Check (更新检查相关) ====================
+
+  /// 获取上次更新检查时间
+  DateTime? getLastUpdateCheckTime() {
+    final timestamp = getSetting<int>(StorageKeys.lastUpdateCheckTime);
+    if (timestamp == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(timestamp);
+  }
+
+  /// 保存上次成功完成更新检查的时间
+  Future<void> setLastUpdateCheckTime(DateTime? time) async {
+    if (time != null) {
+      await setSetting(
+        StorageKeys.lastUpdateCheckTime,
+        time.millisecondsSinceEpoch,
+      );
+    } else {
+      await deleteSetting(StorageKeys.lastUpdateCheckTime);
+    }
+  }
+
+  /// 获取最近一次更新检查尝试时间
+  DateTime? getLastUpdateCheckAttemptTime() {
+    final timestamp = getSetting<int>(StorageKeys.lastUpdateCheckAttemptTime);
+    if (timestamp == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(timestamp);
+  }
+
+  /// 保存最近一次更新检查尝试时间
+  Future<void> setLastUpdateCheckAttemptTime(DateTime? time) async {
+    if (time != null) {
+      await setSetting(
+        StorageKeys.lastUpdateCheckAttemptTime,
+        time.millisecondsSinceEpoch,
+      );
+    } else {
+      await deleteSetting(StorageKeys.lastUpdateCheckAttemptTime);
+    }
+  }
+
+  /// 获取跳过的更新版本
+  String? getSkippedUpdateVersion() {
+    return getSetting<String>(StorageKeys.skippedUpdateVersion);
+  }
+
+  /// 保存跳过的更新版本
+  Future<void> setSkippedUpdateVersion(String? version) async {
+    if (version != null) {
+      await setSetting(StorageKeys.skippedUpdateVersion, version);
+    } else {
+      await deleteSetting(StorageKeys.skippedUpdateVersion);
+    }
+  }
+
+  /// 获取上次发现的新版本
+  String? getLastKnownUpdateVersion() {
+    return getSetting<String>(StorageKeys.lastKnownUpdateVersion);
+  }
+
+  /// 保存上次发现的新版本
+  Future<void> setLastKnownUpdateVersion(String? version) async {
+    if (version != null) {
+      await setSetting(StorageKeys.lastKnownUpdateVersion, version);
+    } else {
+      await deleteSetting(StorageKeys.lastKnownUpdateVersion);
+    }
+  }
+
+  /// 获取更新提示延后时间
+  DateTime? getUpdateRemindAfter() {
+    final timestamp = getSetting<int>(StorageKeys.updateRemindAfter);
+    if (timestamp == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(timestamp);
+  }
+
+  /// 保存更新提示延后时间
+  Future<void> setUpdateRemindAfter(DateTime? time) async {
+    if (time != null) {
+      await setSetting(
+        StorageKeys.updateRemindAfter,
+        time.millisecondsSinceEpoch,
+      );
+    } else {
+      await deleteSetting(StorageKeys.updateRemindAfter);
+    }
+  }
+
+  /// 获取是否包含预发布版本
+  bool getIncludePrereleaseUpdates() {
+    return getSetting<bool>(
+          StorageKeys.includePrereleaseUpdates,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存是否包含预发布版本
+  Future<void> setIncludePrereleaseUpdates(bool value) async {
+    await setSetting(StorageKeys.includePrereleaseUpdates, value);
+  }
+}
+
+/// LocalStorageService Provider
+@riverpod
+LocalStorageService localStorageService(Ref ref) {
+  return LocalStorageService();
+}

@@ -1,0 +1,667 @@
+import '../../../widgets/common/image_card_action.dart';
+import '../../../widgets/common/image_card_inline_actions.dart';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../core/constants/model_capabilities.dart';
+import '../../../../core/utils/localization_extension.dart';
+import '../../../../data/models/vibe/vibe_reference.dart';
+import '../../../widgets/common/app_toast.dart';
+import '../../../widgets/common/decoded_memory_image.dart';
+import '../../../widgets/common/editable_double_field.dart';
+import '../../../../data/services/auth_provider.dart';
+import '../../../providers/generation/generation_params_notifier.dart';
+import '../../../widgets/common/hover_image_preview.dart';
+import '../../../widgets/common/themed_slider.dart';
+import '../handlers/vibe_import_handler.dart';
+
+const double _disabledVibeCardOpacity = 0.48;
+
+/// Vibe 卡片组件
+///
+/// 显示单个 Vibe Reference 的信息，包括：
+/// - 缩略图（带悬浮预览）
+/// - 编码状态标签
+/// - Reference Strength 滑条
+/// - Information Extracted 滑条
+/// - 删除按钮
+class VibeCard extends ConsumerStatefulWidget {
+  final int index;
+  final VibeReference vibe;
+  final VoidCallback onRemove;
+  final ValueChanged<double> onStrengthChanged;
+  final ValueChanged<double> onInfoExtractedChanged;
+  final ValueChanged<bool>? onEnabledChanged;
+
+  /// 编码 Vibe 的回调，返回编码后的字符串或 null
+  final Future<String?> Function(
+    Uint8List imageData, {
+    required double informationExtracted,
+    required String vibeName,
+  })?
+  onEncode;
+
+  /// 更新 Vibe 编码的回调
+  final void Function(int index, {required String vibeEncoding})?
+  onUpdateEncoding;
+
+  const VibeCard({
+    super.key,
+    required this.index,
+    required this.vibe,
+    required this.onRemove,
+    required this.onStrengthChanged,
+    required this.onInfoExtractedChanged,
+    this.onEnabledChanged,
+    this.onEncode,
+    this.onUpdateEncoding,
+  });
+
+  @override
+  ConsumerState<VibeCard> createState() => _VibeCardState();
+}
+
+class _VibeCardState extends ConsumerState<VibeCard> {
+  bool _isEncoding = false;
+
+  /// 把当前这一条 Vibe 保存到 Vibe 库（复用已有的命名/查重流程）
+  Future<void> _saveToLibrary() async {
+    final handler = VibeImportHandler(ref: ref, context: context);
+    await handler.saveToLibrary([widget.vibe]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final vibe = widget.vibe;
+
+    return Container(
+      key: ValueKey('vibe-card-container-${widget.index}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: AnimatedOpacity(
+        key: ValueKey('vibe-card-enabled-opacity-${widget.index}'),
+        opacity: vibe.enabled ? 1.0 : _disabledVibeCardOpacity,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 340) {
+              return _buildCompactContent(context, theme, vibe);
+            }
+            return _buildWideContent(context, theme, vibe);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWideContent(
+    BuildContext context,
+    ThemeData theme,
+    VibeReference vibe,
+  ) {
+    return Row(
+      key: ValueKey('vibe-card-wide-content-${widget.index}'),
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _buildPreviewColumn(context, theme, vibe),
+        const SizedBox(width: 12),
+        Expanded(child: _buildSettings(context, theme, vibe)),
+      ],
+    );
+  }
+
+  Widget _buildCompactContent(
+    BuildContext context,
+    ThemeData theme,
+    VibeReference vibe,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildHeader(context, theme, compact: true),
+        const SizedBox(height: 10),
+        Center(child: _buildPreviewColumn(context, theme, vibe)),
+        const SizedBox(height: 10),
+        _buildSliders(context, theme, vibe),
+      ],
+    );
+  }
+
+  Widget _buildPreviewColumn(
+    BuildContext context,
+    ThemeData theme,
+    VibeReference vibe,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildThumbnail(theme),
+        if (vibe.bundleSource != null) ...[
+          const SizedBox(height: 6),
+          _buildBundleSourceChip(context, theme),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSettings(
+    BuildContext context,
+    ThemeData theme,
+    VibeReference vibe,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(context, theme),
+        const SizedBox(height: 8),
+        _buildSliders(context, theme, vibe),
+      ],
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    ThemeData theme, {
+    bool compact = false,
+  }) {
+    final status = _buildEncodingStatusChip(context, theme);
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Align(alignment: Alignment.centerLeft, child: status),
+              ),
+              const SizedBox(width: 4),
+              _buildEnabledSwitch(context),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _buildIconActions(context, theme),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        status,
+        const Spacer(),
+        _buildEnabledSwitch(context),
+        const SizedBox(width: 4),
+        _buildIconActions(context, theme),
+      ],
+    );
+  }
+
+  Widget _buildIconActions(BuildContext context, ThemeData theme) =>
+      ImageCardInlineActions(
+        actions: [
+          ImageCardAction(
+            id: ImageCardActionId.saveToLibrary,
+            key: Key('vibe-card-save-to-library-${widget.index}'),
+            icon: Icons.bookmark_add_outlined,
+            iconColor: theme.colorScheme.primary,
+            label: context.l10n.vibeLibrary_save,
+            invoke: _saveToLibrary,
+          ),
+          ImageCardAction(
+            id: ImageCardActionId.delete,
+            key: Key('vibe-card-remove-${widget.index}'),
+            icon: Icons.delete_outline,
+            iconColor: theme.colorScheme.error,
+            label: context.l10n.vibe_remove,
+            invoke: widget.onRemove,
+            isDanger: true,
+          ),
+        ],
+      );
+
+  Widget _buildSliders(
+    BuildContext context,
+    ThemeData theme,
+    VibeReference vibe,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSliderRow(
+          context,
+          theme,
+          label: context.l10n.vibe_referenceStrength,
+          value: vibe.strength,
+          onChanged: widget.onStrengthChanged,
+        ),
+        if (vibe.canReencodeFromRawSource) ...[
+          const SizedBox(height: 8),
+          _buildSliderRow(
+            context,
+            theme,
+            label: context.l10n.vibe_infoExtraction,
+            value: vibe.infoExtracted,
+            onChanged: widget.onInfoExtractedChanged,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEnabledSwitch(BuildContext context) {
+    final vibe = widget.vibe;
+    return Tooltip(
+      message: vibe.enabled
+          ? context.l10n.reference_disable
+          : context.l10n.reference_enable,
+      child: Switch(
+        key: ValueKey('vibe-enabled-switch-${widget.index}'),
+        value: vibe.enabled,
+        onChanged: widget.onEnabledChanged,
+      ),
+    );
+  }
+
+  Widget _buildThumbnail(ThemeData theme) {
+    final thumbnailBytes = widget.vibe.thumbnail ?? widget.vibe.rawImageData;
+
+    // 悬浮预览使用原始图片数据或缩略图
+    final previewBytes = widget.vibe.rawImageData ?? widget.vibe.thumbnail;
+
+    return ClipRRect(
+      key: ValueKey('vibe-card-thumbnail-${widget.index}'),
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 100,
+        height: 100,
+        child: ColoredBox(
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: thumbnailBytes != null
+              ? (previewBytes != null
+                    ? HoverImagePreview(
+                        imageBytes: previewBytes,
+                        previewMaxSize: 520,
+                        child: DecodedMemoryImage(
+                          bytes: thumbnailBytes,
+                          fit: BoxFit.cover,
+                          maxLogicalWidth: 100,
+                          maxLogicalHeight: 100,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildPlaceholder(theme);
+                          },
+                        ),
+                      )
+                    : DecodedMemoryImage(
+                        bytes: thumbnailBytes,
+                        fit: BoxFit.cover,
+                        maxLogicalWidth: 100,
+                        maxLogicalHeight: 100,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildPlaceholder(theme);
+                        },
+                      ))
+              : _buildPlaceholder(theme),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(ThemeData theme) {
+    return Center(
+      child: Icon(
+        Icons.auto_awesome,
+        size: 24,
+        color: theme.colorScheme.outline,
+      ),
+    );
+  }
+
+  /// 构建编码状态标签
+  ///
+  /// 编码是绑模型的：同一张图在不同模型下是两份编码。所以这里跟着计费口径
+  /// （`needsEncodingForModel`）走当前模型，而不是只看有没有编码数据，
+  /// 否则会出现"卡片显示已编码、生成按钮却报 2 Anlas"的矛盾。
+  Widget _buildEncodingStatusChip(BuildContext context, ThemeData theme) {
+    final model = ref.watch(
+      generationParamsNotifierProvider.select((params) => params.model),
+    );
+    final supportsEncoding = ModelCapabilityRegistry.of(
+      model,
+    ).supportsEncodedVibeTransfer;
+    final isEncoded = widget.vibe.vibeEncoding.isNotEmpty;
+    final needsEncoding =
+        supportsEncoding && widget.vibe.needsEncodingForModel(model);
+    final l10n = context.l10n;
+
+    if (!supportsEncoding && !widget.vibe.canReencodeFromRawSource) {
+      return _buildStatusChip(
+        theme: theme,
+        icon: Icons.broken_image_outlined,
+        text: l10n.vibe_statusSourceImageRequired,
+        color: theme.colorScheme.error,
+        maxWidth: 130,
+      );
+    } else if (supportsEncoding && isEncoded && !needsEncoding) {
+      // 已编码状态（编码与当前模型匹配）
+      return _buildStatusChip(
+        theme: theme,
+        icon: Icons.check_circle,
+        text: l10n.vibe_statusEncoded,
+        color: Colors.green,
+        maxWidth: 80,
+      );
+    } else if (needsEncoding) {
+      // 需要编码状态 - 可点击按钮
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _isEncoding ? null : _showEncodingDialog,
+          borderRadius: BorderRadius.circular(4),
+          child: _buildStatusChip(
+            theme: theme,
+            icon: _isEncoding ? null : Icons.pending,
+            customWidget: _isEncoding
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.orange,
+                    ),
+                  )
+                : null,
+            text: _isEncoding
+                ? l10n.vibe_statusEncoding
+                : (isEncoded
+                      ? l10n.vibe_statusNeedsReencode
+                      : l10n.vibe_statusPendingEncode),
+            color: Colors.orange,
+            maxWidth: 130,
+          ),
+        ),
+      );
+    } else {
+      // 预编码文件状态
+      return _buildStatusChip(
+        theme: theme,
+        icon: Icons.file_present,
+        text: context.vibeSourceTypeLabel(widget.vibe.sourceType),
+        color: Colors.blue,
+        maxWidth: 80,
+      );
+    }
+  }
+
+  /// 构建状态标签
+  Widget _buildStatusChip({
+    required ThemeData theme,
+    IconData? icon,
+    Widget? customWidget,
+    required String text,
+    required Color color,
+    required double maxWidth,
+  }) {
+    return Container(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (customWidget != null)
+            customWidget
+          else if (icon != null)
+            Icon(icon, size: 12, color: color),
+          if (icon != null || customWidget != null) const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示编码确认对话框
+  Future<void> _showEncodingDialog() async {
+    final context = this.context;
+    final l10n = context.l10n;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.vibe_encodeDialogTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.vibe_encodeDialogMessage),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber,
+                    color: Colors.orange,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.vibe_encodeCostWarning,
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.common_cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.vibe_encodeButton),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _encodeVibe();
+    }
+  }
+
+  /// 执行编码
+  Future<void> _encodeVibe() async {
+    if (_isEncoding ||
+        widget.vibe.rawImageData == null ||
+        widget.onEncode == null ||
+        widget.onUpdateEncoding == null) {
+      return;
+    }
+
+    final paramsNotifier = ref.read(generationParamsNotifierProvider.notifier);
+    final model = ref.read(generationParamsNotifierProvider).model;
+    final isCached = paramsNotifier.hasCachedVibeEncoding(
+      widget.vibe.rawImageData!,
+      model: model,
+      informationExtracted: widget.vibe.infoExtracted,
+    );
+    if (!isCached &&
+        !requireAuthenticatedWidgetAction(ref, AuthPromptReason.vibeEncoding)) {
+      return;
+    }
+
+    setState(() => _isEncoding = true);
+
+    try {
+      // 调用编码回调
+      final encoding = await widget.onEncode!(
+        widget.vibe.rawImageData!,
+        informationExtracted: widget.vibe.infoExtracted,
+        vibeName: widget.vibe.displayName,
+      );
+
+      if (encoding != null && mounted) {
+        // 更新 vibe 编码状态
+        widget.onUpdateEncoding!(widget.index, vibeEncoding: encoding);
+        AppToast.success(context, context.l10n.vibe_encodeSuccess);
+      } else if (mounted) {
+        AppToast.error(context, context.l10n.vibe_encodeFailed);
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, context.l10n.vibe_encodeError(e.toString()));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isEncoding = false);
+      }
+    }
+  }
+
+  /// 构建 Bundle 来源标识
+  Widget _buildBundleSourceChip(BuildContext context, ThemeData theme) {
+    final source = widget.vibe.bundleSource;
+    if (source == null) return const SizedBox.shrink();
+
+    // 宽度与缩略图一致 100px
+    return SizedBox(
+      width: 100,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.tertiaryContainer,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.folder_zip,
+              size: 12,
+              color: theme.colorScheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                source,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onTertiaryContainer,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliderRow(
+    BuildContext context,
+    ThemeData theme, {
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    final isInfoExtracted = label == context.l10n.vibe_infoExtraction;
+    final double? fieldMin = isInfoExtracted
+        ? VibeReference.minInfoExtracted
+        : null;
+    final double? fieldMax = isInfoExtracted
+        ? VibeReference.maxInfoExtracted
+        : null;
+    final sliderMin = isInfoExtracted
+        ? VibeReference.minInfoExtracted
+        : VibeReference.minSliderStrength;
+    final sliderMax = isInfoExtracted
+        ? VibeReference.maxInfoExtracted
+        : VibeReference.maxSliderStrength;
+    const decimals = 2;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标签 + 数值
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                ),
+              ),
+            ),
+            EditableDoubleField(
+              value: value,
+              semanticLabel: label,
+              min: fieldMin,
+              max: fieldMax,
+              decimals: decimals,
+              width: 60,
+              onChanged: onChanged,
+              textStyle: theme.textTheme.bodySmall?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+        // 滑条
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+          ),
+          child: NamedSlider(
+            label: label,
+            valueText: (v) => EditableDoubleField.format(v, decimals: decimals),
+            value: value,
+            min: sliderMin,
+            max: sliderMax,
+            divisions: 99,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+}

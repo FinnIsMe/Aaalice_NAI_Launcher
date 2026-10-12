@@ -1,0 +1,195 @@
+import '../../data/models/character/character_prompt.dart' as ui_character;
+import '../../data/models/image/image_params.dart';
+import '../utils/app_logger.dart';
+import '../utils/character_prompt_block_parser.dart';
+import '../utils/prompt_edit_document.dart';
+
+/// 角色转换结果
+///
+/// 包含转换后的 API 角色列表和相关信息
+class CharacterConversionResult {
+  /// 转换后的 API 角色列表
+  final List<CharacterPrompt> characters;
+
+  /// 是否启用了坐标模式（有角色且非全局AI选择）
+  final bool useCoords;
+
+  /// 转换的角色数量
+  final int convertedCount;
+
+  /// 是否解析了别名
+  final bool aliasesResolved;
+
+  const CharacterConversionResult({
+    required this.characters,
+    required this.useCoords,
+    required this.convertedCount,
+    this.aliasesResolved = false,
+  });
+
+  /// 创建空结果
+  factory CharacterConversionResult.empty() {
+    return const CharacterConversionResult(
+      characters: [],
+      useCoords: false,
+      convertedCount: 0,
+      aliasesResolved: false,
+    );
+  }
+
+  /// 检查是否有角色
+  bool get hasCharacters => characters.isNotEmpty;
+}
+
+/// 别名解析函数。
+typedef AliasResolver = String Function(String text);
+
+/// 角色转换服务
+///
+/// 负责将 UI 层的角色提示词配置转换为 API 层的格式，包括：
+/// - 过滤启用且有提示词的角色
+/// - 位置信息转换（自定义位置转连续坐标）
+/// - 别名解析（角色提示词中的别名展开）
+///
+/// 这是一个纯服务类，不依赖 Riverpod，便于单元测试和复用
+class CharacterConversionService {
+  /// 别名解析器（可选）
+  final AliasResolver? _aliasResolver;
+
+  /// 创建角色转换服务
+  ///
+  /// [aliasResolver] 别名解析器，用于解析角色提示词中的别名
+  CharacterConversionService({AliasResolver? aliasResolver})
+    : _aliasResolver = aliasResolver;
+
+  /// 转换角色配置为 API 格式
+  ///
+  /// [config] UI 层的角色提示词配置
+  /// [resolveAliases] 是否解析别名（默认 true）
+  ///
+  /// 返回转换结果，包含 API 格式的角色列表和坐标模式状态
+  CharacterConversionResult convert(
+    ui_character.CharacterPromptConfig config, {
+    bool resolveAliases = true,
+  }) {
+    // 仅负向角色也是有效角色，NovelAI 会把它映射到独立角色 UC。
+    final enabledCharacters = config.characters
+        .where(
+          (character) =>
+              character.enabled &&
+              (character.prompt.isNotEmpty ||
+                  character.negativePrompt.isNotEmpty),
+        )
+        .toList();
+
+    if (enabledCharacters.isEmpty) {
+      return CharacterConversionResult.empty();
+    }
+
+    bool aliasesWereResolved = false;
+
+    final apiCharacters = enabledCharacters.map((uiChar) {
+      double? positionX;
+      double? positionY;
+      if (!config.globalAiChoice) {
+        final position = config.resolvePosition(uiChar);
+        positionX = position.column;
+        positionY = position.row;
+      }
+
+      // 先展开别名，再由共享解析器拆分角色词库扩展语法。这样通过
+      // `<词库名>` 添加的角色也不会把 `negative` 标记发送给 NovelAI。
+      String resolvedPromptSource = PromptEditDocument.effectiveText(
+        uiChar.prompt,
+      );
+      String resolvedNegativePrompt = PromptEditDocument.effectiveText(
+        uiChar.negativePrompt,
+      );
+
+      if (resolveAliases) {
+        final aliasResolver = _aliasResolver;
+        if (aliasResolver != null) {
+          final promptWithAliases = PromptEditDocument.effectiveText(
+            aliasResolver(resolvedPromptSource),
+          );
+          final negativeWithAliases = PromptEditDocument.effectiveText(
+            aliasResolver(resolvedNegativePrompt),
+          );
+
+          if (promptWithAliases != uiChar.prompt ||
+              negativeWithAliases != uiChar.negativePrompt) {
+            resolvedPromptSource = promptWithAliases;
+            resolvedNegativePrompt = negativeWithAliases;
+            aliasesWereResolved = true;
+          }
+        }
+      }
+
+      final parsed = CharacterPromptBlockParser.parse(resolvedPromptSource);
+      resolvedNegativePrompt = parsed.mergeNegativePrompt(
+        resolvedNegativePrompt,
+      );
+
+      return CharacterPrompt(
+        prompt: parsed.positivePrompt,
+        negativePrompt: resolvedNegativePrompt,
+        positionX: positionX,
+        positionY: positionY,
+      );
+    }).toList();
+
+    // 确定是否启用坐标模式：有角色且非全局AI选择
+    final useCoords = apiCharacters.isNotEmpty && !config.globalAiChoice;
+
+    if (aliasesWereResolved) {
+      AppLogger.d(
+        'Resolved aliases in character prompts',
+        'CharacterConversionService',
+      );
+    }
+
+    return CharacterConversionResult(
+      characters: apiCharacters,
+      useCoords: useCoords,
+      convertedCount: apiCharacters.length,
+      aliasesResolved: aliasesWereResolved,
+    );
+  }
+
+  /// 快速转换（不解析别名）
+  ///
+  /// [config] UI 层的角色提示词配置
+  ///
+  /// 返回转换后的 API 角色列表
+  List<CharacterPrompt> convertCharacters(
+    ui_character.CharacterPromptConfig config,
+  ) {
+    final result = convert(config, resolveAliases: false);
+    return result.characters;
+  }
+
+  /// 检查配置中是否有启用的角色
+  ///
+  /// [config] UI 层的角色提示词配置
+  bool hasEnabledCharacters(ui_character.CharacterPromptConfig config) {
+    return config.characters.any(
+      (character) =>
+          character.enabled &&
+          (character.prompt.isNotEmpty || character.negativePrompt.isNotEmpty),
+    );
+  }
+
+  /// 获取启用的角色数量
+  ///
+  /// [config] UI 层的角色提示词配置
+  int getEnabledCharacterCount(ui_character.CharacterPromptConfig config) {
+    return config.characters
+        .where(
+          (character) =>
+              character.enabled &&
+              (character.prompt.isNotEmpty ||
+                  character.negativePrompt.isNotEmpty),
+        )
+        .length;
+  }
+}

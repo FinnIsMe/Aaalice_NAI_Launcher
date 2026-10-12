@@ -1,0 +1,503 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../../core/utils/localization_extension.dart';
+import '../../adaptive/interaction_policy.dart';
+import 'input_surface_container.dart';
+import 'themed_confirm_dialog.dart';
+import 'themed_text_selection_toolbar.dart';
+
+/// 统一样式的输入框组件
+///
+/// 使用共享深色填充与清晰、无发光的主题色聚焦轮廓。
+/// 支持单行和多行模式，统一圆角和状态样式。
+class ThemedInput extends StatefulWidget {
+  /// 文本控制器
+  final TextEditingController? controller;
+
+  /// 原生撤销栈控制器
+  final UndoHistoryController? undoController;
+
+  /// 焦点节点
+  final FocusNode? focusNode;
+
+  /// 提示文字
+  final String? hintText;
+
+  /// 帮助文字（显示在输入框下方）
+  final String? helperText;
+
+  /// 最大行数，null表示无限制
+  final int? maxLines;
+
+  /// 最小行数（当 expands 为 true 时必须为 null）
+  final int? minLines;
+
+  /// 是否自动扩展
+  final bool expands;
+
+  /// 文本输入框内部滚动行为
+  final ScrollPhysics? scrollPhysics;
+
+  /// 键盘操作类型
+  final TextInputAction? textInputAction;
+
+  /// 输入类型
+  final TextInputType? keyboardType;
+
+  /// 文本变化回调
+  final ValueChanged<String>? onChanged;
+
+  /// 提交回调
+  final ValueChanged<String>? onSubmitted;
+
+  /// 是否只读
+  final bool readOnly;
+
+  /// 是否启用
+  final bool enabled;
+
+  /// 圆角半径
+  final double borderRadius;
+
+  /// 内边距
+  final EdgeInsetsGeometry contentPadding;
+
+  /// 输入格式化器
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// 前缀图标
+  final Widget? prefixIcon;
+
+  /// 后缀图标
+  final Widget? suffixIcon;
+
+  /// 是否遮挡文本（密码输入）
+  final bool obscureText;
+
+  /// 最大字符数
+  final int? maxLength;
+
+  /// 文本样式
+  final TextStyle? style;
+
+  /// 提示文字样式
+  final TextStyle? hintStyle;
+
+  /// 覆盖共享输入色面，供大面积编辑器使用更明确的层级。
+  final Color? surfaceColor;
+
+  /// 是否显示内侧错误发光状态。
+  final bool hasError;
+
+  /// 是否自动获取焦点
+  final bool autofocus;
+
+  /// 点击回调
+  final GestureTapCallback? onTap;
+
+  /// 编辑完成回调
+  final VoidCallback? onEditingComplete;
+
+  /// 文本对齐方式
+  final TextAlign textAlign;
+
+  /// 垂直对齐方式
+  final TextAlignVertical? textAlignVertical;
+
+  /// 光标颜色
+  final Color? cursorColor;
+
+  /// 点击输入框外部时的回调
+  final TapRegionCallback? onTapOutside;
+
+  /// 额外的 InputDecoration（会与默认配置合并）
+  /// 用于兼容需要额外装饰属性的场景
+  final InputDecoration? decoration;
+
+  /// 是否显示清空按钮（有内容时才显示）
+  final bool showClearButton;
+
+  /// 清空按钮回调（可选，不提供则自动清空 controller）
+  final VoidCallback? onClearPressed;
+
+  /// 清空前是否需要确认对话框
+  final bool clearNeedsConfirm;
+
+  /// 自定义上下文菜单构建器
+  final Widget Function(
+    BuildContext context,
+    EditableTextState editableTextState,
+  )?
+  contextMenuBuilder;
+
+  /// Whether to add a native Ctrl+Y redo shortcut for plain text fields.
+  final bool enableNativeRedoShortcut;
+
+  /// 读屏名称，可见标签不在输入框内时提供
+  final String? semanticLabel;
+
+  const ThemedInput({
+    super.key,
+    this.controller,
+    this.undoController,
+    this.focusNode,
+    this.hintText,
+    this.helperText,
+    this.maxLines = 1,
+    this.minLines,
+    this.expands = false,
+    this.scrollPhysics,
+    this.textInputAction,
+    this.keyboardType,
+    this.onChanged,
+    this.onSubmitted,
+    this.readOnly = false,
+    this.enabled = true,
+    this.borderRadius = 8.0,
+    this.contentPadding = const EdgeInsets.symmetric(
+      horizontal: 12,
+      vertical: 10,
+    ),
+    this.inputFormatters,
+    this.prefixIcon,
+    this.suffixIcon,
+    this.obscureText = false,
+    this.maxLength,
+    this.style,
+    this.hintStyle,
+    this.surfaceColor,
+    this.hasError = false,
+    this.autofocus = false,
+    this.onTap,
+    this.onEditingComplete,
+    this.textAlign = TextAlign.start,
+    this.textAlignVertical,
+    this.cursorColor,
+    this.onTapOutside,
+    this.decoration,
+    this.showClearButton = false,
+    this.onClearPressed,
+    this.clearNeedsConfirm = false,
+    this.contextMenuBuilder,
+    this.enableNativeRedoShortcut = true,
+    this.semanticLabel,
+  });
+
+  /// 创建多行输入框
+  const ThemedInput.multiline({
+    super.key,
+    this.controller,
+    this.undoController,
+    this.focusNode,
+    this.hintText,
+    this.helperText,
+    this.maxLines,
+    this.minLines = 3,
+    this.expands = false,
+    this.scrollPhysics,
+    this.textInputAction,
+    this.keyboardType = TextInputType.multiline,
+    this.onChanged,
+    this.onSubmitted,
+    this.readOnly = false,
+    this.enabled = true,
+    this.borderRadius = 8.0,
+    this.contentPadding = const EdgeInsets.all(12),
+    this.inputFormatters,
+    this.prefixIcon,
+    this.suffixIcon,
+    this.obscureText = false,
+    this.maxLength,
+    this.style,
+    this.hintStyle,
+    this.surfaceColor,
+    this.hasError = false,
+    this.autofocus = false,
+    this.onTap,
+    this.onEditingComplete,
+    this.textAlign = TextAlign.start,
+    this.textAlignVertical,
+    this.cursorColor,
+    this.onTapOutside,
+    this.decoration,
+    this.showClearButton = false,
+    this.onClearPressed,
+    this.clearNeedsConfirm = false,
+    this.contextMenuBuilder,
+    this.enableNativeRedoShortcut = true,
+    this.semanticLabel,
+  });
+
+  @override
+  State<ThemedInput> createState() => _ThemedInputState();
+}
+
+class _ThemedInputState extends State<ThemedInput> {
+  late TextEditingController _effectiveController;
+  late FocusNode _effectiveFocusNode;
+  bool _ownsFocusNode = false;
+  bool _hasContent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _effectiveController = widget.controller ?? TextEditingController();
+    _effectiveFocusNode = widget.focusNode ?? FocusNode();
+    _ownsFocusNode = widget.focusNode == null;
+    _effectiveFocusNode.addListener(_onFocusChanged);
+    _hasContent = _effectiveController.text.isNotEmpty;
+    if (widget.showClearButton) {
+      _effectiveController.addListener(_onTextChanged);
+    }
+  }
+
+  @override
+  void didUpdateWidget(ThemedInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      if (oldWidget.showClearButton && oldWidget.controller == null) {
+        _effectiveController.removeListener(_onTextChanged);
+        _effectiveController.dispose();
+      } else if (oldWidget.showClearButton) {
+        oldWidget.controller?.removeListener(_onTextChanged);
+      }
+      _effectiveController = widget.controller ?? TextEditingController();
+      _hasContent = _effectiveController.text.isNotEmpty;
+      if (widget.showClearButton) {
+        _effectiveController.addListener(_onTextChanged);
+      }
+    }
+    if (widget.focusNode != oldWidget.focusNode) {
+      _effectiveFocusNode.removeListener(_onFocusChanged);
+      if (_ownsFocusNode) _effectiveFocusNode.dispose();
+      _effectiveFocusNode = widget.focusNode ?? FocusNode();
+      _ownsFocusNode = widget.focusNode == null;
+      _effectiveFocusNode.addListener(_onFocusChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (widget.showClearButton) {
+      _effectiveController.removeListener(_onTextChanged);
+    }
+    if (widget.controller == null) {
+      _effectiveController.dispose();
+    }
+    _effectiveFocusNode.removeListener(_onFocusChanged);
+    if (_ownsFocusNode) _effectiveFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onTextChanged() {
+    final hasContent = _effectiveController.text.isNotEmpty;
+    if (_hasContent != hasContent) {
+      setState(() {
+        _hasContent = hasContent;
+      });
+    }
+  }
+
+  Future<void> _handleClear() async {
+    // 如果需要确认，显示对话框
+    if (widget.clearNeedsConfirm) {
+      final l10n = context.l10n;
+      final confirmed = await ThemedConfirmDialog.show(
+        context: context,
+        title: l10n.common_confirmClear,
+        content: l10n.common_clearInputConfirm,
+        confirmText: l10n.common_clear,
+        cancelText: l10n.common_cancel,
+        type: ThemedConfirmDialogType.warning,
+        icon: Icons.clear_all,
+      );
+      if (!confirmed) return;
+    }
+
+    if (widget.onClearPressed != null) {
+      // 如果提供了回调，让回调负责清空逻辑
+      widget.onClearPressed!();
+    } else {
+      // 否则自己清空
+      _effectiveController.clear();
+      widget.onChanged?.call('');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // 构建基础 InputDecoration
+    var inputDecoration = InputDecoration(
+      hintText: widget.hintText,
+      hintStyle: widget.hintStyle,
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      disabledBorder: InputBorder.none,
+      errorBorder: InputBorder.none,
+      focusedErrorBorder: InputBorder.none,
+      filled: false,
+      contentPadding: widget.contentPadding,
+      prefixIcon: widget.prefixIcon,
+      suffixIcon: widget.suffixIcon,
+      isDense: true,
+      counterText: '', // 隐藏字符计数
+    );
+
+    // 如果提供了额外的 decoration，合并属性
+    if (widget.decoration != null) {
+      inputDecoration = inputDecoration.copyWith(
+        hintText: widget.decoration!.hintText ?? widget.hintText,
+        hintStyle: widget.decoration!.hintStyle ?? widget.hintStyle,
+        labelText: widget.decoration!.labelText,
+        labelStyle: widget.decoration!.labelStyle,
+        floatingLabelStyle: widget.decoration!.floatingLabelStyle,
+        helperText: widget.decoration!.helperText,
+        helperStyle: widget.decoration!.helperStyle,
+        errorText: widget.decoration!.errorText,
+        errorStyle: widget.decoration!.errorStyle,
+        prefixIcon: widget.decoration!.prefixIcon ?? widget.prefixIcon,
+        prefix: widget.decoration!.prefix,
+        prefixText: widget.decoration!.prefixText,
+        prefixStyle: widget.decoration!.prefixStyle,
+        suffixIcon: widget.decoration!.suffixIcon ?? widget.suffixIcon,
+        suffix: widget.decoration!.suffix,
+        suffixText: widget.decoration!.suffixText,
+        suffixStyle: widget.decoration!.suffixStyle,
+        counter: widget.decoration!.counter,
+        counterStyle: widget.decoration!.counterStyle,
+        contentPadding:
+            widget.decoration!.contentPadding ?? widget.contentPadding,
+        isDense: widget.decoration!.isDense,
+      );
+    }
+
+    final field = Semantics(
+      label: widget.semanticLabel,
+      child: TextField(
+        controller: _effectiveController,
+        undoController: widget.undoController,
+        focusNode: _effectiveFocusNode,
+        maxLines: widget.maxLines,
+        minLines: widget.minLines,
+        expands: widget.expands,
+        scrollPhysics: widget.scrollPhysics,
+        textInputAction: widget.textInputAction,
+        keyboardType: widget.keyboardType,
+        onChanged: widget.onChanged,
+        onSubmitted: widget.onSubmitted,
+        onTap: widget.onTap,
+        onEditingComplete: widget.onEditingComplete,
+        onTapOutside: widget.onTapOutside,
+        readOnly: widget.readOnly,
+        enabled: widget.enabled,
+        inputFormatters: widget.inputFormatters,
+        obscureText: widget.obscureText,
+        maxLength: widget.maxLength,
+        style: widget.style,
+        autofocus: widget.autofocus,
+        textAlign: widget.textAlign,
+        textAlignVertical:
+            widget.textAlignVertical ??
+            (widget.maxLines == 1 && !widget.expands
+                ? TextAlignVertical.center
+                : null),
+        cursorColor: widget.cursorColor,
+        decoration: inputDecoration,
+        // 不传时用带主题字体的默认实现：Flutter 自带的工具栏按钮会绕开
+        // 主题字体，右键菜单会一直是系统默认字体。
+        contextMenuBuilder:
+            widget.contextMenuBuilder ?? themedContextMenuBuilder,
+      ),
+    );
+
+    final textField = widget.enableNativeRedoShortcut
+        ? Shortcuts(
+            shortcuts: const <ShortcutActivator, Intent>{
+              SingleActivator(LogicalKeyboardKey.keyY, control: true):
+                  RedoTextIntent(SelectionChangedCause.keyboard),
+            },
+            child: field,
+          )
+        : field;
+
+    Widget content = textField;
+
+    // 需要清空按钮时恒用 Stack 包装、仅切换按钮显隐：
+    // 若按「空/非空」增删 Stack 层，输入框会在删空瞬间因父链结构变化
+    // 而整体重建，焦点与键盘输入连接被打断（光标消失、需重新点击）
+    if (widget.showClearButton) {
+      content = Stack(
+        children: [
+          textField,
+          if (_hasContent)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: _ClearButton(onPressed: _handleClear),
+            ),
+        ],
+      );
+    }
+
+    final container = InputSurfaceContainer(
+      borderRadius: widget.borderRadius,
+      enabled: widget.enabled,
+      isFocused: _effectiveFocusNode.hasFocus,
+      hasError: widget.hasError || inputDecoration.errorText != null,
+      backgroundColor: widget.surfaceColor,
+      child: content,
+    );
+
+    // 如果有帮助文字，添加在下方
+    if (widget.helperText != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          container,
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              widget.helperText!,
+              style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return container;
+  }
+}
+
+/// 清空按钮组件
+class _ClearButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _ClearButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final interactionPolicy = context.interactionPolicy;
+    final extent = interactionPolicy.touchAvailable
+        ? interactionPolicy.minimumControlExtent
+        : 32.0;
+    return IconButton(
+      onPressed: onPressed,
+      icon: const Icon(Icons.close, size: 16),
+      tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: BoxConstraints.tightFor(width: extent, height: extent),
+      padding: EdgeInsets.zero,
+    );
+  }
+}

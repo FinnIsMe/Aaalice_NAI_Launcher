@@ -1,0 +1,339 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nai_launcher/presentation/widgets/common/checkerboard_pattern.dart';
+import 'package:nai_launcher/presentation/widgets/image_editor/canvas/layer_painter.dart';
+import 'package:nai_launcher/presentation/widgets/image_editor/core/editor_state.dart';
+
+Future<Color> _paintCanvasPixel({
+  required bool showTransparentCanvasBackground,
+}) async {
+  final state = EditorState()..setCanvasSize(const Size(32, 32));
+  addTearDown(state.dispose);
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  LayerPainter(
+    state: state,
+    showTransparentCanvasBackground: showTransparentCanvasBackground,
+  ).paint(canvas, const Size(32, 32));
+
+  final picture = recorder.endRecording();
+  addTearDown(picture.dispose);
+  final image = await picture.toImage(32, 32);
+  addTearDown(image.dispose);
+  final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  expect(byteData, isNotNull);
+
+  final bytes = byteData!.buffer.asUint8List();
+  return Color.fromARGB(bytes[3], bytes[0], bytes[1], bytes[2]);
+}
+
+void _paintLayer(EditorState state) {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+
+  LayerPainter(
+    state: state,
+    showTransparentCanvasBackground: true,
+  ).paint(canvas, state.canvasSize);
+
+  recorder.endRecording().dispose();
+}
+
+Color _pixelAt(ByteData byteData, int width, int x, int y) {
+  final bytes = byteData.buffer.asUint8List();
+  final index = (y * width + x) * 4;
+  return Color.fromARGB(
+    bytes[index + 3],
+    bytes[index],
+    bytes[index + 1],
+    bytes[index + 2],
+  );
+}
+
+int _alphaByte(Color color) {
+  return (color.a * 255).round().clamp(0, 255);
+}
+
+int _redByte(Color color) {
+  return (color.r * 255).round().clamp(0, 255);
+}
+
+Future<ByteData> _paintFramePixels(
+  EditorState state, {
+  required bool revealOutsideFrame,
+}) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  LayerPainter(
+    state: state,
+    showTransparentCanvasBackground: true,
+    revealOutsideFrame: revealOutsideFrame,
+  ).paint(canvas, const Size(32, 32));
+
+  final picture = recorder.endRecording();
+  addTearDown(picture.dispose);
+  final image = await picture.toImage(32, 32);
+  addTearDown(image.dispose);
+  final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  expect(byteData, isNotNull);
+  return byteData!;
+}
+
+Future<ui.Image> _createSolidImage(int width, int height, Color color) async {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawRect(
+    Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    Paint()..color = color,
+  );
+  final picture = recorder.endRecording();
+  try {
+    return await picture.toImage(width, height);
+  } finally {
+    picture.dispose();
+  }
+}
+
+Future<ui.Image> _createTwoToneImage() async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawRect(
+    const Rect.fromLTWH(0, 0, 2, 4),
+    Paint()..color = Colors.black,
+  );
+  canvas.drawRect(
+    const Rect.fromLTWH(2, 0, 2, 4),
+    Paint()..color = Colors.white,
+  );
+  final picture = recorder.endRecording();
+  try {
+    return await picture.toImage(4, 4);
+  } finally {
+    picture.dispose();
+  }
+}
+
+void main() {
+  setUp(CheckerboardPattern.debugReset);
+  tearDown(CheckerboardPattern.debugReset);
+
+  test('default canvas background remains white', () async {
+    final color = await _paintCanvasPixel(
+      showTransparentCanvasBackground: false,
+    );
+
+    expect(color, Colors.white);
+  });
+
+  test('transparent canvas background shows checkerboard', () async {
+    final color = await _paintCanvasPixel(
+      showTransparentCanvasBackground: true,
+    );
+
+    expect(color, isNot(Colors.white));
+  });
+
+  test('opaque canvas skips the checkerboard under its white base', () {
+    final state = EditorState()..setCanvasSize(const Size(32, 32));
+    addTearDown(state.dispose);
+
+    final recorder = ui.PictureRecorder();
+    LayerPainter(
+      state: state,
+      showTransparentCanvasBackground: false,
+    ).paint(Canvas(recorder), state.canvasSize);
+    recorder.endRecording().dispose();
+
+    expect(CheckerboardPattern.debugTileBuildCount, 0);
+  });
+
+  test('checkerboard texture is reused across repaints and canvas sizes', () {
+    final state = EditorState()..setCanvasSize(const Size(32, 32));
+    addTearDown(state.dispose);
+
+    _paintLayer(state);
+    _paintLayer(state);
+    state.setCanvasSize(const Size(4096, 4096));
+    _paintLayer(state);
+
+    expect(CheckerboardPattern.debugTileBuildCount, 1);
+  });
+
+  test('checkerboard starts its 16px cells at the frame corner', () async {
+    final state = EditorState()..setCanvasSize(const Size(32, 32));
+    addTearDown(state.dispose);
+
+    final pixels = await _paintFramePixels(state, revealOutsideFrame: false);
+
+    expect(_pixelAt(pixels, 32, 4, 4), Colors.grey.shade300);
+    expect(_pixelAt(pixels, 32, 20, 4), Colors.grey.shade100);
+    expect(_pixelAt(pixels, 32, 20, 20), Colors.grey.shade300);
+  });
+
+  test('checkerboard paint stays clipped to non-multiple canvas size',
+      () async {
+    final state = EditorState()..setCanvasSize(const Size(33, 33));
+    addTearDown(state.dispose);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    LayerPainter(
+      state: state,
+      showTransparentCanvasBackground: true,
+    ).paint(canvas, const Size(48, 48));
+
+    final picture = recorder.endRecording();
+    addTearDown(picture.dispose);
+
+    final image = await picture.toImage(48, 48);
+    addTearDown(image.dispose);
+
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    expect(byteData, isNotNull);
+
+    final insidePixel = _pixelAt(byteData!, 48, 1, 1);
+    final outsidePixel = _pixelAt(byteData, 48, 34, 16);
+
+    expect(_alphaByte(insidePixel), greaterThan(0));
+    expect(_alphaByte(outsidePixel), 0);
+  });
+
+  test('layer painter does not draw live current stroke preview', () async {
+    final state = EditorState()..setCanvasSize(const Size(32, 32));
+    addTearDown(state.dispose);
+
+    state.startStroke(const Offset(16, 16));
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    LayerPainter(
+      state: state,
+      showTransparentCanvasBackground: false,
+    ).paint(canvas, const Size(32, 32));
+
+    final picture = recorder.endRecording();
+    addTearDown(picture.dispose);
+
+    final image = await picture.toImage(32, 32);
+    addTearDown(image.dispose);
+
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    expect(byteData, isNotNull);
+
+    expect(_pixelAt(byteData!, 32, 16, 16), Colors.white);
+  });
+
+  test(
+    'layer painter filters bitmap layers at fractional sample positions',
+    () async {
+      final state = EditorState()..setCanvasSize(const Size(4, 4));
+      addTearDown(state.dispose);
+
+      final sourceImage = await _createTwoToneImage();
+      state.layerManager.addLayerFromUiImage(sourceImage, name: 'two-tone');
+      state.canvasController.setViewportSize(const Size(3, 3));
+      state.canvasController.setScale(0.75);
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      LayerPainter(
+        state: state,
+        showTransparentCanvasBackground: false,
+      ).paint(canvas, const Size(3, 3));
+
+      final picture = recorder.endRecording();
+      addTearDown(picture.dispose);
+      final image = await picture.toImage(3, 3);
+      addTearDown(image.dispose);
+      final byteData = await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      expect(byteData, isNotNull);
+
+      final boundaryRed = _redByte(_pixelAt(byteData!, 3, 1, 1));
+      expect(boundaryRed, greaterThan(0));
+      expect(boundaryRed, lessThan(255));
+    },
+  );
+
+  test('rotated view keeps layers that rotate into the viewport', () async {
+    const red = Color(0xFFFF0000);
+    const viewport = Size(128, 32);
+    final state = EditorState()..setCanvasSize(const Size(64, 64));
+    addTearDown(state.dispose);
+    // 未旋转时这块内容在视口下方，旋转 90° 后落到视口左侧 (4..24, 0..20)
+    state.layerManager
+        .addLayerFromUiImage(await _createSolidImage(20, 20, red), name: 'red')
+        .translateContent(const Offset(0, 40));
+    state.canvasController
+      ..setViewportSize(viewport)
+      ..rotateRight(degrees: 90);
+
+    final recorder = ui.PictureRecorder();
+    LayerPainter(
+      state: state,
+      showTransparentCanvasBackground: true,
+    ).paint(Canvas(recorder), viewport);
+    final picture = recorder.endRecording();
+    addTearDown(picture.dispose);
+    final image = await picture.toImage(128, 32);
+    addTearDown(image.dispose);
+    final pixels = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+
+    expect(_pixelAt(pixels!, 128, 14, 10), red);
+  });
+
+  group('detached frame', () {
+    const red = Color(0xFFFF0000);
+
+    Future<EditorState> createState() async {
+      final state = EditorState()
+        ..allowsDetachedFrame = true
+        ..setFrame(const Rect.fromLTWH(16, 0, 16, 32));
+      addTearDown(state.dispose);
+      state.canvasController.setViewportSize(const Size(32, 32));
+      state.layerManager.addLayerFromUiImage(
+        await _createSolidImage(32, 32, red),
+        name: 'source',
+      );
+      return state;
+    }
+
+    test('reveal mode keeps outside content visible but dimmed', () async {
+      final state = await createState();
+
+      final pixels = await _paintFramePixels(state, revealOutsideFrame: true);
+
+      expect(_pixelAt(pixels, 32, 24, 16), red);
+      final outside = _pixelAt(pixels, 32, 8, 16);
+      expect(_alphaByte(outside), 255);
+      expect(outside, isNot(red));
+      expect(_redByte(outside), lessThan(255));
+    });
+
+    test('clip mode hides everything outside the frame', () async {
+      final state = await createState();
+
+      final pixels = await _paintFramePixels(state, revealOutsideFrame: false);
+
+      expect(_pixelAt(pixels, 32, 24, 16), red);
+      expect(_alphaByte(_pixelAt(pixels, 32, 8, 16)), 0);
+    });
+
+    test('checkerboard follows the frame origin', () async {
+      final state = EditorState()
+        ..allowsDetachedFrame = true
+        ..setFrame(const Rect.fromLTWH(16, 0, 16, 32));
+      addTearDown(state.dispose);
+
+      final pixels = await _paintFramePixels(state, revealOutsideFrame: false);
+
+      expect(_alphaByte(_pixelAt(pixels, 32, 4, 4)), 0);
+      expect(_alphaByte(_pixelAt(pixels, 32, 20, 4)), greaterThan(0));
+    });
+  });
+}

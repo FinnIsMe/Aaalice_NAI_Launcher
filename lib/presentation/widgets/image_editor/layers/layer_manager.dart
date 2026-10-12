@@ -1,0 +1,750 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import '../../../../core/utils/app_logger.dart';
+import '../core/history_manager.dart';
+import 'layer.dart';
+import 'layer_raster.dart';
+import 'layer_role.dart';
+import 'snapshot_cache.dart';
+
+/// 图层管理器
+/// 管理所有图层的增删改查、排序等操作
+class LayerManager extends ChangeNotifier {
+  /// 图层列表：索引 0 在最上层、最后绘制，图层面板按同一顺序自上而下列出
+  final List<Layer> _layers = [];
+  List<Layer> get layers => List.unmodifiable(_layers);
+
+  /// 当前活动图层ID
+  String? _activeLayerId;
+  String? get activeLayerId => _activeLayerId;
+
+  /// 活动图层变化通知器（仅UI更新，不触发画布重绘）
+  final ValueNotifier<String?> activeLayerNotifier = ValueNotifier(null);
+
+  /// UI状态变化通知器（锁定、重命名等不需要重绘画布的操作）
+  final ValueNotifier<int> uiUpdateNotifier = ValueNotifier(0);
+
+  /// 是否正在更新缩略图（防止并发）
+  bool _isUpdatingThumbnails = false;
+
+  // ===== 批量操作支持 =====
+
+  /// 批量操作嵌套深度
+  int _batchDepth = 0;
+
+  /// 是否处于批量操作模式
+  bool get _isBatchMode => _batchDepth > 0;
+
+  /// 批量操作期间是否有结构变化（图层增删、排序）
+  bool _pendingStructureChange = false;
+
+  /// 批量操作期间是否有内容变化（笔画添加）
+  bool _pendingContentChange = false;
+
+  /// 各角色最近激活的图层，工具入口切换角色时回到用户刚才在用的那一层
+  final Map<LayerRole, String> _lastActiveIdByRole = {};
+
+  bool _pendingActiveLayerNotification = false;
+  String? _pendingActiveLayerId;
+  final Map<String, bool> _pendingLayerActiveValues = {};
+
+  // ===== 快照缓存管理器 =====
+
+  /// 快照缓存管理器（延迟初始化）
+  /// 拾色只取画面内容，重绘会话里的蒙版叠加色不参与
+  late final CanvasSnapshotManager _snapshotManager = CanvasSnapshotManager(
+    renderCallback: renderImageLayers,
+  );
+
+  /// 获取快照版本号
+  int get snapshotVersion => _snapshotManager.snapshotVersion;
+
+  /// 快照是否有效
+  bool get hasValidSnapshot => _snapshotManager.hasValidSnapshot;
+
+  /// 内部设置活动图层ID（同时更新 activeLayerNotifier 和 isActiveNotifier）
+  void _setActiveLayerIdInternal(String? layerId) {
+    // 旧活动图层：通知变为非活动
+    final oldLayerId = _activeLayerId;
+    _setLayerActiveNotifierValue(oldLayerId, false);
+
+    _activeLayerId = layerId;
+    _setActiveLayerNotifierValue(layerId);
+    _rememberActiveRole(layerId);
+
+    // 新活动图层：通知变为活动
+    _setLayerActiveNotifierValue(layerId, true);
+  }
+
+  void _rememberActiveRole(String? layerId) {
+    final layer = layerId == null ? null : getLayerById(layerId);
+    if (layer != null) _lastActiveIdByRole[layer.role] = layer.id;
+  }
+
+  /// 切到 [role] 时落到的图层：最近激活过且未锁定的同角色图层，其次最上方未锁定的
+  Layer? preferredLayerFor(LayerRole role) {
+    final rememberedId = _lastActiveIdByRole[role];
+    final remembered = rememberedId == null ? null : getLayerById(rememberedId);
+    if (remembered != null && remembered.role == role && !remembered.locked) {
+      return remembered;
+    }
+
+    Layer? firstOfRole;
+    for (final layer in _layers) {
+      if (layer.role != role) continue;
+      if (!layer.locked) return layer;
+      firstOfRole ??= layer;
+    }
+    return firstOfRole;
+  }
+
+  /// 仅通知UI更新（不触发画布重绘）
+  void _notifyUiOnly() {
+    uiUpdateNotifier.value++;
+  }
+
+  /// 获取当前活动图层
+  Layer? get activeLayer {
+    if (_activeLayerId == null || _layers.isEmpty) return null;
+
+    // 使用 firstWhere 的 orElse 避免异常
+    final layer = _layers.cast<Layer?>().firstWhere(
+      (l) => l?.id == _activeLayerId,
+      orElse: () => null,
+    );
+
+    if (layer != null) return layer;
+
+    // 如果活动图层不存在，修复状态并返回最后一个图层
+    if (_layers.isNotEmpty) {
+      _setActiveLayerIdInternal(_layers.last.id);
+      return _layers.last;
+    }
+    return null;
+  }
+
+  /// 图层数量
+  int get layerCount => _layers.length;
+
+  /// 是否为空
+  bool get isEmpty => _layers.isEmpty;
+
+  Iterable<Layer> get maskLayers => _layers.where((layer) => layer.isMask);
+
+  Iterable<Layer> get imageLayers => _layers.where((layer) => !layer.isMask);
+
+  int indexOfLayer(String layerId) =>
+      _layers.indexWhere((layer) => layer.id == layerId);
+
+  /// 插入已构造的图层；[index] 越界时追加到最底层
+  Layer insertLayer(Layer layer, int index, {bool setActive = true}) {
+    if (index >= 0 && index <= _layers.length) {
+      _layers.insert(index, layer);
+    } else {
+      _layers.add(layer);
+    }
+    if (setActive) {
+      _setActiveLayerIdInternal(layer.id);
+    }
+    _markStructureChanged();
+    return layer;
+  }
+
+  void translateLayer(String layerId, Offset delta) {
+    final layer = getLayerById(layerId);
+    if (layer == null || delta == Offset.zero) return;
+    layer.translateContent(delta);
+    _markContentChanged();
+  }
+
+  /// 添加图层；不指定 [index] 时追加到最底层
+  Layer addLayer({String? name, int? index, LayerRole role = LayerRole.image}) {
+    final layerName = name ?? 'Layer ${_layers.length + 1}';
+    final layer = Layer(name: layerName, role: role);
+
+    if (index != null && index >= 0 && index <= _layers.length) {
+      _layers.insert(index, layer);
+    } else {
+      _layers.add(layer);
+    }
+
+    _setActiveLayerIdInternal(layer.id);
+    _markStructureChanged();
+    return layer;
+  }
+
+  /// 从数据插入图层
+  /// [setActive] 为 true 时将新图层设为活动图层
+  Layer insertLayerFromData(
+    LayerData data,
+    int index, {
+    bool setActive = false,
+  }) {
+    final layer = Layer.fromData(data);
+    if (index >= 0 && index <= _layers.length) {
+      _layers.insert(index, layer);
+    } else {
+      _layers.add(layer);
+    }
+
+    if (setActive) {
+      _setActiveLayerIdInternal(layer.id);
+    }
+
+    _markStructureChanged();
+    return layer;
+  }
+
+  /// 从图像数据创建图层，底图左上角落在文档坐标 [offset]
+  ///
+  /// 如果图像解码失败，返回 null 并清理资源
+  Future<Layer?> addLayerFromImage(
+    Uint8List imageBytes, {
+    String? name,
+    int? index,
+    Offset offset = Offset.zero,
+    LayerRole role = LayerRole.image,
+  }) async {
+    final layerName = name ?? 'Imported Image ${_layers.length + 1}';
+    final layer = Layer(name: layerName, role: role);
+
+    try {
+      // 设置基础图像
+      await layer.setBaseImage(imageBytes);
+      if (offset != Offset.zero) {
+        layer.setBaseImageOffset(offset);
+      }
+    } catch (e) {
+      // 解码失败，清理资源
+      layer.dispose();
+      AppLogger.w('Failed to add layer from image: $e', 'ImageEditor');
+      return null;
+    }
+
+    // 添加到指定位置或末尾
+    if (index != null && index >= 0 && index <= _layers.length) {
+      _layers.insert(index, layer);
+    } else {
+      _layers.add(layer);
+    }
+
+    _setActiveLayerIdInternal(layer.id);
+    _markStructureChanged();
+    return layer;
+  }
+
+  Future<bool> replaceLayerImage(String layerId, Uint8List imageBytes) async {
+    final layer = getLayerById(layerId);
+    if (layer == null) return false;
+
+    await layer.setBaseImage(imageBytes);
+    _markContentChanged();
+    return true;
+  }
+
+  /// 从 ui.Image 创建图层
+  ///
+  /// **重要：此方法会接管 [image] 的所有权，调用者不应再使用或释放该图像。**
+  Layer addLayerFromUiImage(ui.Image image, {String? name}) {
+    final layerName = name ?? 'Imported Image ${_layers.length + 1}';
+    final layer = Layer(name: layerName);
+
+    // 设置基础图像（接管所有权）
+    layer.setBaseImageFromImage(image);
+
+    _layers.add(layer);
+    _setActiveLayerIdInternal(layer.id);
+    _markStructureChanged();
+    return layer;
+  }
+
+  /// 同步替换底图并清空笔画；[image] 的所有权移交给图层
+  void replaceLayerBaseImageSync(
+    String layerId,
+    ui.Image image,
+    Uint8List? bytes, {
+    Offset offset = Offset.zero,
+  }) {
+    replaceLayerBaseRasterSync(
+      layerId,
+      LayerRaster(image, bytes: bytes),
+      offset: offset,
+    );
+  }
+
+  /// 同步替换底图并清空笔画；[raster] 的一份持有移交给图层
+  void replaceLayerBaseRasterSync(
+    String layerId,
+    LayerRaster raster, {
+    Offset offset = Offset.zero,
+  }) {
+    final layer = getLayerById(layerId);
+    if (layer == null) {
+      raster.release();
+      return;
+    }
+    layer.clearStrokes();
+    layer.setBaseRaster(raster, offset: offset);
+    _markContentChanged();
+  }
+
+  /// 把图层内容恢复为快照；快照不被消费
+  void restoreLayerContent(String layerId, LayerContentSnapshot snapshot) {
+    final layer = getLayerById(layerId);
+    if (layer == null) return;
+    layer.restoreContent(snapshot);
+    _markContentChanged();
+  }
+
+  /// 替换图层底图(3D 图层再编辑用),保留图层其余状态
+  Future<Layer?> replaceLayerBaseImage(
+    String layerId,
+    Uint8List imageBytes, {
+    Offset offset = Offset.zero,
+  }) async {
+    final layer = getLayerById(layerId);
+    if (layer == null) return null;
+    await layer.setBaseImage(imageBytes);
+    if (offset != Offset.zero) {
+      layer.setBaseImageOffset(offset);
+    }
+    _markContentChanged();
+    return layer;
+  }
+
+  /// 删除图层
+  bool removeLayer(String layerId) {
+    final index = _layers.indexWhere((l) => l.id == layerId);
+    if (index == -1) return false;
+
+    final layer = _layers.removeAt(index);
+    layer.dispose();
+
+    // 如果删除的是活动图层，选择相邻图层
+    if (_activeLayerId == layerId) {
+      if (_layers.isNotEmpty) {
+        _setActiveLayerIdInternal(
+          _layers[index.clamp(0, _layers.length - 1)].id,
+        );
+      } else {
+        _setActiveLayerIdInternal(null);
+      }
+    }
+
+    _markStructureChanged();
+    return true;
+  }
+
+  /// 重排图层
+  void reorderLayer(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _layers.length) return;
+    if (newIndex < 0 || newIndex >= _layers.length) return;
+    if (oldIndex == newIndex) return;
+
+    final layer = _layers.removeAt(oldIndex);
+    _layers.insert(newIndex, layer);
+    _markStructureChanged();
+  }
+
+  /// 设置活动图层
+  /// 使用精确通知：仅通知旧/新活动图层的 isActiveNotifier
+  /// 避免全局 activeLayerNotifier 导致所有图层 tile 重建
+  void setActiveLayer(String layerId) {
+    if (_activeLayerId == layerId) return; // 避免重复设置
+
+    // 旧活动图层：通知变为非活动（O(1) rebuild）
+    _setLayerActiveNotifierValue(_activeLayerId, false);
+
+    // 新活动图层：通知变为活动（O(1) rebuild）
+    final newLayer = getLayerById(layerId);
+    if (newLayer != null) {
+      _activeLayerId = layerId;
+      // 保持兼容：更新全局通知器（其他需要监听活动图层的组件）
+      _rememberActiveRole(layerId);
+      _setLayerActiveNotifierValue(layerId, true);
+      _setActiveLayerNotifierValue(layerId);
+    }
+  }
+
+  /// 通过ID获取图层
+  Layer? getLayerById(String id) {
+    try {
+      return _layers.firstWhere((l) => l.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 切换图层可见性
+  void toggleVisibility(String layerId) {
+    final layer = getLayerById(layerId);
+    if (layer != null) {
+      layer.visible = !layer.visible;
+      _markContentChanged();
+    }
+  }
+
+  /// 切换图层锁定（不触发画布重绘）
+  void toggleLock(String layerId) {
+    final layer = getLayerById(layerId);
+    if (layer != null) {
+      layer.locked = !layer.locked;
+      _notifyUiOnly();
+    }
+  }
+
+  /// 设置图层不透明度
+  void setLayerOpacity(String layerId, double opacity) {
+    final layer = getLayerById(layerId);
+    if (layer != null) {
+      layer.opacity = opacity.clamp(0.0, 1.0);
+      layer.markNeedsUpdate();
+      _markContentChanged();
+    }
+  }
+
+  /// 设置图层混合模式
+  void setLayerBlendMode(String layerId, LayerBlendMode mode) {
+    final layer = getLayerById(layerId);
+    if (layer != null) {
+      layer.blendMode = mode;
+      _markContentChanged();
+    }
+  }
+
+  /// 重命名图层（不触发画布重绘）
+  void renameLayer(String layerId, String newName) {
+    final layer = getLayerById(layerId);
+    if (layer != null) {
+      layer.name = newName;
+      _notifyUiOnly();
+    }
+  }
+
+  /// 向图层添加笔画
+  void addStrokeToLayer(String layerId, StrokeData stroke) {
+    final layer = getLayerById(layerId);
+    if (layer != null && !layer.locked) {
+      layer.addStroke(stroke);
+      _markContentChanged();
+    }
+  }
+
+  /// 向当前图层添加笔画
+  void addStrokeToActiveLayer(StrokeData stroke) {
+    final layer = activeLayer;
+    if (layer != null && !layer.locked) {
+      layer.addStroke(stroke);
+      _markContentChanged();
+    }
+  }
+
+  /// 移除图层最后一个笔画
+  StrokeData? removeLastStrokeFromLayer(String layerId) {
+    final layer = getLayerById(layerId);
+    if (layer != null) {
+      final stroke = layer.removeLastStroke();
+      // 仅在实际删除笔画时通知（避免无效重绘）
+      if (stroke != null) {
+        _markContentChanged();
+      }
+      return stroke;
+    }
+    return null;
+  }
+
+  /// 清除图层
+  void clearLayer(String layerId) {
+    final layer = getLayerById(layerId);
+    if (layer != null && !layer.locked) {
+      layer.clearStrokes();
+      _markContentChanged();
+    }
+  }
+
+  /// 清除当前图层
+  void clearActiveLayer() {
+    if (_activeLayerId != null) {
+      clearLayer(_activeLayerId!);
+    }
+  }
+
+  /// 清除所有图层
+  void clear() {
+    for (final layer in _layers) {
+      layer.dispose();
+    }
+    _layers.clear();
+    _lastActiveIdByRole.clear();
+    _setActiveLayerIdInternal(null);
+    _markStructureChanged();
+  }
+
+  /// 变换所有图层内容以适应新画布尺寸
+  ///
+  /// [oldSize] 原画布尺寸
+  /// [newSize] 新画布尺寸
+  /// [mode] 变换模式
+  void transformAllLayers(Size oldSize, Size newSize, CanvasResizeMode mode) {
+    if (oldSize == newSize) return;
+
+    // 使用批量操作优化，只触发一次通知
+    beginBatch();
+    try {
+      for (final layer in _layers) {
+        layer.transformContent(oldSize, newSize, mode);
+      }
+      _markContentChanged();
+    } finally {
+      endBatch();
+    }
+  }
+
+  /// 更新所有缩略图（[region] 为取景框）
+  Future<void> updateAllThumbnails(Rect region) async {
+    if (_isUpdatingThumbnails) return;
+    _isUpdatingThumbnails = true;
+
+    try {
+      // 创建快照避免并发修改
+      final layersSnapshot = List<Layer>.from(_layers);
+      for (final layer in layersSnapshot) {
+        await layer.updateThumbnail(region);
+      }
+      notifyListeners();
+    } finally {
+      _isUpdatingThumbnails = false;
+    }
+  }
+
+  /// 以文档坐标渲染所有可见图层，使用 renderWithCache 优先利用缓存
+  /// [viewportBounds] 视口边界，用于空间剔除优化（可选）
+  void renderAll(
+    Canvas canvas, {
+    Rect? viewportBounds,
+    FilterQuality filterQuality = FilterQuality.none,
+  }) {
+    renderWhere(
+      canvas,
+      (_) => true,
+      viewportBounds: viewportBounds,
+      filterQuality: filterQuality,
+    );
+  }
+
+  /// 只渲染满足 [include] 的可见图层，顺序与 [renderAll] 相同
+  void renderWhere(
+    Canvas canvas,
+    bool Function(Layer layer) include, {
+    Rect? viewportBounds,
+    FilterQuality filterQuality = FilterQuality.none,
+  }) {
+    // 索引 0 在最上层，所以从末尾往前画
+    for (final layer in _layers.reversed) {
+      if (layer.visible && include(layer)) {
+        layer.renderWithCache(
+          canvas,
+          viewportBounds: viewportBounds,
+          filterQuality: filterQuality,
+        );
+      }
+    }
+  }
+
+  /// 只合成图片层；蒙版层的叠加色不属于画面内容
+  void renderImageLayers(Canvas canvas) {
+    renderWhere(canvas, (layer) => !layer.isMask);
+  }
+
+  /// 导出 [region]（取景框）内合并后的图像
+  Future<ui.Image> exportMergedImage(
+    Rect region, {
+    bool transparentBackground = false,
+    bool Function(Layer layer)? include,
+  }) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.translate(-region.left, -region.top);
+
+    if (!transparentBackground) {
+      canvas.drawRect(region, Paint()..color = Colors.white);
+    }
+
+    renderWhere(canvas, include ?? (_) => true);
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(
+      region.width.round(),
+      region.height.round(),
+    );
+    picture.dispose();
+
+    return image;
+  }
+
+  // ===== 批量操作方法 =====
+
+  /// 开始批量操作（合并图层、展平等）
+  /// 在批量操作期间，不会触发中间通知
+  void beginBatch() {
+    _batchDepth++;
+  }
+
+  /// 结束批量操作，发送单次通知
+  void endBatch() {
+    if (_batchDepth == 0) {
+      return;
+    }
+
+    _batchDepth--;
+    if (_batchDepth > 0) {
+      return;
+    }
+
+    if (_pendingStructureChange || _pendingContentChange) {
+      if (_pendingContentChange) {
+        invalidateSnapshot();
+      }
+      _flushPendingActiveLayerNotifications();
+      notifyListeners();
+    } else {
+      _flushPendingActiveLayerNotifications();
+    }
+    _pendingStructureChange = false;
+    _pendingContentChange = false;
+  }
+
+  /// 在同步批量操作中合并多次结构/内容通知。
+  T runBatch<T>(T Function() body) {
+    beginBatch();
+    try {
+      return body();
+    } finally {
+      endBatch();
+    }
+  }
+
+  /// 在异步批量操作中合并多次结构/内容通知。
+  Future<T> runBatchAsync<T>(Future<T> Function() body) async {
+    beginBatch();
+    try {
+      return await body();
+    } finally {
+      endBatch();
+    }
+  }
+
+  void _markStructureChanged() {
+    if (_isBatchMode) {
+      _pendingStructureChange = true;
+      _pendingContentChange = true;
+      return;
+    }
+
+    invalidateSnapshot();
+    notifyListeners();
+  }
+
+  void _markContentChanged() {
+    if (_isBatchMode) {
+      _pendingContentChange = true;
+      return;
+    }
+
+    invalidateSnapshot();
+    notifyListeners();
+  }
+
+  void _setActiveLayerNotifierValue(String? layerId) {
+    if (_isBatchMode) {
+      _pendingActiveLayerNotification = true;
+      _pendingActiveLayerId = layerId;
+      return;
+    }
+
+    activeLayerNotifier.value = layerId;
+  }
+
+  void _setLayerActiveNotifierValue(String? layerId, bool value) {
+    if (layerId == null) {
+      return;
+    }
+
+    if (_isBatchMode) {
+      _pendingLayerActiveValues[layerId] = value;
+      return;
+    }
+
+    final layer = getLayerById(layerId);
+    layer?.isActiveNotifier.value = value;
+  }
+
+  void _flushPendingActiveLayerNotifications() {
+    if (!_pendingActiveLayerNotification && _pendingLayerActiveValues.isEmpty) {
+      return;
+    }
+
+    for (final entry in _pendingLayerActiveValues.entries) {
+      final layer = getLayerById(entry.key);
+      layer?.isActiveNotifier.value = entry.value;
+    }
+    _pendingLayerActiveValues.clear();
+
+    if (_pendingActiveLayerNotification) {
+      activeLayerNotifier.value = _pendingActiveLayerId;
+      _pendingActiveLayerNotification = false;
+      _pendingActiveLayerId = null;
+    }
+  }
+
+  // ===== 快照缓存方法（代理到 CanvasSnapshotManager）=====
+
+  /// 标记快照失效（在图层变化时调用）
+  void invalidateSnapshot() => _snapshotManager.invalidate();
+
+  /// 异步更新 [region]（取景框）的画布快照
+  Future<bool> updateSnapshotAsync(Rect region) =>
+      _snapshotManager.updateSnapshotAsync(region);
+
+  /// 同步读取指定文档坐标的像素颜色
+  Color? getPixelColor(int x, int y) => _snapshotManager.getPixelColor(x, y);
+
+  /// 同步获取放大镜网格像素
+  List<List<Color>>? getMagnifierPixels(
+    int centerX,
+    int centerY,
+    int gridSize,
+  ) => _snapshotManager.getMagnifierPixels(centerX, centerY, gridSize);
+
+  /// 更新区域快照（仅渲染光标周围的小区域，限制在 [region] 内）
+  Future<bool> updateRegionalSnapshot(
+    int centerX,
+    int centerY,
+    Rect region,
+  ) => _snapshotManager.updateRegionalSnapshot(centerX, centerY, region);
+
+  /// 获取区域缓存中的像素颜色（同步，O(1)）
+  Color? getRegionalPixel(int x, int y) =>
+      _snapshotManager.getRegionalPixel(x, y);
+
+  /// 获取区域缓存中的放大镜像素网格（同步）
+  List<List<Color>>? getRegionalMagnifierPixels(
+    int centerX,
+    int centerY,
+    int gridSize,
+  ) => _snapshotManager.getRegionalMagnifierPixels(centerX, centerY, gridSize);
+
+  @override
+  void dispose() {
+    _snapshotManager.dispose();
+    activeLayerNotifier.dispose();
+    uiUpdateNotifier.dispose();
+    for (final layer in _layers) {
+      layer.dispose();
+    }
+    super.dispose();
+  }
+}

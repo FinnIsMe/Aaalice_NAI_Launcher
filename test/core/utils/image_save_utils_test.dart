@@ -1,0 +1,901 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:hive/hive.dart';
+import 'package:image/image.dart' as img;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nai_launcher/core/constants/api_constants.dart';
+import 'package:nai_launcher/core/enums/image_model_mode.dart';
+import 'package:nai_launcher/core/utils/comfyui_prompt_parser.dart';
+import 'package:nai_launcher/core/utils/image_save_utils.dart';
+import 'package:nai_launcher/data/models/character/character_prompt.dart';
+import 'package:nai_launcher/data/models/fixed_tag/fixed_tag_entry.dart';
+import 'package:nai_launcher/data/models/fixed_tag/fixed_tag_prompt_type.dart';
+import 'package:nai_launcher/data/models/fixed_tag/fixed_tag_usage_snapshot.dart';
+import 'package:nai_launcher/data/models/gallery/nai_image_metadata.dart';
+import 'package:nai_launcher/data/models/image/image_params.dart';
+import 'package:nai_launcher/data/models/vibe/vibe_reference.dart';
+import 'package:nai_launcher/data/services/fixed_tag/fixed_tag_usage_record_store.dart';
+import 'package:nai_launcher/data/services/metadata/image_metadata_container_codec.dart';
+import 'package:nai_launcher/data/services/metadata/unified_metadata_parser.dart';
+import 'package:path/path.dart' as p;
+
+void main() {
+  group('ComfyuiPromptParser pipe syntax', () {
+    test('should parse single-line whitespace pipe character prompts', () {
+      const prompt =
+          "1girl, 2boys, indoor, luxurious living room, sunlight, heavy contrast, tense atmosphere, ntr, femdom, humiliation, neglect play, foot worship | 1girl, large breasts, petite, rabbit girl, rabbit ears, 1.2::white hair::, very long hair, gradient hair, purple hair, ahoge, one side up, hair between eyes, 1.2::white ear fluff::, purple inner ears, 1.2::aqua eyes::, 1.1::heart-shaped pupils::, 1.2::purple pupils::, 1.3::purple eyelashes::, purple hair bow, black choker, blonde neck bell, white frilled dress, detached sleeves, white pantyhose, high heels, sitting, crossing legs, smug, arrogant, looking down, contempt, target#licking foot | 1boy, tall, muscular, handsome, stylish suit, standing, hand in pocket, holding girl's waist, smiling, confident | 1boy, short, pathetic, kneeling, on all fours, slave, human furniture, crying, despair, looking up, source#licking foot";
+
+      expect(ComfyuiPromptParser.isComfyuiMultiCharacter(prompt), isTrue);
+
+      final result = ComfyuiPromptParser.tryParse(prompt);
+
+      expect(result, isNotNull);
+      expect(result!.globalPrompt, startsWith('1girl, 2boys, indoor'));
+      expect(result.characters, hasLength(3));
+      expect(result.characters[0].prompt, contains('target#licking foot'));
+      expect(result.characters[1].prompt, contains("holding girl's waist"));
+      expect(result.characters[2].prompt, contains('source#licking foot'));
+      expect(result.characters[0].inferredGender, CharacterGender.female);
+      expect(result.characters[1].inferredGender, CharacterGender.male);
+      expect(result.characters[2].inferredGender, CharacterGender.male);
+    });
+
+    test('should not treat NovelAI dynamic tags as pipe character syntax', () {
+      const prompt = '1girl, {red|blue} hair, looking at viewer';
+
+      expect(ComfyuiPromptParser.isComfyuiMultiCharacter(prompt), isFalse);
+      expect(ComfyuiPromptParser.tryParse(prompt), isNull);
+    });
+  });
+
+  group('ImageSaveUtils metadata semantics', () {
+    test(
+      'should build metadata from request prompt and explicit preset flags',
+      () {
+        final params = ImageParams(
+          prompt: '1girl, sunset',
+          negativePrompt: 'bad hands',
+          model: ImageModels.animeDiffusionV45Full,
+          qualityToggle: true,
+          ucPreset: UcPresets.toApiValue(UcPresetType.heavy),
+        );
+
+        final commentJson = ImageSaveUtils.buildCommentJson(
+          params: params,
+          actualSeed: 123,
+          charCaptions: const [
+            {
+              'char_caption': 'blue dress',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+          ],
+          charNegCaptions: const [
+            {
+              'char_caption': 'extra fingers',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+          ],
+        );
+
+        expect(commentJson['prompt'], equals('1girl, sunset'));
+        expect(commentJson['uc'], equals('bad hands'));
+        expect(commentJson['quality_toggle'], isTrue);
+        expect(commentJson['uc_preset'], equals(0));
+        expect(commentJson['model'], equals(ImageModels.animeDiffusionV45Full));
+        expect(
+          commentJson['v4_prompt']['caption']['base_caption'],
+          equals('1girl, sunset'),
+        );
+        expect(
+          commentJson['v4_prompt']['caption']['char_captions'],
+          equals([
+            {
+              'char_caption': 'blue dress',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+          ]),
+        );
+        expect(
+          commentJson['v4_negative_prompt']['caption']['base_caption'],
+          equals('bad hands'),
+        );
+        expect(
+          commentJson['v4_negative_prompt']['caption']['char_captions'],
+          equals([
+            {
+              'char_caption': 'extra fingers',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+          ]),
+        );
+
+        final metadata = ImageSaveUtils.buildMetadata(
+          commentJson: commentJson,
+          params: params,
+        );
+        expect(metadata['Description'], equals('1girl, sunset'));
+      },
+    );
+
+    test('should round-trip the V5 Full Light quality preset', () {
+      const params = ImageParams(
+        prompt:
+            '1girl, transparent background, very aesthetic, amazing quality, no text',
+        negativePrompt: 'bad hands',
+        model: ImageModels.animeDiffusionV5Full,
+        qualityToggle: true,
+        qualityTier: QualityTags.lightTier,
+        transparentBackground: true,
+        ucPreset: UcPresets.noneApiValue,
+      );
+
+      final commentJson = ImageSaveUtils.buildCommentJson(
+        params: params,
+        actualSeed: 123,
+      );
+      final pngMetadata = ImageSaveUtils.buildMetadata(
+        commentJson: commentJson,
+        params: params,
+      );
+      final parsed = NaiImageMetadata.fromNaiComment(pngMetadata);
+      final restored = ImageSaveUtils.rebuildParamsFromMetadata(parsed);
+
+      expect(commentJson['tag_hint_qt'], 3);
+      expect(pngMetadata['Source'], 'NovelAI Diffusion V5 0ADF9AB7');
+      expect(parsed.model, ImageModels.animeDiffusionV5Full);
+      expect(parsed.qualityToggle, isTrue);
+      expect(parsed.qualityTier, QualityTags.lightTier);
+      expect(parsed.transparentBackground, isTrue);
+      expect(parsed.mainPrompt, '1girl');
+      expect(restored, isNotNull);
+      expect(restored!.model, ImageModels.animeDiffusionV5Full);
+      expect(restored.qualityTier, QualityTags.lightTier);
+      expect(restored.transparentBackground, isTrue);
+    });
+
+    test('should omit official tag hints for custom prompt presets', () {
+      const params = ImageParams(
+        model: ImageModels.animeDiffusionV5Curated,
+        omitQualityTagHint: true,
+        omitUcPresetTagHint: true,
+      );
+
+      final commentJson = ImageSaveUtils.buildCommentJson(
+        params: params,
+        actualSeed: 123,
+      );
+
+      expect(commentJson, isNot(contains('tag_hint_qt')));
+      expect(commentJson, isNot(contains('tag_hint_uc_preset')));
+    });
+
+    test('should preserve the selected V5 alpha mode in metadata', () {
+      const params = ImageParams(
+        model: ImageModels.animeDiffusionV5Curated,
+        straightAlpha: false,
+      );
+
+      final commentJson = ImageSaveUtils.buildCommentJson(
+        params: params,
+        actualSeed: 123,
+      );
+
+      expect(commentJson['straight_alpha'], isFalse);
+    });
+
+    test('should record the derived extra_noise_seed for img2img saves', () {
+      final img2img = ImageParams(
+        action: ImageGenerationAction.img2img,
+        model: ImageModels.animeDiffusionV5Curated,
+        sourceImage: Uint8List.fromList([1, 2, 3]),
+      );
+      const txt2img = ImageParams(model: ImageModels.animeDiffusionV5Curated);
+
+      final img2imgComment = ImageSaveUtils.buildCommentJson(
+        params: img2img,
+        actualSeed: 123,
+      );
+      final txt2imgComment = ImageSaveUtils.buildCommentJson(
+        params: txt2img,
+        actualSeed: 123,
+      );
+
+      expect(img2imgComment['extra_noise_seed'], 122);
+      expect(txt2imgComment, isNot(contains('extra_noise_seed')));
+    });
+
+    test(
+      'should preserve embedded raw png metadata when saving generated bytes',
+      () async {
+        final png = img.Image(width: 2, height: 2);
+        img.fill(png, color: img.ColorRgb8(255, 0, 0));
+        var bytes = Uint8List.fromList(img.encodePng(png));
+
+        const rawPrompt = 'artist:a,artist:b';
+        const rawNegative = 'nsfw, lowres, bad hands';
+        const rawSource = 'NovelAI Diffusion V4.5 4BDE2A90';
+        final rawComment = <String, dynamic>{
+          'prompt': rawPrompt,
+          'uc': rawNegative,
+          'seed': 123,
+          'width': 2,
+          'height': 2,
+        };
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Comment',
+          '{"prompt":"$rawPrompt","uc":"$rawNegative","seed":123,"width":2,"height":2}',
+        );
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Description',
+          rawPrompt,
+        );
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Software',
+          'NovelAI',
+        );
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Source',
+          rawSource,
+        );
+
+        final tempDir = await Directory.systemTemp.createTemp(
+          'image_save_utils_test_',
+        );
+        addTearDown(() async {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final savedFile = await ImageSaveUtils.saveImageWithMetadata(
+          imageBytes: bytes,
+          filePath: '${tempDir.path}/saved.png',
+          params: const ImageParams(
+            prompt: 'different prompt',
+            negativePrompt: 'different negative',
+            model: ImageModels.animeDiffusionV45Full,
+          ),
+          actualSeed: 456,
+        );
+
+        final savedBytes = await savedFile.readAsBytes();
+        expect(savedBytes, orderedEquals(bytes));
+        final result = UnifiedMetadataParser.parseFromPng(savedBytes);
+
+        expect(result.success, isTrue);
+        expect(result.metadata, isNotNull);
+        expect(result.metadata!.prompt, equals(rawPrompt));
+        expect(result.metadata!.negativePrompt, equals(rawNegative));
+        expect(result.metadata!.source, equals(rawSource));
+        expect(result.metadata!.seed, equals(rawComment['seed']));
+      },
+    );
+
+    test(
+      'should not add app character captions to embedded png metadata',
+      () async {
+        final png = img.Image(width: 2, height: 2);
+        img.fill(png, color: img.ColorRgb8(0, 255, 0));
+        var bytes = Uint8List.fromList(img.encodePng(png));
+
+        const rawPrompt = '1girl, living room';
+        const rawNegative = 'bad hands';
+        const rawSource = 'NovelAI Diffusion V4.5 4BDE2A90';
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Comment',
+          '{"prompt":"$rawPrompt","uc":"$rawNegative","seed":123,"width":2,"height":2}',
+        );
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Description',
+          rawPrompt,
+        );
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Software',
+          'NovelAI',
+        );
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'Source',
+          rawSource,
+        );
+
+        final tempDir = await Directory.systemTemp.createTemp(
+          'image_save_utils_test_',
+        );
+        addTearDown(() async {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final savedFile = await ImageSaveUtils.saveImageWithMetadata(
+          imageBytes: bytes,
+          filePath: '${tempDir.path}/saved_with_characters.png',
+          params: const ImageParams(
+            prompt: 'different prompt',
+            negativePrompt: 'different negative',
+            model: ImageModels.animeDiffusionV45Full,
+          ),
+          actualSeed: 456,
+          charCaptions: const [
+            {
+              'char_caption': '1girl, rabbit girl, smug',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+            {
+              'char_caption': '1boy, kneeling, despair',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+          ],
+          charNegCaptions: const [
+            {
+              'char_caption': 'lowres',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+            {
+              'char_caption': 'bad anatomy',
+              'centers': [
+                {'x': 0.5, 'y': 0.5},
+              ],
+            },
+          ],
+        );
+
+        final result = UnifiedMetadataParser.parseFromPng(
+          await savedFile.readAsBytes(),
+        );
+
+        expect(result.success, isTrue);
+        expect(result.metadata, isNotNull);
+        expect(result.metadata!.prompt, equals(rawPrompt));
+        expect(result.metadata!.negativePrompt, equals(rawNegative));
+        expect(result.metadata!.source, equals(rawSource));
+        expect(result.metadata!.seed, equals(123));
+        expect(result.metadata!.characterPrompts, isEmpty);
+        expect(result.metadata!.characterNegativePrompts, isEmpty);
+      },
+    );
+
+    test(
+      'should replace ComfyUI workflow prompt with Unicode image metadata',
+      () async {
+        final png = img.Image(width: 2, height: 2);
+        img.fill(png, color: img.ColorRgb8(12, 34, 56));
+        var bytes = Uint8List.fromList(img.encodePng(png));
+        final comfyPrompt = jsonEncode({
+          '1': {
+            'class_type': 'LoadImage',
+            'inputs': {'image': 'launcher_input.png'},
+          },
+          '9': {
+            'class_type': 'KSampler',
+            'inputs': {
+              'seed': 987654321,
+              'steps': 1,
+              'cfg': 1.0,
+              'sampler_name': 'euler',
+              'scheduler': 'simple',
+            },
+          },
+        });
+        bytes = UnifiedMetadataParser.embedTextChunkOnly(
+          bytes,
+          'prompt',
+          comfyPrompt,
+        );
+
+        final rawResult = UnifiedMetadataParser.parseFromPng(bytes);
+        expect(rawResult.success, isTrue);
+        expect(rawResult.sourceFormat, 'ComfyUI');
+        expect(rawResult.metadata!.prompt, isEmpty);
+        expect(rawResult.metadata!.seed, 987654321);
+        expect(rawResult.metadata!.sampler, 'euler');
+
+        const positivePrompt = '1girl, <丰满>, 夜景';
+        const negativePrompt = '低质量, bad hands';
+        final rebuilt = await ImageSaveUtils.rebuildImageBytesWithMetadata(
+          imageBytes: bytes,
+          params: const ImageParams(
+            prompt: positivePrompt,
+            negativePrompt: negativePrompt,
+            model: ImageModels.animeDiffusionV45Full,
+            width: 2,
+            height: 2,
+          ),
+          actualSeed: rawResult.metadata!.seed,
+        );
+
+        final textData = UnifiedMetadataParser.extractPngTextData(rebuilt);
+        expect(textData['prompt'], comfyPrompt);
+        expect(textData['Description'], startsWith(positivePrompt));
+        expect(textData['Description'], contains('<丰满>'));
+        expect(jsonDecode(textData['Comment']!)['prompt'], positivePrompt);
+        expect(ImageSaveUtils.hasEmbeddedNovelAiMetadata(rebuilt), isTrue);
+
+        final parsed = UnifiedMetadataParser.parseFromPng(rebuilt);
+        expect(parsed.success, isTrue);
+        expect(parsed.sourceFormat, 'NovelAI');
+        expect(parsed.metadata!.prompt, positivePrompt);
+        expect(parsed.metadata!.negativePrompt, negativePrompt);
+        expect(parsed.metadata!.seed, 987654321);
+        expect(parsed.metadata!.width, 2);
+        expect(parsed.metadata!.height, 2);
+
+        final decoded = img.decodePng(rebuilt);
+        expect(decoded, isNotNull);
+        expect(decoded!.getPixel(0, 0).r, 12);
+        expect(decoded.getPixel(0, 0).g, 34);
+        expect(decoded.getPixel(0, 0).b, 56);
+      },
+    );
+
+    test('launcher rebuilt comment keeps no launcher-private keys', () async {
+      final png = img.Image(width: 2, height: 2);
+      final rebuilt = await ImageSaveUtils.rebuildImageBytesWithMetadata(
+        imageBytes: Uint8List.fromList(img.encodePng(png)),
+        params: const ImageParams(prompt: 'subject', width: 2, height: 2),
+        actualSeed: 12,
+      );
+      final commentJson =
+          jsonDecode(
+                UnifiedMetadataParser.extractPngTextData(rebuilt)['Comment']!,
+              )
+              as Map<String, dynamic>;
+
+      expect(commentJson, isNot(contains('aaalice_fixed_tags')));
+      expect(commentJson, isNot(contains('fixed_prefix')));
+      expect(commentJson, isNot(contains('fixed_suffix')));
+      expect(commentJson, isNot(contains('fixed_negative_prefix')));
+      expect(commentJson, isNot(contains('fixed_negative_suffix')));
+    });
+
+    test('embedded NovelAI bytes survive a save untouched', () async {
+      final hiveDirectory = await Directory.systemTemp.createTemp(
+        'image-save-hive-',
+      );
+      Hive.init(hiveDirectory.path);
+      addTearDown(() async {
+        await Hive.close();
+        await hiveDirectory.delete(recursive: true);
+      });
+      final root = await Directory.systemTemp.createTemp('image-save-root-');
+      addTearDown(() => root.delete(recursive: true));
+
+      final png = img.Image(width: 2, height: 2);
+      final base = await ImageSaveUtils.rebuildImageBytesWithMetadata(
+        imageBytes: Uint8List.fromList(img.encodePng(png)),
+        params: const ImageParams(
+          prompt: 'original prompt',
+          negativePrompt: 'original negative',
+          width: 2,
+          height: 2,
+        ),
+        actualSeed: 777,
+      );
+      const snapshot = FixedTagUsageSnapshot(
+        entries: [
+          FixedTagUsageEntry(
+            fixedTagId: 'fixed-a',
+            name: 'A',
+            content: 'masterpiece',
+            weight: 1,
+            renderedContent: 'masterpiece',
+            position: FixedTagPosition.prefix,
+            promptType: FixedTagPromptType.positive,
+            order: 0,
+          ),
+        ],
+      );
+
+      final saved = await ImageSaveUtils.saveResultImage(
+        rootPath: root.path,
+        imageBytes: base,
+        preserveOriginalBytes: false,
+        metadata: const NaiImageMetadata(prompt: 'must not replace', seed: 1),
+        fixedTagUsageSnapshot: snapshot,
+      );
+
+      expect(saved.bytes, orderedEquals(base));
+      expect(p.basenameWithoutExtension(saved.path), endsWith('-777'));
+      expect(await File(saved.path).readAsBytes(), orderedEquals(base));
+      expect(
+        FixedTagUsageRecordStore()
+            .lookup(saved.contentHash)
+            ?.entries
+            .single
+            .fixedTagId,
+        'fixed-a',
+      );
+      final metadata = UnifiedMetadataParser.parseFromPng(
+        saved.bytes,
+      ).metadata!;
+      expect(metadata.prompt, 'original prompt');
+      expect(metadata.fixedTagUsageData, isNull);
+      expect(metadata.fixedPrefixTags, isEmpty);
+    });
+  });
+
+  group('saveResultImage reads only the image itself', () {
+    late Directory root;
+    late Directory hiveDirectory;
+    final plainPng = Uint8List.fromList(
+      img.encodePng(img.Image(width: 2, height: 2)),
+    );
+
+    setUp(() async {
+      hiveDirectory = await Directory.systemTemp.createTemp('own-meta-hive-');
+      Hive.init(hiveDirectory.path);
+      root = await Directory.systemTemp.createTemp('own-meta-root-');
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      await hiveDirectory.delete(recursive: true);
+      await root.delete(recursive: true);
+    });
+
+    Map<String, dynamic> savedComment(Uint8List bytes) =>
+        jsonDecode(UnifiedMetadataParser.extractPngTextData(bytes)['Comment']!)
+            as Map<String, dynamic>;
+
+    test('rebuilds missing metadata losslessly from the own raw comment', () async {
+      final comment = ImageSaveUtils.buildCommentJson(
+        params: const ImageParams(
+          prompt: 'own prompt',
+          negativePrompt: 'own negative',
+          model: 'nai-diffusion-4-5-full',
+          ucPreset: 2,
+          width: 2,
+          height: 2,
+        ),
+        actualSeed: 2468,
+        charCaptions: const [
+          {
+            'char_caption': 'girl, red hair',
+            'centers': [
+              {'x': 0.3, 'y': 0.5},
+            ],
+          },
+        ],
+        useCoords: true,
+      );
+      final raw = jsonEncode(comment);
+      final metadata = NaiImageMetadata.fromNaiComment({
+        'Comment': raw,
+        'Software': 'NovelAI',
+        'Source': 'NovelAI Diffusion V4.5',
+      }, rawJson: raw);
+
+      final saved = await ImageSaveUtils.saveResultImage(
+        rootPath: root.path,
+        imageBytes: plainPng,
+        preserveOriginalBytes: false,
+        metadata: metadata,
+      );
+
+      expect(savedComment(saved.bytes), equals(jsonDecode(raw)));
+      expect(
+        UnifiedMetadataParser.extractPngTextData(saved.bytes)['Source'],
+        'NovelAI Diffusion V4.5',
+      );
+      expect(p.basenameWithoutExtension(saved.path), endsWith('-2468'));
+      expect(await File(saved.path).readAsBytes(), orderedEquals(saved.bytes));
+    });
+
+    test('saves bytes untouched when the image has no metadata at all', () async {
+      final now = DateTime(2026, 9, 27, 8, 9, 10);
+
+      final saved = await ImageSaveUtils.saveResultImage(
+        rootPath: root.path,
+        imageBytes: plainPng,
+        preserveOriginalBytes: false,
+        now: now,
+      );
+
+      expect(saved.bytes, orderedEquals(plainPng));
+      expect(UnifiedMetadataParser.extractPngTextData(saved.bytes), isEmpty);
+      expect(
+        p.basename(saved.path),
+        '08-09-10-${now.millisecondsSinceEpoch}.png',
+      );
+    });
+
+    test('field projection keeps vibe arrays aligned without raw comment', () async {
+      const metadata = NaiImageMetadata(
+        prompt: 'projected prompt',
+        seed: 99,
+        vibeReferences: [
+          VibeReference(displayName: 'empty', vibeEncoding: '', strength: 0.1),
+          VibeReference(
+            displayName: 'kept',
+            vibeEncoding: 'encoded-vibe',
+            strength: 0.8,
+            infoExtracted: 0.4,
+          ),
+        ],
+      );
+
+      final saved = await ImageSaveUtils.saveResultImage(
+        rootPath: root.path,
+        imageBytes: plainPng,
+        preserveOriginalBytes: false,
+        metadata: metadata,
+      );
+
+      final comment = savedComment(saved.bytes);
+      expect(comment['prompt'], 'projected prompt');
+      expect(comment['seed'], 99);
+      expect(comment['reference_image_multiple'], ['encoded-vibe']);
+      expect(comment['reference_strength_multiple'], [0.8]);
+      expect(comment['reference_information_extracted_multiple'], [0.4]);
+    });
+
+    test('records the own metadata snapshot when none is passed', () async {
+      const snapshot = FixedTagUsageSnapshot(
+        entries: [
+          FixedTagUsageEntry(
+            fixedTagId: 'own-fixed',
+            name: 'Own',
+            content: 'best quality',
+            weight: 1,
+            renderedContent: 'best quality',
+            position: FixedTagPosition.suffix,
+            promptType: FixedTagPromptType.positive,
+            order: 0,
+          ),
+        ],
+      );
+
+      final saved = await ImageSaveUtils.saveResultImage(
+        rootPath: root.path,
+        imageBytes: plainPng,
+        preserveOriginalBytes: false,
+        metadata: const NaiImageMetadata(
+          prompt: 'own prompt',
+          seed: 5,
+        ).withFixedTagUsageData(snapshot.toJson()),
+      );
+
+      expect(
+        FixedTagUsageRecordStore()
+            .lookup(saved.contentHash)
+            ?.entries
+            .single
+            .fixedTagId,
+        'own-fixed',
+      );
+    });
+
+    test('preserved bytes ignore own metadata and fixed tags', () async {
+      final saved = await ImageSaveUtils.saveResultImage(
+        rootPath: root.path,
+        imageBytes: plainPng,
+        preserveOriginalBytes: true,
+        metadata: const NaiImageMetadata(prompt: 'own prompt', seed: 5),
+        fixedTagUsageSnapshot: const FixedTagUsageSnapshot(),
+      );
+
+      expect(saved.bytes, orderedEquals(plainPng));
+      expect(FixedTagUsageRecordStore().lookup(saved.contentHash), isNull);
+    });
+  });
+
+  test(
+    'background metadata failure does not overwrite the destination',
+    () async {
+      final parent = Directory('tool/.tmp/single-pass-save-tests');
+      await parent.create(recursive: true);
+      final root = await parent.createTemp('damaged-');
+      addTearDown(() => root.delete(recursive: true));
+      final file = File(p.join(root.path, 'existing.png'));
+      final original = Uint8List.fromList(
+        img.encodePng(img.Image(width: 8, height: 8)),
+      );
+      await file.writeAsBytes(original);
+      final damaged = Uint8List.fromList(original)..[original.length - 1] ^= 1;
+      await expectLater(
+        ImageSaveUtils.saveImageWithMetadata(
+          imageBytes: damaged,
+          filePath: file.path,
+          params: const ImageParams(seed: 123),
+          actualSeed: 123,
+          preserveExistingNovelAiMetadata: false,
+        ),
+        throwsFormatException,
+      );
+      expect(await file.readAsBytes(), orderedEquals(original));
+    },
+  );
+
+  test('background batch writer preserves the optional stealth mode', () async {
+    final source = Uint8List.fromList(
+      img.encodePng(img.Image(width: 128, height: 128, numChannels: 4)),
+    );
+    final result = await ImageSaveUtils.rebuildImageBytesWithMetadata(
+      imageBytes: source,
+      params: const ImageParams(
+        prompt: 'stealth round trip',
+        seed: 456,
+        width: 128,
+        height: 128,
+      ),
+      actualSeed: 456,
+      useStealth: true,
+    );
+    final hidden = ImageMetadataContainerCodec.extractStealthMetadataText(
+      result,
+    );
+    expect(hidden, isNotNull);
+    expect(jsonDecode(hidden!)['seed'], 456);
+    expect(
+      jsonDecode(
+        UnifiedMetadataParser.extractPngTextData(result)['Comment']!,
+      )['seed'],
+      456,
+    );
+  });
+
+  test('named dated saves sanitize conflicts and finish atomically', () async {
+    final root = await Directory.systemTemp.createTemp('named-image-save');
+    addTearDown(() => root.delete(recursive: true));
+    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+    final now = DateTime(2026, 8, 31, 12, 30);
+
+    final first = await ImageSaveUtils.saveBytesToDatedPath(
+      rootPath: root.path,
+      bytes: bytes,
+      preferredFileName: 'portrait:*_watermarked.png',
+      now: now,
+    );
+    final second = await ImageSaveUtils.saveBytesToDatedPath(
+      rootPath: root.path,
+      bytes: bytes,
+      preferredFileName: 'portrait:*_watermarked.png',
+      now: now,
+    );
+
+    expect(p.basename(first), 'portrait___watermarked.png');
+    expect(p.basename(second), 'portrait___watermarked-2.png');
+    expect(await File(first).readAsBytes(), bytes);
+    expect(await File(second).readAsBytes(), bytes);
+  });
+
+  test('dated saves and save-as suggestions share the gallery name', () async {
+    final root = await Directory.systemTemp.createTemp('gallery-name-save');
+    addTearDown(() => root.delete(recursive: true));
+    final now = DateTime(2026, 9, 26, 8, 5, 3);
+
+    final saved = await ImageSaveUtils.saveBytesToDatedPath(
+      rootPath: root.path,
+      bytes: Uint8List.fromList([1]),
+      seed: 42,
+      now: now,
+    );
+
+    expect(p.basename(saved), '08-05-03-42.png');
+    expect(p.basename(p.dirname(saved)), '2026-09-26');
+    expect(
+      ImageSaveUtils.galleryFileName(seed: 42, now: now),
+      p.basename(saved),
+    );
+    expect(
+      ImageSaveUtils.galleryFileName(seed: -1, now: now),
+      '08-05-03-${now.millisecondsSinceEpoch}.png',
+    );
+    expect(
+      ImageSaveUtils.galleryFileName(now: now),
+      '08-05-03-${now.millisecondsSinceEpoch}.png',
+    );
+  });
+
+  group('ImageSaveUtils effort and furry mode', () {
+    test('records medium with its own fingerprint and the sent settings', () {
+      const params = ImageParams(
+        prompt: '1girl',
+        negativePrompt: 'bad hands',
+        model: ImageModels.animeDiffusionV5FullMedium,
+        steps: 35,
+        sampler: Samplers.kDpmpp2m,
+        cfgRescale: 0.4,
+        ucPreset: UcPresets.noneApiValue,
+      );
+
+      final commentJson = ImageSaveUtils.buildCommentJson(
+        params: params,
+        actualSeed: 7,
+      );
+      final pngMetadata = ImageSaveUtils.buildMetadata(
+        commentJson: commentJson,
+        params: params,
+      );
+      final parsed = NaiImageMetadata.fromNaiComment(pngMetadata);
+
+      expect(commentJson['steps'], 14);
+      expect(commentJson['sampler'], Samplers.kEulerAncestral);
+      expect(commentJson['uc'], '');
+      expect(commentJson['uc_preset'], UcPresets.heavyApiValue);
+      expect(commentJson.containsKey('cfg_rescale'), isFalse);
+      expect(pngMetadata['Source'], 'NovelAI Diffusion V5 70AB5786');
+      expect(parsed.model, ImageModels.animeDiffusionV5FullMedium);
+      expect(parsed.steps, 14);
+    });
+
+    test('records the fur dataset prefix and restores furry mode', () {
+      const params = ImageParams(
+        prompt: 'wolf',
+        model: ImageModels.animeDiffusionV45Full,
+        modelMode: ImageModelMode.furry,
+        qualityToggle: false,
+        ucPreset: UcPresets.noneApiValue,
+      );
+
+      final commentJson = ImageSaveUtils.buildCommentJson(
+        params: params,
+        actualSeed: 7,
+      );
+      final parsed = NaiImageMetadata.fromNaiComment(
+        ImageSaveUtils.buildMetadata(commentJson: commentJson, params: params),
+      );
+      final restored = ImageSaveUtils.rebuildParamsFromMetadata(parsed);
+
+      expect(commentJson['prompt'], 'fur dataset, wolf');
+      expect(
+        ((commentJson['v4_prompt'] as Map)['caption'] as Map)['base_caption'],
+        'fur dataset, wolf',
+      );
+      expect(parsed.prompt, 'wolf');
+      expect(parsed.modelMode, ImageModelMode.furry);
+      expect(restored?.prompt, 'wolf');
+      expect(restored?.modelMode, ImageModelMode.furry);
+    });
+
+    test('writes the fingerprint the server uses for each V5 weight', () {
+      const expected = {
+        ImageModels.animeDiffusionV5Full: 'NovelAI Diffusion V5 0ADF9AB7',
+        ImageModels.animeDiffusionV5FullInpainting:
+            'NovelAI Diffusion V5 657484A5',
+        ImageModels.animeDiffusionV5FullMedium:
+            'NovelAI Diffusion V5 70AB5786',
+        ImageModels.animeDiffusionV5FullMediumInpainting:
+            'NovelAI Diffusion V5 93F4BD30',
+        ImageModels.animeDiffusionV5Curated: 'NovelAI Diffusion V5',
+      };
+
+      for (final entry in expected.entries) {
+        final source = ImageSaveUtils.getModelSourceName(entry.key);
+        expect(source, entry.value, reason: entry.key);
+        expect(
+          NaiImageMetadata.fromNaiComment({
+            'Source': source,
+            'Comment': '{}',
+          }).model,
+          ImageModels.resolveBaseModel(entry.key),
+          reason: entry.key,
+        );
+      }
+    });
+  });
+}

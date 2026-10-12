@@ -1,0 +1,137 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nai_launcher/core/cloud_sync/content_selection.dart';
+import 'package:nai_launcher/core/constants/storage_keys.dart';
+import 'package:nai_launcher/core/storage/local_storage_service.dart';
+import 'package:nai_launcher/data/cloud_sync/cloud_sync_content_selection_store.dart';
+
+void main() {
+  test('content selection defaults keep portable data on', () {
+    const selection = CloudSyncContentSelection();
+
+    expect(selection.includeSettings, isTrue);
+    expect(selection.includePromptsAndTags, isTrue);
+    expect(selection.includeTagThumbnails, isTrue);
+    expect(selection.includeOnlineGallerySettings, isTrue);
+    expect(selection.includeOnlineGalleryFavorites, isTrue);
+    expect(selection.includeGalleryAlbums, isTrue);
+    expect(selection.includeFixedTagUsage, isTrue);
+    expect(selection.includeAgentSystemPrompt, isTrue);
+    expect(selection.includeSkills, isTrue);
+    expect(selection.includeVibes, isFalse);
+    expect(selection.includePreciseReferences, isFalse);
+    expect(selection.selectedSkillIds, isEmpty);
+  });
+
+  test('version 1 selection migrates with new lightweight defaults', () {
+    final selection = CloudSyncContentSelection.decode(
+      '{"version":1,"includeAgentSystemPrompt":true,'
+      '"includeSkills":false,"selectedSkillIds":[]}',
+    );
+
+    expect(selection.includeSettings, isTrue);
+    expect(selection.includeTagThumbnails, isTrue);
+    expect(selection.includeAgentSystemPrompt, isTrue);
+    expect(selection.includeFixedTagUsage, isTrue);
+    expect(selection.includeVibes, isFalse);
+  });
+
+  test(
+    'version 2 selection keeps its choices and opts into fixed-tag usage',
+    () {
+      final selection = CloudSyncContentSelection.decode(
+        '{"version":2,"includeSettings":false,"includePromptsAndTags":true,'
+        '"includeTagThumbnails":false,"includeOnlineGallerySettings":true,'
+        '"includeOnlineGalleryFavorites":false,"includeGalleryAlbums":true,'
+        '"includeAgentSystemPrompt":false,"includeSkills":true,'
+        '"includeVibes":true,"includePreciseReferences":false,'
+        '"selectedSkillIds":[]}',
+      );
+
+      expect(selection.includeSettings, isFalse);
+      expect(selection.includeTagThumbnails, isFalse);
+      expect(selection.includeOnlineGalleryFavorites, isFalse);
+      expect(selection.includeGalleryAlbums, isTrue);
+      expect(selection.includeVibes, isTrue);
+      expect(selection.includeFixedTagUsage, isTrue);
+    },
+  );
+
+  test('version 3 round-trips the fixed-tag usage choice', () {
+    const selection = CloudSyncContentSelection(includeFixedTagUsage: false);
+    final restored = CloudSyncContentSelection.decode(selection.encode());
+
+    expect(selection.toJson()['version'], 3);
+    expect(restored.includeFixedTagUsage, isFalse);
+    expect(restored.includeGalleryAlbums, isTrue);
+    expect(restored.selectedItemCount, selection.selectedItemCount);
+  });
+
+  test('content selection persists exact source-qualified Skill ids', () async {
+    final storage = _MemoryStorage();
+    final store = CloudSyncContentSelectionStore(storage);
+    const selection = CloudSyncContentSelection(
+      includeAgentSystemPrompt: false,
+      includeSkills: true,
+      selectedSkillIds: {'workspace:shared-skill', 'piUser:shared-skill'},
+    );
+
+    await store.save(selection);
+    final restored = store.load();
+
+    expect(restored.includeAgentSystemPrompt, isFalse);
+    expect(restored.includeSkills, isTrue);
+    expect(restored.selectedSkillIds, selection.selectedSkillIds);
+    expect(
+      storage.values[StorageKeys.cloudSyncContentSelection],
+      isNot(contains('password')),
+    );
+  });
+
+  test('selection rejects unknown schema fields and unsafe identities', () {
+    expect(
+      () => CloudSyncContentSelection.decode(
+        '{"version":1,"includeAgentSystemPrompt":true,'
+        '"includeSkills":true,"selectedSkillIds":["workspace:../bad"]}',
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => const CloudSyncContentSelection(
+        includeSkills: true,
+        selectedSkillIds: {'workspace:bad--name'},
+      ).encode(),
+      throwsFormatException,
+    );
+    expect(
+      () => CloudSyncContentSelection.decode(
+        '{"version":1,"includeAgentSystemPrompt":true,'
+        '"includeSkills":false,"selectedSkillIds":[],"extra":true}',
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => CloudSyncContentSelection.decode(
+        '{"version":2,"includeSettings":true,"includePromptsAndTags":true,'
+        '"includeTagThumbnails":true,"includeOnlineGallerySettings":true,'
+        '"includeOnlineGalleryFavorites":true,"includeGalleryAlbums":true,'
+        '"includeFixedTagUsage":true,"includeAgentSystemPrompt":true,'
+        '"includeSkills":true,"includeVibes":false,'
+        '"includePreciseReferences":false,"selectedSkillIds":[]}',
+      ),
+      throwsFormatException,
+    );
+  });
+}
+
+class _MemoryStorage extends LocalStorageService {
+  final values = <String, Object?>{};
+
+  @override
+  T? getSetting<T>(String key, {T? defaultValue}) =>
+      (values[key] as T?) ?? defaultValue;
+
+  @override
+  Future<void> setSetting<T>(String key, T value) async {
+    values[key] = value;
+  }
+}

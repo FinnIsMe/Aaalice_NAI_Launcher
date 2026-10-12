@@ -1,0 +1,110 @@
+import 'package:flutter/material.dart';
+
+import '../../adaptive/interaction_policy.dart';
+import '../../themes/prompt_control_colors.dart';
+import '../../themes/theme_extension.dart';
+
+/// Common interaction and tonal states for prompt tabs and source selectors.
+/// The caller owns the action and content; keyboard, focus and touch feedback
+/// use the same Material button behavior across all five entry points.
+class PromptControlButton extends StatefulWidget {
+  const PromptControlButton({
+    super.key,
+    required this.color,
+    required this.active,
+    required this.onPressed,
+    required this.builder,
+    required this.padding,
+    this.onLongPress,
+    this.selected,
+  });
+
+  final Color color;
+  final bool active;
+  final bool? selected;
+
+  /// null 时按钮停用，用于被其他设置接管的入口。
+  final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
+  final EdgeInsetsGeometry padding;
+  final Widget Function(PromptControlColors colors) builder;
+
+  @override
+  State<PromptControlButton> createState() => _PromptControlButtonState();
+}
+
+class _PromptControlButtonState extends State<PromptControlButton> {
+  final _states = WidgetStatesController();
+
+  @override
+  void initState() {
+    super.initState();
+    _syncDisabledState();
+    _states.addListener(_stateChanged);
+  }
+
+  @override
+  void didUpdateWidget(PromptControlButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 随后必定 build，这里同步禁用态不经监听器触发 setState。
+    _states.removeListener(_stateChanged);
+    _syncDisabledState();
+    _states.addListener(_stateChanged);
+  }
+
+  /// TextButton 会在构建期间写入禁用态，提前写好才不会在构建中回调 setState。
+  void _syncDisabledState() {
+    _states.update(WidgetState.disabled, widget.onPressed == null);
+  }
+
+  void _stateChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _states.removeListener(_stateChanged);
+    _states.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final states = _states.value;
+    final interaction = context.interactionPolicy;
+    final tokens = Theme.of(context).appTheme;
+    final colors = PromptControlColors(
+      Theme.of(context),
+      widget.color,
+      active: widget.active,
+      hovered: interaction.isControlHighlighted(states),
+    );
+    final extent = context.interactionPolicy.minimumControlExtent.clamp(
+      44.0,
+      double.infinity,
+    );
+    return Semantics(
+      selected: widget.selected,
+      child: TextButton(
+        statesController: _states,
+        onPressed: widget.onPressed,
+        onLongPress: widget.onLongPress,
+        style: TextButton.styleFrom(
+          minimumSize: Size.square(extent),
+          padding: widget.padding,
+          backgroundColor: colors.background,
+          foregroundColor: colors.foreground,
+          overlayColor: Colors.transparent,
+          animationDuration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : tokens.fastDuration,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(tokens.controlRadius),
+          ),
+          side: interaction.isFocusVisible(states)
+              ? BorderSide(color: colors.accent)
+              : BorderSide.none,
+        ),
+        child: widget.builder(colors),
+      ),
+    );
+  }
+}

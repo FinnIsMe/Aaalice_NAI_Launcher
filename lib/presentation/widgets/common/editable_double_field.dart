@@ -1,0 +1,183 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../adaptive/interaction_policy.dart';
+import '../../themes/core/input_surface_style.dart';
+import '../../utils/single_line_text_width.dart';
+
+class EditableDoubleField extends StatefulWidget {
+  const EditableDoubleField({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.min,
+    this.max,
+    this.decimals = defaultDecimals,
+    this.width = 64,
+    this.textStyle,
+    this.enabled = true,
+    this.semanticLabel,
+  }) : assert(min == null || max == null || min <= max);
+
+  static const int defaultDecimals = 2;
+
+  static const _contentPadding = EdgeInsets.symmetric(
+    horizontal: 8,
+    vertical: 6,
+  );
+
+  // M3 在描边输入框内容两侧各留一段 gapPadding；光标另占 2px 宽度与其后 1px
+  static final double _horizontalChrome =
+      _contentPadding.horizontal +
+      2 * const OutlineInputBorder().gapPadding +
+      3;
+
+  /// 输入框显示数值的格式；配对滑块的读屏读数也用它，读出的即显示的
+  static String format(double value, {int decimals = defaultDecimals}) =>
+      value.toStringAsFixed(decimals);
+
+  /// 单行完整显示 [text] 且内容不滚动所需的宽度，不小于 [minWidth]
+  static double widthFor(
+    BuildContext context,
+    String text, {
+    TextStyle? textStyle,
+    double minWidth = 64,
+  }) {
+    final style = Theme.of(context).textTheme.bodyLarge?.merge(textStyle);
+    return math.max(
+      minWidth,
+      singleLineTextWidth(context, text, style) + _horizontalChrome,
+    );
+  }
+
+  final double value;
+  final double? min;
+  final double? max;
+  final ValueChanged<double> onChanged;
+  final int decimals;
+  final double width;
+  final TextStyle? textStyle;
+  final bool enabled;
+  final String? semanticLabel;
+
+  @override
+  State<EditableDoubleField> createState() => _EditableDoubleFieldState();
+}
+
+class _EditableDoubleFieldState extends State<EditableDoubleField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _format(widget.value));
+    _focusNode = FocusNode()..addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant EditableDoubleField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus && oldWidget.value != widget.value) {
+      _controller.text = _format(widget.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChanged)
+      ..dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      _commit();
+    }
+  }
+
+  void _commit() {
+    final parsed = double.tryParse(_controller.text.trim());
+    if (parsed == null || !parsed.isFinite) {
+      _controller.text = _format(widget.value);
+      return;
+    }
+
+    var normalized = parsed;
+    final min = widget.min;
+    final max = widget.max;
+    if (min != null && normalized < min) {
+      normalized = min;
+    }
+    if (max != null && normalized > max) {
+      normalized = max;
+    }
+    if (normalized != widget.value) {
+      widget.onChanged(normalized);
+    }
+    _controller.text = _format(normalized);
+  }
+
+  String _format(double value) =>
+      EditableDoubleField.format(value, decimals: widget.decimals);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      width: EditableDoubleField.widthFor(
+        context,
+        _format(widget.value),
+        textStyle: widget.textStyle,
+        minWidth: widget.width,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: context.interactionPolicy.minimumControlExtent,
+        ),
+        child: Semantics(
+          label: widget.semanticLabel,
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            enabled: widget.enabled,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[-0-9.]')),
+            ],
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: EditableDoubleField._contentPadding,
+              filled: true,
+              fillColor: inputSurfaceFillColor(theme.colorScheme),
+              border: inputSurfaceBorder(
+                theme.colorScheme,
+                BorderRadius.circular(8),
+              ),
+              enabledBorder: inputSurfaceBorder(
+                theme.colorScheme,
+                BorderRadius.circular(8),
+              ),
+              focusedBorder: inputSurfaceBorder(
+                theme.colorScheme,
+                BorderRadius.circular(8),
+                focused: true,
+              ),
+            ),
+            style: widget.textStyle,
+            onSubmitted: (_) => _commit(),
+          ),
+        ),
+      ),
+    );
+  }
+}

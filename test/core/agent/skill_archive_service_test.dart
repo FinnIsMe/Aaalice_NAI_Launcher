@@ -1,0 +1,760 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nai_launcher/core/agent/skill_archive_service.dart';
+
+void main() {
+  late Directory temp;
+  const service = SkillArchiveService();
+
+  setUp(() async {
+    temp = await Directory.systemTemp.createTemp('agent-skill-archive-');
+  });
+
+  tearDown(() async {
+    if (await temp.exists()) await temp.delete(recursive: true);
+  });
+
+  test('exports and imports a selected Skill with nested assets', () async {
+    final source = Directory('${temp.path}/source/demo');
+    await source.create(recursive: true);
+    final manifest = File('${source.path}/SKILL.md');
+    await manifest.writeAsString(_skill('demo', 'Demo skill'));
+    await Directory('${source.path}/references').create();
+    await File('${source.path}/references/guide.txt').writeAsString('guide');
+
+    final bytes = await service.exportSkills([
+      (name: 'demo', manifest: manifest),
+    ]);
+    final target = Directory('${temp.path}/target');
+    final preview = await service.previewImport(
+      bytes: bytes,
+      targetDirectory: target,
+    );
+    expect(preview.items.single.name, 'demo');
+    expect(preview.items.single.fileCount, 2);
+
+    await service.install(
+      bytes: bytes,
+      targetDirectory: target,
+      replaceSkillNames: const {},
+    );
+    expect(
+      await File('${target.path}/demo/SKILL.md').readAsString(),
+      contains('Demo skill'),
+    );
+    expect(
+      await File('${target.path}/demo/references/guide.txt').readAsString(),
+      'guide',
+    );
+  });
+
+  test('imports an archive that records directory entries', () async {
+    final bytes = _zip([
+      _directory('demo/'),
+      ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+      _directory('demo/references/'),
+      ArchiveFile.string('demo/references/guide.md', 'guide'),
+      _directory('demo/references/deep/'),
+      ArchiveFile.string('demo/references/deep/notes.md', 'notes'),
+    ]);
+    final target = Directory('${temp.path}/target');
+
+    final preview = await service.previewImport(
+      bytes: bytes,
+      targetDirectory: target,
+    );
+    expect(preview.items.single.name, 'demo');
+    expect(preview.items.single.fileCount, 3);
+
+    await service.install(bytes: bytes, targetDirectory: target);
+    expect(
+      await File('${target.path}/demo/references/guide.md').readAsString(),
+      'guide',
+    );
+    expect(
+      await File('${target.path}/demo/references/deep/notes.md').readAsString(),
+      'notes',
+    );
+  });
+
+  test('reads a trailing separator as a directory without mode bits', () async {
+    final bytes = _clearZipEntryUnixModes(
+      _zip([
+        ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+        _directory('demo/references/'),
+        ArchiveFile.string('demo/references/guide.md', 'guide'),
+      ]),
+    );
+    final target = Directory('${temp.path}/target');
+
+    final preview = await service.previewImport(
+      bytes: bytes,
+      targetDirectory: target,
+    );
+    expect(preview.items.single.fileCount, 2);
+
+    await service.install(bytes: bytes, targetDirectory: target);
+    expect(
+      Directory('${target.path}/demo/references').existsSync(),
+      isTrue,
+    );
+    expect(
+      await File('${target.path}/demo/references/guide.md').readAsString(),
+      'guide',
+    );
+  });
+
+  test('installs the same tree with or without directory entries', () async {
+    List<ArchiveFile> contents() => [
+      ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+      ArchiveFile.string('demo/secrets/guide.md', 'guide'),
+    ];
+    final withoutDirectories = _zip(contents());
+    final listed = contents();
+    final withDirectories = _zip([
+      _directory('demo/'),
+      listed.first,
+      _directory('demo/secrets/'),
+      _directory('demo/secrets/'),
+      listed.last,
+    ]);
+
+    final expected = await service.previewImport(
+      bytes: withoutDirectories,
+      targetDirectory: Directory('${temp.path}/plain'),
+    );
+    final actual = await service.previewImport(
+      bytes: withDirectories,
+      targetDirectory: Directory('${temp.path}/listed'),
+    );
+
+    expect(actual.items.single.name, expected.items.single.name);
+    expect(actual.items.single.fileCount, expected.items.single.fileCount);
+    expect(actual.items.single.totalBytes, expected.items.single.totalBytes);
+  });
+
+  test('explains the folder layout that import expects', () async {
+    await expectLater(
+      service.previewImport(
+        bytes: _zip([ArchiveFile.string('SKILL.md', _skill('demo', 'Demo'))]),
+        targetDirectory: Directory('${temp.path}/root-file'),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('top-level folder'),
+        ),
+      ),
+    );
+
+    await expectLater(
+      service.previewImport(
+        bytes: _zip([
+          ArchiveFile.string('Repo-main/demo/SKILL.md', _skill('demo', 'Demo')),
+        ]),
+        targetDirectory: Directory('${temp.path}/wrapped'),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('Invalid Skill name "Repo-main"'),
+        ),
+      ),
+    );
+  });
+
+  test('nests up to the folder depth limit and no further', () async {
+    String path(int folders, String file) => [
+      'demo',
+      for (var index = 0; index < folders; index++) 'level$index',
+      file,
+    ].join('/');
+    const limit = SkillArchiveService.maxPathDepth;
+
+    final deepest = path(limit - 2, 'guide.md');
+    final accepted = await service.previewImport(
+      bytes: _zip([
+        ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+        ArchiveFile.string(deepest, 'guide'),
+      ]),
+      targetDirectory: Directory('${temp.path}/deepest'),
+    );
+    expect(accepted.items.single.fileCount, 2);
+
+    for (final entry in [
+      ArchiveFile.string(path(limit - 1, 'guide.md'), 'guide'),
+      _directory('${path(limit - 1, 'tail')}/'),
+    ]) {
+      await expectLater(
+        service.previewImport(
+          bytes: _zip([
+            ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+            entry,
+          ]),
+          targetDirectory: Directory('${temp.path}/too-deep'),
+        ),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('folder levels'),
+          ),
+        ),
+      );
+    }
+  });
+
+  test(
+    'exports a direct manifest without including neighboring Skills',
+    () async {
+      final source = Directory('${temp.path}/source');
+      await source.create();
+      final manifest = File('${source.path}/solo.md');
+      await manifest.writeAsString(_skill('solo', 'Solo skill'));
+      await File(
+        '${source.path}/neighbor.md',
+      ).writeAsString(_skill('neighbor', 'Neighbor skill'));
+
+      final bytes = await service.exportSkills([
+        (name: 'solo', manifest: manifest),
+      ]);
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      expect(archive.files.map((file) => file.name), ['solo/SKILL.md']);
+    },
+  );
+
+  test(
+    'rejects traversal, symbolic links, corruption, and expansion bombs',
+    () {
+      final traversal = _zip([
+        ArchiveFile.string('../escape/SKILL.md', _skill('escape', 'Escape')),
+      ]);
+      expect(
+        () => service.previewImport(
+          bytes: traversal,
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+
+      final symbolic = _markZipEntryAsSymbolicLink(
+        _zip([ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo'))]),
+      );
+      expect(
+        () => service.previewImport(
+          bytes: symbolic,
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+
+      expect(
+        () => service.previewImport(
+          bytes: Uint8List.fromList(utf8.encode('not a zip')),
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+
+      const constrained = SkillArchiveService(
+        expandedBytesLimit: 32,
+        fileBytesLimit: 64,
+      );
+      final oversized = _claimZipEntryExpandedSize(
+        _zip([ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo'))]),
+        10 * 1024 * 1024,
+      );
+      expect(
+        () => constrained.previewImport(
+          bytes: oversized,
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+
+      final forgedSmall = _claimZipEntryExpandedSize(
+        _zip([ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo'))]),
+        16,
+      );
+      expect(
+        () => constrained.previewImport(
+          bytes: forgedSmall,
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+
+      final colliding = _zip([
+        ArchiveFile.string('collision/SKILL.md', _skill('collision', 'Demo')),
+        ArchiveFile.string('collision/assets', 'file'),
+        ArchiveFile.string('collision/assets/reference.txt', 'nested'),
+      ]);
+      expect(
+        () => service.previewImport(
+          bytes: colliding,
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test('reports every entity conflict before installing', () async {
+    final target = Directory('${temp.path}/target');
+    final existing = Directory('${target.path}/a');
+    await existing.create(recursive: true);
+    await File(
+      '${existing.path}/SKILL.md',
+    ).writeAsString(_skill('a', 'Original A'));
+    await File('${target.path}/b').writeAsString('blocks directory install');
+    final bytes = _zip([
+      ArchiveFile.string('a/SKILL.md', _skill('a', 'Replacement A')),
+      ArchiveFile.string('b/SKILL.md', _skill('b', 'Skill B')),
+    ]);
+
+    final preview = await service.previewImport(
+      bytes: bytes,
+      targetDirectory: target,
+    );
+    expect(preview.items.every((item) => item.conflicts), isTrue);
+    expect(
+      preview.items.firstWhere((item) => item.name == 'a').canReplace,
+      isTrue,
+    );
+    expect(
+      preview.items.firstWhere((item) => item.name == 'b').canReplace,
+      isFalse,
+    );
+    await expectLater(
+      service.install(
+        bytes: bytes,
+        targetDirectory: target,
+        replaceSkillNames: const {'a'},
+      ),
+      throwsFormatException,
+    );
+
+    expect(
+      await File('${target.path}/a/SKILL.md').readAsString(),
+      contains('Original A'),
+    );
+    expect(
+      await File('${target.path}/b').readAsString(),
+      'blocks directory install',
+    );
+    expect(
+      target.listSync().whereType<Directory>().any(
+        (directory) => directory.path.contains('.skill-import-'),
+      ),
+      isFalse,
+    );
+  });
+
+  test('rejects private text hidden in an ordinary asset name', () async {
+    final source = Directory('${temp.path}/source/private-demo');
+    await source.create(recursive: true);
+    final manifest = File('${source.path}/SKILL.md');
+    await manifest.writeAsString(_skill('private-demo', 'Private demo'));
+    await File(
+      '${source.path}/config.json',
+    ).writeAsString('{"apiKey":"secret","workspace":"C:/Users/Alice/private"}');
+
+    await expectLater(
+      service.exportSkills([(name: 'private-demo', manifest: manifest)]),
+      throwsFormatException,
+    );
+  });
+
+  test('rejects generic secret and credential assignments', () async {
+    final source = Directory('${temp.path}/source/private-demo');
+    await source.create(recursive: true);
+    final manifest = File('${source.path}/SKILL.md');
+    await manifest.writeAsString(_skill('private-demo', 'Private demo'));
+    for (final value in [
+      '{"secret":"abcdefgh12345678"}',
+      'credentials = abcdefgh12345678',
+    ]) {
+      final config = File('${source.path}/config.json');
+      await config.writeAsString(value);
+      await expectLater(
+        service.exportSkills([(name: 'private-demo', manifest: manifest)]),
+        throwsFormatException,
+      );
+    }
+  });
+
+  test('rejects sensitive paths instead of silently omitting them', () async {
+    final source = Directory('${temp.path}/source/demo');
+    await source.create(recursive: true);
+    final manifest = File('${source.path}/SKILL.md');
+    await manifest.writeAsString(_skill('demo', 'Demo'));
+    await File('${source.path}/.env').writeAsString('SAFE_EXAMPLE=true');
+
+    await expectLater(
+      service.exportSkills([(name: 'demo', manifest: manifest)]),
+      throwsFormatException,
+    );
+  });
+
+  test('rejects linked manifests, directories, and nested entries', () async {
+    final outside = Directory('${temp.path}/outside')..createSync();
+    final outsideManifest = File('${outside.path}/SKILL.md')
+      ..writeAsStringSync(_skill('demo', 'Demo'));
+    final source = Directory('${temp.path}/source/demo')
+      ..createSync(recursive: true);
+    final linkedManifest = Link('${source.path}/SKILL.md');
+    await linkedManifest.create(outsideManifest.path);
+    await expectLater(
+      service.exportSkills([
+        (name: 'demo', manifest: File(linkedManifest.path)),
+      ]),
+      throwsFormatException,
+    );
+
+    await linkedManifest.delete();
+    final manifest = File('${source.path}/SKILL.md')
+      ..writeAsStringSync(_skill('demo', 'Demo'));
+    await Link('${source.path}/linked.txt').create(outsideManifest.path);
+    await expectLater(
+      service.exportSkills([(name: 'demo', manifest: manifest)]),
+      throwsFormatException,
+    );
+
+    final linkedDirectory = Link('${temp.path}/linked-skill');
+    await linkedDirectory.create(source.path);
+    await expectLater(
+      service.exportSkills([
+        (name: 'demo', manifest: File('${linkedDirectory.path}/SKILL.md')),
+      ]),
+      throwsFormatException,
+    );
+  });
+
+  test('requires the exact frontmatter schema supported by the harness', () {
+    final invalidManifests = [
+      '''---\nname: demo\ndescription: Demo\nunknown: value\n---\nBody.''',
+      '''---\nname: demo\nname: demo\ndescription: Demo\n---\nBody.''',
+      '''---\nname: demo\ndescription: Demo\nbad line\n---\nBody.''',
+      '''---\nname: demo\ndescription: Demo\ndisable-model-invocation: yes\n---\nBody.''',
+      '''---\nname: demo\ndescription: Demo\ndisable-model-invocation: "true"\n---\nBody.''',
+    ];
+    for (final manifest in invalidManifests) {
+      expect(
+        () => service.previewImport(
+          bytes: _zip([ArchiveFile.string('demo/SKILL.md', manifest)]),
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+    }
+  });
+
+  test('rejects sensitive files and private text during import', () async {
+    for (final bytes in [
+      _zip([
+        ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo')),
+        ArchiveFile.string('demo/.env', 'TOKEN=secret'),
+      ]),
+      _zip([
+        ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo')),
+        ArchiveFile.string('demo/config.json', '{"apiKey":"secret"}'),
+      ]),
+    ]) {
+      await expectLater(
+        service.previewImport(
+          bytes: bytes,
+          targetDirectory: Directory('${temp.path}/target'),
+        ),
+        throwsFormatException,
+      );
+    }
+  });
+
+  test('imports scripts that read credentials from the environment', () async {
+    final bytes = _zip([
+      ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+      ArchiveFile.string(
+        'demo/scripts/run.ps1',
+        r'$apiKey = $env:VOLCENGINE_SPEECH_API_KEY' '\n'
+        r'$apiKey = [Environment]::GetEnvironmentVariable("SPEECH_KEY")',
+      ),
+      ArchiveFile.string(
+        'demo/scripts/transcribe.py',
+        'def send(api_key: str, token: str):\n'
+        '    headers = {"X-Api-Key": api_key}\n'
+        '    api_key = os.environ["SPEECH_KEY"]\n'
+        '    password = getenv("PW")\n',
+      ),
+      ArchiveFile.string(
+        'demo/scripts/config.example.json',
+        '{"apiKey": "YOUR_API_KEY", "token": "<your-token>", "secret": ""}',
+      ),
+    ]);
+
+    final preview = await service.previewImport(
+      bytes: bytes,
+      targetDirectory: Directory('${temp.path}/env-scripts'),
+    );
+
+    expect(preview.items.single.fileCount, 4);
+  });
+
+  test('still rejects literal secrets in the same shapes', () async {
+    for (final source in [
+      r'$apiKey = "sk-proj-0123456789abcdefghijklmnop"',
+      'api_key: hunter2hunter2',
+      'Authorization: Bearer abcdefghijklmnopqrst',
+      'client_secret=Zm9vYmFyYmF6cXV1eA==',
+    ]) {
+      await expectLater(
+        service.previewImport(
+          bytes: _zip([
+            ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+            ArchiveFile.string('demo/scripts/leak.txt', source),
+          ]),
+          targetDirectory: Directory('${temp.path}/leak'),
+        ),
+        throwsFormatException,
+        reason: '应拦截字面量密钥：$source',
+      );
+    }
+  });
+
+  test('imports absolute paths but refuses to export them', () async {
+    const document = 'See `G:\\AIdarw\\nai5\\NAI-V5-testing-log.md` for notes.';
+    final target = Directory('${temp.path}/absolute');
+    await service.install(
+      bytes: _zip([
+        ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+        ArchiveFile.string('demo/references/v5.md', document),
+      ]),
+      targetDirectory: target,
+    );
+    expect(
+      await File('${target.path}/demo/references/v5.md').readAsString(),
+      contains('NAI-V5-testing-log.md'),
+    );
+
+    await expectLater(
+      service.exportSkills([
+        (name: 'demo', manifest: File('${target.path}/demo/SKILL.md')),
+      ]),
+      throwsFormatException,
+    );
+  });
+
+  test('names the oversized file and the limit it exceeded', () async {
+    const constrained = SkillArchiveService(fileBytesLimit: 1024);
+    await expectLater(
+      constrained.previewImport(
+        bytes: _zip([
+          ArchiveFile.string('demo/SKILL.md', _skill('demo', 'Demo skill')),
+          ArchiveFile.string('demo/data/tags.csv', 'x' * 4096),
+        ]),
+        targetDirectory: Directory('${temp.path}/oversized'),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          allOf(contains('demo/data/tags.csv'), contains('per-file limit')),
+        ),
+      ),
+    );
+  });
+
+  test('recovers an interrupted multi-Skill replacement on startup', () async {
+    final target = Directory('${temp.path}/target')
+      ..createSync(recursive: true);
+    final transaction = Directory('${target.path}/.skill-import-interrupted');
+    final backups = Directory('${transaction.path}/backups/a')
+      ..createSync(recursive: true);
+    File(
+      '${backups.path}/SKILL.md',
+    ).writeAsStringSync(_skill('a', 'Original A'));
+    final replacement = Directory('${target.path}/a')
+      ..createSync(recursive: true);
+    File(
+      '${replacement.path}/SKILL.md',
+    ).writeAsStringSync(_skill('a', 'Replacement A'));
+    final newlyInstalled = Directory('${target.path}/b')
+      ..createSync(recursive: true);
+    File(
+      '${newlyInstalled.path}/SKILL.md',
+    ).writeAsStringSync(_skill('b', 'New B'));
+    File('${transaction.path}/transaction.json').writeAsStringSync(
+      jsonEncode({
+        'names': ['a', 'b'],
+        'backedUpNames': ['a'],
+      }),
+    );
+
+    await service.recoverInterruptedInstalls(target);
+
+    expect(
+      File('${target.path}/a/SKILL.md').readAsStringSync(),
+      contains('Original A'),
+    );
+    expect(Directory('${target.path}/b').existsSync(), isFalse);
+    expect(transaction.existsSync(), isFalse);
+  });
+
+  test('recovers interruptions before and after moving the original', () async {
+    final target = Directory('${temp.path}/target')..createSync();
+    final beforeMove = Directory('${target.path}/.skill-import-before')
+      ..createSync();
+    Directory('${beforeMove.path}/backups').createSync();
+    final original = Directory('${target.path}/a')..createSync();
+    File(
+      '${original.path}/SKILL.md',
+    ).writeAsStringSync(_skill('a', 'Original'));
+    File('${beforeMove.path}/transaction.json').writeAsStringSync(
+      jsonEncode({
+        'names': ['a'],
+        'backedUpNames': ['a'],
+      }),
+    );
+
+    await service.recoverInterruptedInstalls(target);
+    expect(
+      File('${original.path}/SKILL.md').readAsStringSync(),
+      contains('Original'),
+    );
+
+    final afterMove = Directory('${target.path}/.skill-import-after')
+      ..createSync();
+    final backup = Directory('${afterMove.path}/backups/a')
+      ..createSync(recursive: true);
+    File('${backup.path}/SKILL.md').writeAsStringSync(_skill('a', 'Original'));
+    original.deleteSync(recursive: true);
+    File('${afterMove.path}/transaction.json').writeAsStringSync(
+      jsonEncode({
+        'names': ['a'],
+        'backedUpNames': ['a'],
+      }),
+    );
+
+    await service.recoverInterruptedInstalls(target);
+    expect(
+      File('${original.path}/SKILL.md').readAsStringSync(),
+      contains('Original'),
+    );
+  });
+
+  test(
+    'rejects links in interrupted transactions without touching target',
+    () async {
+      final target = Directory('${temp.path}/target')..createSync();
+      final original = Directory('${target.path}/a')..createSync();
+      final originalManifest = File('${original.path}/SKILL.md')
+        ..writeAsStringSync(_skill('a', 'Original'));
+      final transaction = Directory('${target.path}/.skill-import-malicious')
+        ..createSync();
+      final backups = Directory('${transaction.path}/backups')..createSync();
+      await Link('${backups.path}/a').create(original.path);
+      File('${transaction.path}/transaction.json').writeAsStringSync(
+        jsonEncode({
+          'names': ['a'],
+          'backedUpNames': ['a'],
+        }),
+      );
+
+      await expectLater(
+        service.recoverInterruptedInstalls(target),
+        throwsFormatException,
+      );
+      expect(originalManifest.readAsStringSync(), contains('Original'));
+      expect(transaction.existsSync(), isTrue);
+    },
+  );
+}
+
+Uint8List _zip(List<ArchiveFile> files) {
+  final archive = Archive();
+  for (final file in files) {
+    archive.addFile(file);
+  }
+  return Uint8List.fromList(ZipEncoder().encode(archive)!);
+}
+
+ArchiveFile _directory(String name) =>
+    ArchiveFile(name, 0, <int>[])..isFile = false;
+
+Uint8List _clearZipEntryUnixModes(Uint8List bytes) {
+  final data = ByteData.sublistView(bytes);
+  var cursor = _centralDirectoryOffset(data, bytes.length);
+  while (cursor + 46 <= bytes.length &&
+      data.getUint32(cursor, Endian.little) == 0x02014b50) {
+    bytes[cursor + 5] = 3; // ZIP creator OS: Unix.
+    for (var byte = 0; byte < 4; byte++) {
+      bytes[cursor + 38 + byte] = 0;
+    }
+    cursor +=
+        46 +
+        data.getUint16(cursor + 28, Endian.little) +
+        data.getUint16(cursor + 30, Endian.little) +
+        data.getUint16(cursor + 32, Endian.little);
+  }
+  return bytes;
+}
+
+int _centralDirectoryOffset(ByteData data, int length) {
+  for (var offset = length - 22; offset >= 0; offset--) {
+    if (data.getUint32(offset, Endian.little) == 0x06054b50) {
+      return data.getUint32(offset + 16, Endian.little);
+    }
+  }
+  throw StateError('Central directory was not found.');
+}
+
+Uint8List _markZipEntryAsSymbolicLink(Uint8List bytes) {
+  const centralDirectorySignature = <int>[0x50, 0x4b, 0x01, 0x02];
+  for (var index = 0; index <= bytes.length - 46; index++) {
+    if (bytes[index] != centralDirectorySignature[0] ||
+        bytes[index + 1] != centralDirectorySignature[1] ||
+        bytes[index + 2] != centralDirectorySignature[2] ||
+        bytes[index + 3] != centralDirectorySignature[3]) {
+      continue;
+    }
+    bytes[index + 5] = 3; // ZIP creator OS: Unix.
+    const attributes = (0xA000 | 511) << 16;
+    for (var byte = 0; byte < 4; byte++) {
+      bytes[index + 38 + byte] = (attributes >> (byte * 8)) & 0xff;
+    }
+    return bytes;
+  }
+  throw StateError('Central directory was not found.');
+}
+
+Uint8List _claimZipEntryExpandedSize(Uint8List bytes, int size) {
+  const centralDirectorySignature = <int>[0x50, 0x4b, 0x01, 0x02];
+  for (var index = 0; index <= bytes.length - 46; index++) {
+    if (bytes[index] != centralDirectorySignature[0] ||
+        bytes[index + 1] != centralDirectorySignature[1] ||
+        bytes[index + 2] != centralDirectorySignature[2] ||
+        bytes[index + 3] != centralDirectorySignature[3]) {
+      continue;
+    }
+    for (var byte = 0; byte < 4; byte++) {
+      bytes[index + 24 + byte] = (size >> (byte * 8)) & 0xff;
+    }
+    return bytes;
+  }
+  throw StateError('Central directory was not found.');
+}
+
+String _skill(String name, String description) =>
+    '''
+---
+name: $name
+description: $description
+---
+Instructions.
+''';

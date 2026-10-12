@@ -1,0 +1,469 @@
+import '../../widgets/common/image_card_batch_scope.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/cache/cancellable_gallery_image_loader.dart';
+import '../../../core/cache/gallery_image_request.dart';
+import '../../../core/cache/online_gallery_prefetch_coordinator.dart';
+import '../../../core/network/critical_network_activity.dart';
+import '../../../core/utils/app_logger.dart';
+import '../../../core/utils/localization_extension.dart';
+import '../../../data/services/danbooru_auth_service.dart';
+import '../../../data/services/gelbooru_auth_service.dart';
+import '../../providers/online_gallery_provider.dart';
+import '../../providers/selection_mode_provider.dart';
+import '../../widgets/app_branch_visibility.dart';
+import '../../widgets/common/app_toast.dart';
+import 'online_gallery_screen_commands.dart';
+import 'online_gallery_content.dart';
+import 'online_gallery_detail_launcher.dart';
+import 'online_gallery_pagination.dart';
+import 'online_gallery_screen_controller.dart';
+import 'online_gallery_scroll_prefetch_coordinator.dart';
+import 'online_gallery_selection_actions.dart';
+import 'online_gallery_view_model.dart';
+import 'widgets/online_gallery_toolbar/online_gallery_toolbar_bindings.dart';
+import 'widgets/online_gallery_toolbar/online_gallery_toolbar_feature.dart';
+
+/// 在线画廊页面
+class OnlineGalleryScreen extends ConsumerStatefulWidget {
+  const OnlineGalleryScreen({super.key});
+
+  @override
+  ConsumerState<OnlineGalleryScreen> createState() =>
+      _OnlineGalleryScreenState();
+}
+
+class _OnlineGalleryScreenState extends ConsumerState<OnlineGalleryScreen>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+  late final OnlineGalleryScreenController _controller;
+  late final CancellableGalleryImageLoader _imageLoader;
+  late final OnlineGalleryScrollPrefetchCoordinator _scrollCoordinator;
+  late final OnlineGalleryDetailLauncher _detailLauncher;
+  late final OnlineGallerySelectionActions _selectionActions;
+  late final OnlineGalleryScreenCommands _commands;
+  late final ProviderSubscription<OnlineGalleryState> _gallerySubscription;
+  late final OnlineGalleryNotifier _galleryNotifier;
+  bool _appForeground = true;
+  bool _backgroundNetworkSyncScheduled = false;
+  bool _disposed = false;
+  int _pageJumpRevision = 0;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  /// 获取 Selection Notifier（简化重复代码）
+  OnlineGallerySelectionNotifier get _selectionNotifier =>
+      ref.read(onlineGallerySelectionNotifierProvider.notifier);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appForeground = _isForegroundLifecycleState(lifecycleState);
+    _galleryNotifier = ref.read(onlineGalleryNotifierProvider.notifier);
+    _imageLoader = CancellableGalleryImageLoader();
+    _controller = OnlineGalleryScreenController(
+      prefetchCoordinator: OnlineGalleryPrefetchCoordinator(
+        preloader: _startImagePreload,
+      ),
+    );
+    CriticalNetworkActivityCoordinator.instance.addListener(
+      _handleCriticalNetworkActivity,
+    );
+    _controller.prefetchCoordinator.setAppForeground(_appForeground);
+    _handleCriticalNetworkActivity();
+    _detailLauncher = OnlineGalleryDetailLauncher(
+      context: context,
+      ref: ref,
+      controller: _controller,
+    );
+    _selectionActions = OnlineGallerySelectionActions(
+      context: context,
+      ref: ref,
+    );
+    _scrollCoordinator = OnlineGalleryScrollPrefetchCoordinator(
+      context: context,
+      ref: ref,
+      controller: _controller,
+      notifier: _galleryNotifier,
+    );
+    _commands = OnlineGalleryScreenCommands(
+      detailLauncher: _detailLauncher,
+      selectionActions: _selectionActions,
+    );
+    _gallerySubscription = ref.listenManual<OnlineGalleryState>(
+      onlineGalleryNotifierProvider,
+      (previous, next) {
+        if (previous != null &&
+            (previous.currentCacheKey != next.currentCacheKey ||
+                previous.randomEnabled != next.randomEnabled)) {
+          _selectionNotifier.exit();
+        }
+        _handleGalleryStateChanged(next);
+      },
+    );
+    _controller.scrollController.addListener(_scrollCoordinator.onScroll);
+    // 添加页码焦点监听
+    _controller.pageFocusNode.addListener(
+      _controller.cancelPageEditingWhenUnfocused,
+    );
+
+    // 只在首次进入（无数据）时加载，切换Tab回来时不再重新加载
+    // 用户需要刷新时可点击刷新按钮
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = ref.read(onlineGalleryNotifierProvider);
+      _controller.synchronizeQueries(state);
+      final initialCache = state.randomEnabled
+          ? state.randomSession.cache
+          : state.currentCache;
+      _controller.restoreInitialPositionPending =
+          initialCache.scrollOffset > 0 || initialCache.anchorStableKey != null;
+      // 首次加载
+      if (state.posts.isEmpty && !state.isLoading) {
+        _galleryNotifier.loadPosts();
+      }
+      // 记录当前查询，用于切换来源或筛选后恢复独立滚动位置。
+      _controller.lastViewMode = state.viewMode;
+      _controller.lastFavoritesSource = state.favoritesSourceId;
+      _controller.lastCacheKey = state.currentCacheKey;
+      _controller.lastRandomEnabled = state.randomEnabled;
+      _scrollCoordinator.scheduleAutoLoadIfUnderfilled(state);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = AppBranchVisibility.of(context);
+    if (_controller.branchVisible == visible) return;
+    _controller.branchVisible = visible;
+    _controller.prefetchCoordinator.setPageVisible(visible);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncBackgroundNetworkActivity();
+    });
+    if (!visible) {
+      _controller.hoverController.dismiss();
+      _controller.scrollStopTimer?.cancel();
+      _controller.prefetchResumeTimer?.cancel();
+      _controller.setScrolling(false);
+      _controller.prefetchCoordinator.setScrolling(false);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_controller.branchVisible) return;
+        _scrollCoordinator.scheduleVisiblePrefetch();
+        _scrollCoordinator.scheduleAutoLoadIfUnderfilled(
+          ref.read(onlineGalleryNotifierProvider),
+        );
+      });
+    }
+  }
+
+  GalleryImagePreloadOperation _startImagePreload(
+    GalleryImageRequest request,
+  ) => _imageLoader.start(request);
+
+  void _handleCriticalNetworkActivity() {
+    _controller.prefetchCoordinator.setCriticalNetworkActive(
+      CriticalNetworkActivityCoordinator.instance.isActive,
+    );
+    _syncBackgroundNetworkActivity();
+  }
+
+  void _syncBackgroundNetworkActivity() {
+    if (_disposed) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_backgroundNetworkSyncScheduled) return;
+      _backgroundNetworkSyncScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _backgroundNetworkSyncScheduled = false;
+        if (!mounted || _disposed) return;
+        _applyBackgroundNetworkActivity();
+      });
+      return;
+    }
+    _applyBackgroundNetworkActivity();
+  }
+
+  void _applyBackgroundNetworkActivity() {
+    if (_disposed) return;
+    _galleryNotifier.setBackgroundNetworkPaused(
+      !_controller.branchVisible ||
+          !_appForeground ||
+          CriticalNetworkActivityCoordinator.instance.isActive,
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appForeground = _isForegroundLifecycleState(state);
+    _controller.prefetchCoordinator.setAppForeground(_appForeground);
+    _syncBackgroundNetworkActivity();
+    if (_appForeground && _controller.branchVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_controller.branchVisible) return;
+        _scrollCoordinator.scheduleVisiblePrefetch();
+        _scrollCoordinator.scheduleAutoLoadIfUnderfilled(
+          ref.read(onlineGalleryNotifierProvider),
+        );
+      });
+    }
+  }
+
+  bool _isForegroundLifecycleState(AppLifecycleState? state) =>
+      state == null ||
+      state == AppLifecycleState.resumed ||
+      state == AppLifecycleState.inactive;
+
+  Future<void> _goToPage(int page) async {
+    final revision = ++_pageJumpRevision;
+    final initialState = ref.read(onlineGalleryNotifierProvider);
+    final cacheKey = initialState.currentCacheKey;
+    final stopwatch = kDebugMode ? (Stopwatch()..start()) : null;
+    if (kDebugMode) {
+      AppLogger.i(
+        'pageJump start requested=$page current=${initialState.page} '
+            'posts=${initialState.posts.length} cache=${cacheKey.hashCode}',
+        'GalleryPerf',
+      );
+    }
+    _scrollCoordinator.beginPageJump();
+    try {
+      final target = await _galleryNotifier.goToPage(page);
+      if (kDebugMode) {
+        final loadedState = ref.read(onlineGalleryNotifierProvider);
+        AppLogger.i(
+          'pageJump target requested=$page targetIndex=${target?.itemIndex} '
+              'posts=${loadedState.posts.length} page=${loadedState.page} '
+              'loadMs=${stopwatch?.elapsedMilliseconds}',
+          'GalleryPerf',
+        );
+      }
+      bool isCurrent() {
+        return mounted &&
+            revision == _pageJumpRevision &&
+            ref.read(onlineGalleryNotifierProvider).currentCacheKey == cacheKey;
+      }
+
+      if (target == null || !isCurrent()) return;
+      await _scrollCoordinator.jumpToPageTarget(target, isCurrent: isCurrent);
+    } finally {
+      if (mounted && revision == _pageJumpRevision) {
+        _scrollCoordinator.endPageJump();
+      }
+      if (stopwatch != null) {
+        stopwatch.stop();
+        final position = _controller.scrollController.hasClients
+            ? _controller.scrollController.position
+            : null;
+        AppLogger.i(
+          'pageJump end requested=$page elapsedMs=${stopwatch.elapsedMilliseconds} '
+              'offset=${position?.pixels.toStringAsFixed(1)} '
+              'maxExtent=${position?.maxScrollExtent.toStringAsFixed(1)} '
+              'columns=${_controller.currentColumnCount} '
+              'itemWidth=${_controller.currentItemWidth?.toStringAsFixed(1)}',
+          'GalleryPerf',
+        );
+      }
+    }
+  }
+
+  void _handleGalleryStateChanged(OnlineGalleryState state) {
+    final browsingContextChanged =
+        (_controller.lastViewMode != null &&
+            _controller.lastViewMode != state.viewMode) ||
+        (_controller.lastCacheKey != null &&
+            _controller.lastCacheKey != state.currentCacheKey) ||
+        (state.viewMode == GalleryViewMode.favorites &&
+            _controller.lastFavoritesSource != null &&
+            _controller.lastFavoritesSource != state.favoritesSourceId) ||
+        (_controller.lastRandomEnabled != null &&
+            _controller.lastRandomEnabled != state.randomEnabled);
+    final randomReplaceStarted =
+        state.randomEnabled &&
+        state.isLoading &&
+        !state.isLoadingMore &&
+        !_controller.randomReplacePending;
+    if (randomReplaceStarted) _controller.randomReplacePending = true;
+    if (!state.randomEnabled || (!state.isLoading && !state.isLoadingMore)) {
+      _controller.randomReplacePending = false;
+    }
+    final initialPositionReady =
+        _controller.restoreInitialPositionPending &&
+        state.posts.isNotEmpty &&
+        !state.isLoading;
+    if (browsingContextChanged ||
+        randomReplaceStarted ||
+        initialPositionReady) {
+      if (browsingContextChanged) {
+        _pageJumpRevision++;
+        _scrollCoordinator.endPageJump();
+        _controller.synchronizeQueries(state);
+      }
+      _controller.hoverController.dismiss();
+      _controller.resetViewportTracking();
+      _controller.paginationDemand.resetScope(
+        state.randomEnabled
+            ? 'random:${state.randomSession.scopeKey}'
+            : state.currentCacheKey,
+      );
+      _controller.prefetchCoordinator.rotateGeneration();
+      if (browsingContextChanged || initialPositionReady) {
+        _scrollCoordinator.restoreScrollOffset(
+          state.randomEnabled ? state.randomSession.cache : state.currentCache,
+        );
+        _controller.restoreInitialPositionPending = false;
+      }
+    }
+    _controller.lastViewMode = state.viewMode;
+    _controller.lastFavoritesSource = state.favoritesSourceId;
+    _controller.lastCacheKey = state.currentCacheKey;
+    _controller.lastRandomEnabled = state.randomEnabled;
+    _scrollCoordinator.scheduleAutoLoadIfUnderfilled(state);
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _pageJumpRevision++;
+    WidgetsBinding.instance.removeObserver(this);
+    CriticalNetworkActivityCoordinator.instance.removeListener(
+      _handleCriticalNetworkActivity,
+    );
+    _scrollCoordinator.saveScrollOffset();
+    _gallerySubscription.close();
+    _controller.scrollController.removeListener(_scrollCoordinator.onScroll);
+    _controller.pageFocusNode.removeListener(
+      _controller.cancelPageEditingWhenUnfocused,
+    );
+    _controller.dispose();
+    _imageLoader.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final theme = Theme.of(context);
+    ref.watch(
+      onlineGalleryNotifierProvider.select(
+        (value) => (
+          loading: (value.isLoading, value.isLoadingMore),
+          error: (value.error, value.errorCode, value.notice),
+          queries: (
+            value.searchQuery,
+            value.promptQuery,
+            value.popularQuery,
+            value.popularPromptQuery,
+            value.fuzzySearchEnabled,
+          ),
+          sources: (
+            value.sourceId,
+            value.popularSourceId,
+            value.favoritesSourceId,
+            value.viewMode,
+          ),
+          filters: (
+            value.selectedRatings,
+            value.popularScale,
+            value.popularDate,
+            value.aiTagTimeRange,
+            value.aiTagPopularPeriod,
+            value.dateRangeStart,
+            value.dateRangeEnd,
+          ),
+          cache: value.currentCache,
+          aiTagConfig: value.aiTagConfig,
+          random: (value.randomEnabled, value.randomSession),
+          artistHunt: value.artistHuntEnabled,
+        ),
+      ),
+    );
+    final state = ref.read(onlineGalleryNotifierProvider);
+    final authState = ref.watch(danbooruAuthProvider);
+    final gelbooruAuthState = ref.watch(gelbooruAuthProvider);
+    final selectionState = ref.watch(onlineGallerySelectionNotifierProvider);
+    final viewModel = OnlineGalleryViewModel.from(
+      gallery: state,
+      selection: selectionState,
+    );
+
+    ref.listen<OnlineGalleryNotice?>(
+      onlineGalleryNotifierProvider.select((value) => value.notice),
+      (previous, next) {
+        if (next == null || next == previous) return;
+        if (next == OnlineGalleryNotice.gelbooruCredentialsInvalid) {
+          AppToast.warning(
+            context,
+            context.l10n.onlineGallery_gelbooruCredentialsInvalid,
+          );
+        } else if (next == OnlineGalleryNotice.tagDetailsIncomplete) {
+          AppToast.warning(
+            context,
+            context.l10n.onlineGallery_tagDetailsIncomplete,
+          );
+        } else if (next == OnlineGalleryNotice.randomDrawNoMatch) {
+          AppToast.info(context, context.l10n.onlineGallery_randomDrawNoMatch);
+        }
+        _galleryNotifier.clearNotice();
+      },
+    );
+    return ImageCardBatchScope(
+      targetIds: selectionState.selectedIds,
+      actions: _commands.selectionActions.buildActions(
+        state,
+        selectionState.selectedIds,
+      ),
+      child: PopScope<void>(
+        canPop: !viewModel.isSelectionMode,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && viewModel.isSelectionMode) {
+            _selectionNotifier.exit();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: theme.scaffoldBackgroundColor,
+          body: Column(
+            children: [
+              OnlineGalleryToolbarFeature(
+                controller: _controller,
+                data: OnlineGalleryToolbarViewData(
+                  gallery: state,
+                  danbooruAuth: authState,
+                  gelbooruAuth: gelbooruAuthState,
+                  selection: selectionState,
+                ),
+                commands: OnlineGalleryToolbarCommands(
+                  gallery: _galleryNotifier,
+                  selection: _selectionNotifier,
+                  actions: _commands,
+                  saveScrollOffset: _scrollCoordinator.saveScrollOffset,
+                ),
+              ),
+              // 图片网格
+              Expanded(
+                child: OnlineGalleryContent(
+                  state: state,
+                  controller: _controller,
+                  scrollCoordinator: _scrollCoordinator,
+                  commands: _commands,
+                ),
+              ),
+              // 底部分页条
+              OnlineGalleryPagination(
+                state: state,
+                controller: _controller,
+                notifier: _galleryNotifier,
+                onGoToPage: _goToPage,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
