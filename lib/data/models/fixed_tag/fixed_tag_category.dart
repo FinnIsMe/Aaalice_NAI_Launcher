@@ -1,6 +1,8 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:uuid/uuid.dart';
 
+import 'fixed_tag_prompt_type.dart';
+
 part 'fixed_tag_category.freezed.dart';
 part 'fixed_tag_category.g.dart';
 
@@ -18,6 +20,11 @@ class FixedTagCategory with _$FixedTagCategory {
     /// 分类名称
     required String name,
 
+    /// 所属组别
+    @Default(FixedTagPromptType.positive)
+    @JsonKey(unknownEnumValue: FixedTagPromptType.positive)
+    FixedTagPromptType promptType,
+
     /// 父分类ID (null 表示根级分类)
     String? parentId,
 
@@ -34,12 +41,14 @@ class FixedTagCategory with _$FixedTagCategory {
   /// 创建新分类
   factory FixedTagCategory.create({
     required String name,
+    FixedTagPromptType promptType = FixedTagPromptType.positive,
     String? parentId,
     int sortOrder = 0,
   }) {
     return FixedTagCategory(
       id: const Uuid().v4(),
       name: name.trim(),
+      promptType: promptType,
       parentId: parentId,
       sortOrder: sortOrder,
       createdAt: DateTime.now(),

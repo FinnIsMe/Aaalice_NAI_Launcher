@@ -4,6 +4,7 @@ import '../enums/image_model_mode.dart';
 import 'novelai_auto_text.dart';
 import 'novelai_dataset_prefix.dart';
 import 'prompt_edit_document.dart';
+import 'nai_prompt_formatter.dart';
 
 /// 提示词语义快照
 ///
@@ -100,8 +101,8 @@ PromptSemanticsSnapshot buildPromptSemanticsSnapshot({
   return PromptSemanticsSnapshot(
     basePrompt: basePrompt,
     baseNegativePrompt: baseNegativePrompt,
-    effectivePrompt: effectivePrompt,
-    effectiveNegativePrompt: effectiveNegativePrompt,
+    effectivePrompt: NaiPromptFormatter.formatForApi(effectivePrompt),
+    effectiveNegativePrompt: NaiPromptFormatter.formatForApi(effectiveNegativePrompt),
     autoTextBlock: autoTextBlock,
   );
 }

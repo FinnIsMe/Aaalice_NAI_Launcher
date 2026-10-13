@@ -26,6 +26,13 @@ import '../common/app_toast.dart';
 import '../common/card_action_buttons.dart';
 import '../common/image_card_action.dart';
 import '../common/image_card_action_region.dart';
+import 'package:go_router/go_router.dart';
+import '../../router/app_routes.dart';
+import '../../../data/models/metadata/metadata_import_options.dart';
+import '../../utils/metadata_import_coordinator.dart';
+import '../../utils/local_gallery_metadata_resolver.dart';
+import '../../providers/generation/generation_params_notifier.dart';
+import '../../services/image_workflow_launcher.dart';
 import 'local_image_context_menu.dart';
 import 'local_image_hover_preview.dart';
 
@@ -457,6 +464,18 @@ class _LocalImageCard3DState extends ConsumerState<LocalImageCard3D> {
     final storage = ref.read(localStorageServiceProvider);
     final metadata = widget.record.metadata;
     return [
+      ImageCardAction(
+        id: ImageCardActionId.sendToGeneration,
+        icon: Icons.repeat_rounded,
+        label: '复刻',
+        invoke: _replicateToGeneration,
+      ),
+      ImageCardAction(
+        id: ImageCardActionId.inpaint,
+        icon: Icons.brush_rounded,
+        label: '局部重绘',
+        invoke: _replicateToInpaint,
+      ),
       if (widget.onDoubleTap != null || widget.onTap != null)
         ImageCardAction(
           id: ImageCardActionId.viewDetail,
@@ -550,5 +569,46 @@ class _LocalImageCard3DState extends ConsumerState<LocalImageCard3D> {
       ),
       child: Icon(Icons.check, color: colorScheme.onPrimary, size: 18),
     );
+  }
+
+  Future<void> _replicateToGeneration() async {
+    final metadata = await resolveLocalGalleryMetadata(widget.record);
+    if (!mounted) return;
+    if (metadata == null || !metadata.hasData) {
+      AppToast.warning(context, context.l10n.metadataImport_noDataFound);
+      return;
+    }
+    await MetadataImportCoordinator.apply(
+      read: ref.read,
+      metadata: metadata,
+      options: MetadataImportOptions.all(),
+      l10n: context.l10n,
+    );
+    if (mounted) {
+      context.go(AppRoutes.home);
+      AppToast.success(context, '已复刻所有参数至文生图');
+    }
+  }
+
+  Future<void> _replicateToInpaint() async {
+    final metadata = await resolveLocalGalleryMetadata(widget.record);
+    if (!mounted) return;
+    if (metadata != null && metadata.hasData) {
+      await MetadataImportCoordinator.apply(
+        read: ref.read,
+        metadata: metadata,
+        options: MetadataImportOptions.all().copyWith(importSeed: false),
+        l10n: context.l10n,
+      );
+    }
+    ref.read(generationParamsNotifierProvider.notifier).randomizeSeed();
+
+    final bytes = await File(widget.record.path).readAsBytes();
+    if (!mounted) return;
+    context.go(AppRoutes.home);
+    await ImageWorkflowLauncher.openInpaint(context, ref, bytes);
+    if (mounted) {
+      AppToast.success(context, '已载入局部重绘（参数已应用，种子已重置）');
+    }
   }
 }

@@ -26,6 +26,9 @@ import '../prompt/nai_syntax_controller.dart';
 import '../prompt/prompt_formatter_wrapper.dart';
 import '../prompt/tag_mode_prompt_field.dart';
 
+import '../common/app_toast.dart';
+import '../../providers/fixed_tags_provider.dart';
+
 /// 固定词编辑对话框
 class FixedTagEditDialog extends ConsumerStatefulWidget {
   /// 要编辑的条目，如果为 null 则为新建模式
@@ -35,7 +38,7 @@ class FixedTagEditDialog extends ConsumerStatefulWidget {
   const FixedTagEditDialog({
     super.key,
     this.entry,
-    this.initialPromptType = FixedTagPromptType.positive,
+    this.initialPromptType = FixedTagPromptType.combo,
     this.presentationManaged = false,
   });
 
@@ -44,7 +47,7 @@ class FixedTagEditDialog extends ConsumerStatefulWidget {
   static Future<FixedTagEntry?> show({
     required BuildContext context,
     FixedTagEntry? entry,
-    FixedTagPromptType initialPromptType = FixedTagPromptType.positive,
+    FixedTagPromptType initialPromptType = FixedTagPromptType.combo,
   }) {
     return AdaptivePresenter.showForm<FixedTagEntry>(
       context: context,
@@ -67,10 +70,12 @@ class FixedTagEditDialog extends ConsumerStatefulWidget {
 class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
   late final TextEditingController _nameController;
   late final NaiSyntaxController _contentController;
+  late final NaiSyntaxController _negativeContentController;
   late FixedTagPosition _position;
   late FixedTagPromptType _promptType;
   late double _weight;
   late bool _enabled;
+  String? _boundModel;
   late final String _assistantSessionId;
   Object get _modeId =>
       widget.entry == null ? _contentController : _assistantSessionId;
@@ -79,6 +84,7 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
 
   final _nameFocusNode = FocusNode();
   final _contentFocusNode = FocusNode();
+  final _negativeContentFocusNode = FocusNode();
 
   bool get _isEditing => widget.entry != null;
 
@@ -88,10 +94,13 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
     final entry = widget.entry;
     _nameController = TextEditingController(text: entry?.name ?? '');
     _contentController = NaiSyntaxController(text: entry?.content ?? '');
+    _negativeContentController =
+        NaiSyntaxController(text: entry?.negativeContent ?? '');
     _position = entry?.position ?? FixedTagPosition.prefix;
     _promptType = entry?.promptType ?? widget.initialPromptType;
     _weight = entry?.weight ?? 1.0;
     _enabled = entry?.enabled ?? true;
+    _boundModel = entry?.boundModel;
     _selectedCategoryId = entry?.categoryId;
     _assistantSessionId = PromptHistorySessionIds.fixedTag(
       entry?.id ?? 'draft-${identityHashCode(this)}',
@@ -102,8 +111,10 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
   void dispose() {
     _nameController.dispose();
     _contentController.dispose();
+    _negativeContentController.dispose();
     _nameFocusNode.dispose();
     _contentFocusNode.dispose();
+    _negativeContentFocusNode.dispose();
     super.dispose();
   }
 
@@ -250,7 +261,7 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
         Row(
           children: [
             Text(
-              context.l10n.fixedTags_content,
+              _promptType == FixedTagPromptType.combo ? '正向提示词内容' : context.l10n.fixedTags_content,
               style: theme.textTheme.labelLarge,
             ),
             const Spacer(),
@@ -270,10 +281,53 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
         if (expanded)
           Expanded(child: promptEditor)
         else
-          SizedBox(height: 280, child: promptEditor),
+          SizedBox(height: _promptType == FixedTagPromptType.combo ? 140 : 280, child: promptEditor),
         const SizedBox(height: 4),
         _buildPromptFooter(theme),
+        if (_promptType == FixedTagPromptType.combo) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text('负向提示词内容', style: theme.textTheme.labelLarge),
+              const Spacer(),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _negativeContentController,
+                builder: (context, value, child) => Text(
+                  '${value.text.characters.length}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (expanded)
+            Expanded(child: _buildNegativePromptEditor())
+          else
+            SizedBox(height: 140, child: _buildNegativePromptEditor()),
+        ],
       ],
+    );
+  }
+
+  Widget _buildNegativePromptEditor() {
+    return PromptFormatterWrapper(
+      controller: _negativeContentController,
+      focusNode: _negativeContentFocusNode,
+      enableAutoFormat: ref.watch(autoFormatPromptSettingsProvider),
+      child: ThemedInput(
+        key: const ValueKey('fixed-tag-negative-content-input'),
+        controller: _negativeContentController.displayController,
+        focusNode: _negativeContentFocusNode,
+        decoration: const InputDecoration(
+          hintText: '输入负向提示词内容 (可选)...',
+          contentPadding: EdgeInsets.all(12),
+        ),
+        maxLines: null,
+        expands: true,
+      ),
     );
   }
 
@@ -389,6 +443,10 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
           key: const ValueKey('fixed-tag-prompt-type-selector'),
           child: SegmentedButton<FixedTagPromptType>(
             segments: [
+              const ButtonSegment(
+                value: FixedTagPromptType.combo,
+                label: Text('正负组合'),
+              ),
               ButtonSegment(
                 value: FixedTagPromptType.positive,
                 label: Text(context.l10n.fixedTags_positive),
@@ -400,11 +458,17 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
             ],
             selected: {_promptType},
             onSelectionChanged: (selection) {
-              setState(() => _promptType = selection.first);
+              setState(() {
+                _promptType = selection.first;
+                _selectedCategoryId = null;
+              });
             },
           ),
         ),
         const SizedBox(height: 20),
+        if (_promptType == FixedTagPromptType.combo) ...[
+          _buildModelSelector(theme),
+        ],
         Text(
           context.l10n.fixedTags_position,
           style: theme.textTheme.labelLarge,
@@ -705,6 +769,12 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
             ?.update(
               name: name,
               content: content,
+              negativeContent: _promptType == FixedTagPromptType.combo
+                  ? _negativeContentController.text.trim()
+                  : null,
+              boundModel: _promptType == FixedTagPromptType.combo
+                  ? _boundModel
+                  : null,
               weight: _weight,
               position: _position,
               promptType: _promptType,
@@ -714,6 +784,12 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
         FixedTagEntry.create(
           name: name,
           content: content,
+          negativeContent: _promptType == FixedTagPromptType.combo
+              ? _negativeContentController.text.trim()
+              : null,
+          boundModel: _promptType == FixedTagPromptType.combo
+              ? _boundModel
+              : null,
           weight: _weight,
           position: _position,
           promptType: _promptType,
@@ -740,89 +816,106 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
     Navigator.of(context).pop(result);
   }
 
-  Widget _buildCategorySelector(ThemeData theme) {
-    final state = ref.watch(tagLibraryPageNotifierProvider);
-    final categories = state.categories;
-    final itemHeight = (MediaQuery.textScalerOf(context).scale(20) + 16)
-        .clamp(48.0, double.infinity)
-        .toDouble();
-    final items = <DropdownMenuItem<String?>>[];
+  Widget _buildModelSelector(ThemeData theme) {
+    if (_promptType != FixedTagPromptType.combo) return const SizedBox.shrink();
+    const models = [
+      ('', '不绑定模型 (保持当前选择)'),
+      ('nai-diffusion-4-full', 'NAI Diffusion V4 Full'),
+      ('nai-diffusion-4-curated-preview', 'NAI Diffusion V4 Curated'),
+      ('nai-diffusion-3', 'NAI Diffusion V3 (Anime)'),
+      ('nai-diffusion-3-furry', 'NAI Diffusion V3 Furry'),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('绑定模型 (可选)', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: _boundModel ?? '',
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            filled: true,
+            fillColor: inputSurfaceFillColor(theme.colorScheme),
+          ),
+          items: [
+            for (final m in models)
+              DropdownMenuItem(value: m.$1, child: Text(m.$2, style: const TextStyle(fontSize: 13))),
+          ],
+          onChanged: (val) {
+            setState(() {
+              _boundModel = (val == null || val.isEmpty) ? null : val;
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
 
-    items.add(
-      DropdownMenuItem<String?>(
+  Widget _buildCategorySelector(ThemeData theme) {
+    final fixedState = ref.watch(fixedTagsNotifierProvider);
+    final categories = fixedState.categoriesFor(_promptType);
+    final items = <DropdownMenuItem<String?>>[
+      const DropdownMenuItem<String?>(
         value: null,
         child: Row(
           children: [
-            Icon(
-              Icons.folder_outlined,
-              size: 16,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                context.l10n.tagLibrary_rootCategory,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13),
-              ),
-            ),
+            Icon(Icons.folder_outlined, size: 16),
+            SizedBox(width: 8),
+            Text('未分类', style: TextStyle(fontSize: 13)),
           ],
         ),
       ),
-    );
-
-    void addCategoryItems(String? parentId, int depth) {
-      final children = categories.where((c) => c.parentId == parentId).toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-
-      for (final category in children) {
-        items.add(
-          DropdownMenuItem<String?>(
-            value: category.id,
-            child: Row(
-              children: [
-                SizedBox(width: (depth * 14.0).clamp(0.0, 56.0).toDouble()),
-                Icon(
-                  Icons.folder_outlined,
-                  size: 16,
-                  color: theme.colorScheme.outline,
+      for (final cat in categories)
+        DropdownMenuItem<String?>(
+          value: cat.id,
+          child: Row(
+            children: [
+              const Icon(Icons.folder_outlined, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  cat.displayName,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    category.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-        addCategoryItems(category.id, depth + 1);
-      }
-    }
+        ),
+    ];
 
-    addCategoryItems(null, 0);
+    final validSelection = categories.any((c) => c.id == _selectedCategoryId);
+    final effectiveSelectedId = validSelection ? _selectedCategoryId : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          context.l10n.fixedTags_saveToCategory,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.outline,
-          ),
-        ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String?>(
-          initialValue: _selectedCategoryId,
-          itemHeight: itemHeight,
-          decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 12,
+        Row(
+          children: [
+            Text(
+              context.l10n.fixedTags_saveToCategory,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
             ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _showCreateCategoryDialog,
+              icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+              label: const Text('新建文件夹', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        DropdownButtonFormField<String?>(
+          initialValue: effectiveSelectedId,
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             filled: true,
             fillColor: inputSurfaceFillColor(theme.colorScheme),
           ),
@@ -833,5 +926,45 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
         ),
       ],
     );
+  }
+
+  Future<void> _showCreateCategoryDialog() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新建文件夹'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '请输入文件夹名称',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (val) => Navigator.of(ctx).pop(val.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(ctx.l10n.common_cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: Text(ctx.l10n.common_confirm),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (name != null && name.isNotEmpty) {
+      final newCat = await ref
+          .read(fixedTagsNotifierProvider.notifier)
+          .createCategory(name, _promptType);
+      if (!mounted) return;
+      setState(() {
+        _selectedCategoryId = newCat.id;
+      });
+      AppToast.success(context, '已创建文件夹 "$name"');
+    }
   }
 }

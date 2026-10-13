@@ -11,21 +11,19 @@ class NaiPromptFormatter {
   static final RegExp _trailingHorizontalWhitespacePattern = RegExp(r'[ \t]*$');
   static final RegExp _leadingSeparatorPattern = RegExp(r'^[ \t]*[,，][ \t]*');
 
-  /// 格式化单个标签为 NAI 格式
-  /// 将空格转换为下划线
+  /// 格式化单个标签（显示格式）：去除下划线，转换为常规空格
   static String formatTag(String tag) {
-    return _normalizeHorizontalWhitespace(tag).trim().replaceAll(' ', '_');
+    return _normalizeHorizontalWhitespace(tag.replaceAll('_', ' ')).trim();
   }
 
-  /// 格式化整个提示词
+  /// 格式化整个提示词（显示与编辑格式）：
   /// - 将中文逗号转换为英文逗号
-  /// - 将标签中的空格转换为下划线（保留逗号后的空格和尖括号内的空格）
-  /// - 保留用户用于分组的换行、空行和行首缩进
+  /// - 将标签中的下划线转换为普通空格
+  /// - 保留逗号后的空格规范
+  /// - 保留用户换行与空行
   static String format(String prompt) {
     var followsDisabled = false;
     return PromptEditDocument.mapActiveText(prompt, (fragment) {
-      // A leading comma after an opaque disabled fragment separates tags;
-      // formatting that fragment alone would treat it as an empty first tag.
       final separator = followsDisabled
           ? _leadingSeparatorPattern.firstMatch(fragment)
           : null;
@@ -36,11 +34,40 @@ class NaiPromptFormatter {
     });
   }
 
+  /// 发送给 API 请求时调用：将标签中的空格转换为下划线以符合 NovelAI 模型要求
+  static String formatForApi(String prompt) {
+    if (prompt.isEmpty) return prompt;
+    return PromptEditDocument.mapActiveText(prompt, (fragment) {
+      return fragment.splitMapJoin(
+        _lineBreakPattern,
+        onMatch: (match) => match.group(0)!,
+        onNonMatch: (line) {
+          if (line.isEmpty) return line;
+          final tags = line
+              .split(',')
+              .map((tag) {
+                final trimmed = tag.trim();
+                if (trimmed.isEmpty) return '';
+                return TextSpaceConverter.convert(
+                  trimmed,
+                  protectChars: TextSpaceConverter.naiFormat,
+                );
+              })
+              .where((tag) => tag.isNotEmpty)
+              .toList();
+          var formatted = tags.join(', ');
+          if (line.trimRight().endsWith(',') && formatted.isNotEmpty) {
+            formatted = '$formatted,';
+          }
+          return formatted;
+        },
+      );
+    });
+  }
+
   static String _formatActive(String prompt) {
     if (prompt.isEmpty) return prompt;
 
-    // Format block contents through the same path as positive tags while the
-    // shared parser protects the reserved keyword and matching boundaries.
     var prepared = prompt;
     final parsed = CharacterPromptBlockParser.parse(prompt);
     for (final block in parsed.blocks.reversed) {
@@ -87,10 +114,7 @@ class NaiPromptFormatter {
         .map((tag) {
           final trimmed = tag.trim();
           if (trimmed.isEmpty) return '';
-          return TextSpaceConverter.convert(
-            trimmed,
-            protectChars: TextSpaceConverter.naiFormat,
-          );
+          return formatTag(trimmed);
         })
         .where((tag) => tag.isNotEmpty)
         .toList();

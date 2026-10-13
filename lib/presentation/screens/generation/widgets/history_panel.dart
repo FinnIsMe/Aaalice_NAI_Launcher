@@ -27,6 +27,8 @@ import '../../../providers/layout_state_provider.dart';
 import '../../../providers/tag_library_page_provider.dart';
 
 import '../../../../data/services/image_metadata_service.dart';
+import '../../../../data/models/metadata/metadata_import_options.dart';
+import '../../../utils/metadata_import_coordinator.dart';
 import '../../../providers/generation/generation_params_selectors.dart';
 import '../../../providers/generation/preview_selection_provider.dart';
 import '../../../providers/history_click_behavior_provider.dart';
@@ -837,6 +839,11 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                                   )
                                 : null,
                             enableCopyAction: historyImage.canSave,
+                            onCopy: () => _reuseHistoryParamsWithoutSeed(
+                              context,
+                              historyImage,
+                            ),
+                            copyLabel: '复用参数(重置种子)',
                             statusBadgeLabel: isFailedSnapshot
                                 ? context.l10n.generation_failedStreamSnapshot
                                 : null,
@@ -1097,6 +1104,8 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
               ? () => GenerationSaveService.saveImageAs(context, ref, image)
               : null,
           enableCopyAction: image.canSave,
+          onCopy: () => _reuseHistoryParamsWithoutSeed(context, image),
+          copyLabel: '复用参数(重置种子)',
           statusBadgeLabel: isFailedSnapshot
               ? context.l10n.generation_failedStreamSnapshot
               : null,
@@ -1690,6 +1699,30 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
       setState(() {
         _selection.clearSelection();
       });
+    }
+  }
+
+  Future<void> _reuseHistoryParamsWithoutSeed(
+    BuildContext context,
+    GeneratedImage image,
+  ) async {
+    final metadata = image.metadata ??
+        await ImageMetadataService().getMetadataFromBytes(image.bytes);
+    if (!context.mounted) return;
+    if (metadata == null || !metadata.hasData) {
+      AppToast.warning(context, context.l10n.metadataImport_noDataFound);
+      return;
+    }
+    final options = MetadataImportOptions.all().copyWith(importSeed: false);
+    await MetadataImportCoordinator.apply(
+      read: ref.read,
+      metadata: metadata,
+      options: options,
+      l10n: context.l10n,
+    );
+    ref.read(generationParamsNotifierProvider.notifier).randomizeSeed();
+    if (context.mounted) {
+      AppToast.success(context, '已应用生成参数（种子已重置）');
     }
   }
 }

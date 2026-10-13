@@ -79,6 +79,8 @@ class ImageCardCapabilities {
     required this.onSelectionChanged,
     required this.onSave,
     required this.onSaveAs,
+    this.onCopy,
+    this.copyLabel,
     required this.onFullscreen,
     required this.onUpscale,
     required this.onReversePrompt,
@@ -119,6 +121,8 @@ class ImageCardCapabilities {
   final ValueChanged<bool>? onSelectionChanged;
   final ImageCardCallback? onSave;
   final ImageCardCallback? onSaveAs;
+  final ImageCardCallback? onCopy;
+  final String? copyLabel;
   final ImageCardCallback? onFullscreen;
   final ImageCardCallback? onUpscale;
   final ImageCardCallback? onReversePrompt;

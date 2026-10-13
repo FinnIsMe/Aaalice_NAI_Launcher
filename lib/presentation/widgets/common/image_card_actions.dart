@@ -124,9 +124,9 @@ class ImageCardActionCatalog {
       add(
         ImageCardActionId.copy,
         Icons.copy_rounded,
-        l10n.image_copy,
-        coordinator.createCopyImageAction(),
-        menuLabel: l10n.shortcut_action_copy_image,
+        capabilities.copyLabel ?? l10n.image_copy,
+        capabilities.onCopy ?? coordinator.createCopyImageAction(),
+        menuLabel: capabilities.copyLabel ?? l10n.shortcut_action_copy_image,
       );
     }
     add(

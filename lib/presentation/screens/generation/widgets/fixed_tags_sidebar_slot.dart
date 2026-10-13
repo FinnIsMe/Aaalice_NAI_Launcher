@@ -17,7 +17,7 @@ class FixedTagsSidebarSlot extends ConsumerStatefulWidget {
 }
 
 class _FixedTagsSidebarSlotState extends ConsumerState<FixedTagsSidebarSlot> {
-  static const double _minWidth = 240;
+  static const double _minWidth = 180;
   static const double _maxWidth = 400;
 
   bool _isResizing = false;

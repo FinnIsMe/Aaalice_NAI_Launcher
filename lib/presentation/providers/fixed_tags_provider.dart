@@ -12,12 +12,18 @@ import '../../data/models/fixed_tag/fixed_tag_prompt_type.dart';
 import '../../data/models/tag_library/tag_library_entry.dart';
 import 'tag_library_page_provider.dart';
 
+import '../../data/models/fixed_tag/fixed_tag_category.dart';
+import 'generation/generation_params_notifier.dart';
+
 part 'fixed_tags_provider.g.dart';
 
 /// 固定词状态
 class FixedTagsState {
   final List<FixedTagEntry> entries;
+  final List<FixedTagCategory> categories;
   final List<FixedTagLink> links;
+  final bool comboPanelExpanded;
+  final bool positivePanelExpanded;
   final bool negativePanelExpanded;
   final int undoDepth;
   final int redoDepth;
@@ -26,7 +32,10 @@ class FixedTagsState {
 
   const FixedTagsState({
     this.entries = const [],
+    this.categories = const [],
     this.links = const [],
+    this.comboPanelExpanded = true,
+    this.positivePanelExpanded = true,
     this.negativePanelExpanded = true,
     this.undoDepth = 0,
     this.redoDepth = 0,
@@ -36,7 +45,10 @@ class FixedTagsState {
 
   FixedTagsState copyWith({
     List<FixedTagEntry>? entries,
+    List<FixedTagCategory>? categories,
     List<FixedTagLink>? links,
+    bool? comboPanelExpanded,
+    bool? positivePanelExpanded,
     bool? negativePanelExpanded,
     int? undoDepth,
     int? redoDepth,
@@ -45,7 +57,11 @@ class FixedTagsState {
   }) {
     return FixedTagsState(
       entries: entries ?? this.entries,
+      categories: categories ?? this.categories,
       links: links ?? this.links,
+      comboPanelExpanded: comboPanelExpanded ?? this.comboPanelExpanded,
+      positivePanelExpanded:
+          positivePanelExpanded ?? this.positivePanelExpanded,
       negativePanelExpanded:
           negativePanelExpanded ?? this.negativePanelExpanded,
       undoDepth: undoDepth ?? this.undoDepth,
@@ -58,6 +74,33 @@ class FixedTagsState {
   bool get canUndo => undoDepth > 0;
 
   bool get canRedo => redoDepth > 0;
+
+  /// 获取正负组合固定词条目
+  List<FixedTagEntry> get comboEntries => entries
+      .where((e) => e.promptType == FixedTagPromptType.combo)
+      .toList();
+
+  /// 获取启用的正负组合条目
+  List<FixedTagEntry> get comboEnabledEntries => comboEntries
+      .where((e) => e.enabled)
+      .toList();
+
+  /// 按分类分组的正负组合固定词条目
+  Map<String?, List<FixedTagEntry>> get comboByCategory {
+    final grouped = <String?, List<FixedTagEntry>>{};
+    for (final entry in comboEntries.sortedByOrder()) {
+      grouped.putIfAbsent(entry.categoryId, () => []).add(entry);
+    }
+    return grouped;
+  }
+
+  /// 获取指定组别的分类列表
+  List<FixedTagCategory> categoriesFor(FixedTagPromptType promptType) {
+    return categories
+        .where((c) => c.promptType == promptType)
+        .toList()
+        .sortedByOrder();
+  }
 
   /// 获取正向固定词条目
   List<FixedTagEntry> get positiveEntries => entries
@@ -425,6 +468,15 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
                 )
                 .toList();
 
+      final categoriesJson = _storage.getFixedTagCategoriesJson();
+      final categories = categoriesJson == null || categoriesJson.isEmpty
+          ? <FixedTagCategory>[]
+          : (jsonDecode(categoriesJson) as List<dynamic>)
+                .map(
+                  (e) => FixedTagCategory.fromJson(Map<String, dynamic>.from(e)),
+                )
+                .toList();
+
       final linksJson = _storage.getFixedTagLinksJson();
       final links = linksJson == null || linksJson.isEmpty
           ? <FixedTagLink>[]
@@ -438,11 +490,12 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
       final negativePanelExpanded = _storage
           .getFixedTagsNegativePanelExpanded();
       AppLogger.d(
-        'Loaded ${entries.length} fixed tags and ${sanitizedLinks.length} links',
+        'Loaded ${entries.length} fixed tags, ${categories.length} categories and ${sanitizedLinks.length} links',
         'FixedTagsProvider',
       );
       return FixedTagsState(
         entries: sortedEntries,
+        categories: categories,
         links: sanitizedLinks,
         negativePanelExpanded: negativePanelExpanded,
       );
@@ -523,6 +576,94 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
     }
   }
 
+  /// 保存固定词分类到存储
+  Future<void> _saveCategories() async {
+    try {
+      final json = jsonEncode(state.categories.map((e) => e.toJson()).toList());
+      await _storage.setFixedTagCategoriesJson(json);
+    } catch (e, stack) {
+      AppLogger.e('Failed to save fixed tag categories: $e', e, stack, 'FixedTagsProvider');
+    }
+  }
+
+  /// 创建分类
+  Future<FixedTagCategory> createCategory(
+    String name,
+    FixedTagPromptType promptType,
+  ) async {
+    final sameType = state.categories.where((c) => c.promptType == promptType);
+    final newCategory = FixedTagCategory.create(
+      name: name,
+      promptType: promptType,
+      sortOrder: sameType.length,
+    );
+    final updated = [...state.categories, newCategory];
+    state = state.copyWith(categories: updated);
+    await _saveCategories();
+    return newCategory;
+  }
+
+  /// 更新分类名称
+  Future<void> renameCategory(String id, String newName) async {
+    final updated = state.categories.map((c) {
+      if (c.id == id) return c.updateName(newName);
+      return c;
+    }).toList();
+    state = state.copyWith(categories: updated);
+    await _saveCategories();
+  }
+
+  /// 删除分类（该分类下的条目归入未分类）
+  Future<void> deleteCategory(String id) async {
+    final updatedCategories = state.categories.where((c) => c.id != id).toList();
+    final updatedEntries = state.entries.map((e) {
+      if (e.categoryId == id) return e.copyWith(categoryId: null);
+      return e;
+    }).toList();
+    state = state.copyWith(categories: updatedCategories, entries: updatedEntries);
+    await _saveCategories();
+    await _saveEntries();
+  }
+
+  /// 文件夹排序
+  Future<void> reorderCategories(
+    FixedTagPromptType promptType,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    final targetList = state.categories
+        .where((c) => c.promptType == promptType)
+        .toList()
+        .sortedByOrder();
+    if (oldIndex < 0 || oldIndex >= targetList.length) return;
+    if (newIndex < 0 || newIndex > targetList.length) return;
+    if (oldIndex < newIndex) newIndex--;
+    final item = targetList.removeAt(oldIndex);
+    targetList.insert(newIndex, item);
+
+    final otherCategories = state.categories.where((c) => c.promptType != promptType).toList();
+    final reindexed = <FixedTagCategory>[];
+    for (var i = 0; i < targetList.length; i++) {
+      reindexed.add(targetList[i].copyWith(sortOrder: i));
+    }
+    state = state.copyWith(categories: [...otherCategories, ...reindexed]);
+    await _saveCategories();
+  }
+
+  /// 切换面板折叠状态
+  void setComboPanelExpanded(bool expanded) {
+    state = state.copyWith(comboPanelExpanded: expanded);
+  }
+
+  void setPositivePanelExpanded(bool expanded) {
+    state = state.copyWith(positivePanelExpanded: expanded);
+  }
+
+  void setNegativePanelExpanded(bool expanded) {
+    state = state.copyWith(negativePanelExpanded: expanded);
+    _saveNegativePanelExpanded();
+  }
+
   Future<void> _saveNegativePanelExpanded() async {
     await _storage.setFixedTagsNegativePanelExpanded(
       state.negativePanelExpanded,
@@ -579,6 +720,8 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
     FixedTagPromptType promptType = FixedTagPromptType.positive,
     String? sourceEntryId, // 【新增】来源词库条目ID
     String? categoryId,
+    String? negativeContent,
+    String? boundModel,
   }) async {
     final duplicateIndex = sourceEntryId == null || sourceEntryId.isEmpty
         ? -1
@@ -612,6 +755,8 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
       promptType: promptType,
       sourceEntryId: sourceEntryId, // 【新增】
       categoryId: categoryId,
+      negativeContent: negativeContent,
+      boundModel: boundModel,
       sortOrder: state.entries.length,
     );
 
@@ -935,6 +1080,13 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
 
     _commitState(state.copyWith(entries: newEntries));
     await _saveEntries();
+
+    if (nextEnabled && entry.boundModel != null && entry.boundModel!.isNotEmpty) {
+      ref.read(generationParamsNotifierProvider.notifier).updateModel(
+        entry.boundModel!,
+        followDefaults: false,
+      );
+    }
   }
 
   /// 切换位置
@@ -1166,15 +1318,10 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
               : entry,
         )
         .toList();
-    _commitState(state.copyWith(entries: newEntries));
-    await _saveEntries();
+      _commitState(state.copyWith(entries: newEntries));
+      await _saveEntries();
+    }
   }
-
-  Future<void> setNegativePanelExpanded(bool expanded) async {
-    state = _withHistoryCounts(state.copyWith(negativePanelExpanded: expanded));
-    await _saveNegativePanelExpanded();
-  }
-}
 
 /// 便捷方法：获取当前固定词列表
 @riverpod

@@ -44,6 +44,8 @@ class SelectableImageCard extends ConsumerStatefulWidget {
     this.hoverEffectsEnabled = true,
     this.shareWarmupEnabled = true,
     this.enableCopyAction = true,
+    this.onCopy,
+    this.copyLabel,
     this.statusBadgeLabel,
     this.statusBadgeTooltip,
     this.dragPreparationReady = true,
@@ -108,6 +110,8 @@ class SelectableImageCard extends ConsumerStatefulWidget {
   final bool hoverEffectsEnabled;
   final bool shareWarmupEnabled;
   final bool enableCopyAction;
+  final ImageCardCallback? onCopy;
+  final String? copyLabel;
   final String? statusBadgeLabel;
   final String? statusBadgeTooltip;
   final bool dragPreparationReady;
@@ -202,6 +206,8 @@ class _SelectableImageCardState extends ConsumerState<SelectableImageCard>
     onSelectionChanged: widget.onSelectionChanged,
     onSave: widget.onSave,
     onSaveAs: widget.onSaveAs,
+    onCopy: widget.onCopy,
+    copyLabel: widget.copyLabel,
     onFullscreen: widget.onFullscreen,
     onUpscale: widget.onUpscale,
     onReversePrompt: widget.onReversePrompt,

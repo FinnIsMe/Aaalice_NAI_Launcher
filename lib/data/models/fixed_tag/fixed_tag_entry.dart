@@ -64,6 +64,12 @@ class FixedTagEntry with _$FixedTagEntry {
     /// 历史版本对应的固定词快照指纹，用于避免重复创建。
     String? importedSnapshotFingerprint,
 
+    /// 负向提示词内容 (仅 combo 类型有效)
+    String? negativeContent,
+
+    /// 绑定的生图模型 (可选)
+    String? boundModel,
+
     /// 排序顺序
     @Default(0) int sortOrder,
 
@@ -89,6 +95,8 @@ class FixedTagEntry with _$FixedTagEntry {
     String? sourceEntryId, // 【新增】来源词库条目ID
     String? importedFromFixedTagId,
     String? importedSnapshotFingerprint,
+    String? negativeContent,
+    String? boundModel,
     int sortOrder = 0,
   }) {
     final now = DateTime.now();
@@ -104,6 +112,8 @@ class FixedTagEntry with _$FixedTagEntry {
       sourceEntryId: sourceEntryId, // 【新增】
       importedFromFixedTagId: importedFromFixedTagId,
       importedSnapshotFingerprint: importedSnapshotFingerprint,
+      negativeContent: negativeContent?.trim(),
+      boundModel: boundModel,
       sortOrder: sortOrder,
       createdAt: now,
       updatedAt: now,
@@ -129,6 +139,11 @@ class FixedTagEntry with _$FixedTagEntry {
   /// 每层 {} 增加 ~1.05x 权重，每层 [] 减少 ~1.05x 权重
   String get weightedContent {
     return applyWeight(content, weight);
+  }
+
+  /// 应用权重后的负向内容 (针对 combo 类型)
+  String get negativeWeightedContent {
+    return applyWeight(negativeContent ?? '', weight);
   }
 
   /// 计算权重所需的嵌套层数
@@ -190,11 +205,15 @@ class FixedTagEntry with _$FixedTagEntry {
     String? sourceEntryId,
     String? importedFromFixedTagId,
     String? importedSnapshotFingerprint,
+    String? negativeContent,
+    String? boundModel,
     int? sortOrder,
   }) {
     return copyWith(
       name: name?.trim() ?? this.name,
       content: content?.trim() ?? this.content,
+      negativeContent: negativeContent != null ? negativeContent.trim() : this.negativeContent,
+      boundModel: boundModel ?? this.boundModel,
       weight: weight?.clamp(0.5, 2.0) ?? this.weight,
       position: position ?? this.position,
       enabled: enabled ?? this.enabled,
@@ -278,7 +297,8 @@ extension FixedTagEntryListExtension on List<FixedTagEntry> {
   List<FixedTagEntry> get enabledPrefixes => where(
     (e) =>
         e.enabled &&
-        e.promptType == FixedTagPromptType.positive &&
+        (e.promptType == FixedTagPromptType.positive ||
+            e.promptType == FixedTagPromptType.combo) &&
         e.position == FixedTagPosition.prefix,
   ).toList();
 
@@ -286,7 +306,8 @@ extension FixedTagEntryListExtension on List<FixedTagEntry> {
   List<FixedTagEntry> get enabledSuffixes => where(
     (e) =>
         e.enabled &&
-        e.promptType == FixedTagPromptType.positive &&
+        (e.promptType == FixedTagPromptType.positive ||
+            e.promptType == FixedTagPromptType.combo) &&
         e.position == FixedTagPosition.suffix,
   ).toList();
 
@@ -338,11 +359,38 @@ extension FixedTagEntryListExtension on List<FixedTagEntry> {
   );
 
   /// 将所有启用的负向固定词按位置和顺序应用到负向提示词。
-  String applyToNegativePrompt(String userPrompt) => _applyEnabledEntries(
-    userPrompt,
-    prefixes: negativeEnabledPrefixes,
-    suffixes: negativeEnabledSuffixes,
-  );
+  String applyToNegativePrompt(String userPrompt) {
+    final prefixes = where(
+      (e) =>
+          e.enabled &&
+          (e.promptType == FixedTagPromptType.negative ||
+              (e.promptType == FixedTagPromptType.combo &&
+                  (e.negativeContent?.isNotEmpty ?? false))) &&
+          e.position == FixedTagPosition.prefix,
+    ).toList();
+    final suffixes = where(
+      (e) =>
+          e.enabled &&
+          (e.promptType == FixedTagPromptType.negative ||
+              (e.promptType == FixedTagPromptType.combo &&
+                  (e.negativeContent?.isNotEmpty ?? false))) &&
+          e.position == FixedTagPosition.suffix,
+    ).toList();
+    final parts = <String>[
+      ...prefixes.sortedByOrder().map(
+        (entry) => entry.promptType == FixedTagPromptType.combo
+            ? entry.negativeWeightedContent
+            : entry.weightedContent,
+      ),
+      userPrompt,
+      ...suffixes.sortedByOrder().map(
+        (entry) => entry.promptType == FixedTagPromptType.combo
+            ? entry.negativeWeightedContent
+            : entry.weightedContent,
+      ),
+    ].map(PromptEditDocument.effectiveText).where((part) => part.trim().isNotEmpty);
+    return parts.join(', ');
+  }
 
   /// 更新排序顺序
   ///
