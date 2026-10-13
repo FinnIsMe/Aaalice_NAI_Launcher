@@ -609,36 +609,32 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
     _syncSeedController(seed);
 
     return SizedBox(
-      height: 28,
+      height: 32,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, right: 2),
-            child: Text(
-              'Seed:',
-              style: TextStyle(
-                fontSize: 11,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
           Expanded(
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
               keyboardType: TextInputType.number,
               textAlignVertical: TextAlignVertical.center,
-              style: const TextStyle(fontSize: 11),
+              style: const TextStyle(fontSize: 11.5),
               decoration: InputDecoration(
+                filled: false,
+                isDense: true,
+                prefixText: 'Seed: ',
+                prefixStyle: TextStyle(
+                  fontSize: 11.5,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.w500,
+                ),
                 hintText: context.l10n.generation_seedRandom,
                 hintStyle: TextStyle(
-                  fontSize: 10.5,
+                  fontSize: 11,
                   color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 ),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -657,27 +653,32 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
           // 1. 切换为当前图像种子
           Tooltip(
             message: '设为当前图像种子',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(3),
-              onTap: () {
-                final displayImages =
-                    ref.read(imageGenerationNotifierProvider).displayImages;
-                final currentSeed = displayImages.firstOrNull?.metadata?.seed;
-                if (currentSeed != null && currentSeed > 0) {
-                  ref
-                      .read(generationParamsNotifierProvider.notifier)
-                      .updateSeed(currentSeed);
-                  _controller.text = currentSeed.toString();
-                } else {
-                  AppToast.info(context, '当前没有生成图像或无种子数据');
-                }
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                child: Icon(
-                  Icons.restore,
-                  size: 13,
-                  color: theme.colorScheme.onSurfaceVariant,
+            child: SizedBox(
+              height: 32,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(3),
+                onTap: () {
+                  final displayImages =
+                      ref.read(imageGenerationNotifierProvider).displayImages;
+                  final currentSeed = displayImages.firstOrNull?.metadata?.seed;
+                  if (currentSeed != null && currentSeed > 0) {
+                    ref
+                        .read(generationParamsNotifierProvider.notifier)
+                        .updateSeed(currentSeed);
+                    _controller.text = currentSeed.toString();
+                  } else {
+                    AppToast.info(context, '当前没有生成图像或无种子数据');
+                  }
+                },
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Icon(
+                      Icons.restore,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -685,18 +686,23 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
           // 2. 清空 (设为随机 -1)
           Tooltip(
             message: context.l10n.common_clear,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(3),
-              onTap: () {
-                _controller.clear();
-                ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                child: Icon(
-                  Icons.clear_rounded,
-                  size: 13,
-                  color: theme.colorScheme.onSurfaceVariant,
+            child: SizedBox(
+              height: 32,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(3),
+                onTap: () {
+                  _controller.clear();
+                  ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
+                },
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Icon(
+                      Icons.clear_rounded,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -706,30 +712,35 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
             message: isLocked
                 ? context.l10n.generation_seedUnlock
                 : context.l10n.generation_seedLock,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(3),
-              onTap: () {
-                final inputText = _controller.text.trim();
-                final inputSeed =
-                    inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
-                if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
+            child: SizedBox(
+              height: 32,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(3),
+                onTap: () {
+                  final inputText = _controller.text.trim();
+                  final inputSeed =
+                      inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
+                  if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
+                    ref
+                        .read(generationParamsNotifierProvider.notifier)
+                        .updateSeed(inputSeed);
+                  }
                   ref
                       .read(generationParamsNotifierProvider.notifier)
-                      .updateSeed(inputSeed);
-                }
-                ref
-                    .read(generationParamsNotifierProvider.notifier)
-                    .toggleSeedLock();
-                setState(() {});
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: Icon(
-                  isLocked ? Icons.lock : Icons.lock_open_rounded,
-                  size: 13,
-                  color: isLocked
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
+                      .toggleSeedLock();
+                  setState(() {});
+                },
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Icon(
+                      isLocked ? Icons.lock : Icons.lock_open_rounded,
+                      size: 14,
+                      color: isLocked
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
