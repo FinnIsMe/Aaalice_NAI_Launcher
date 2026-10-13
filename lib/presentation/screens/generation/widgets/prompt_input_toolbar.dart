@@ -74,15 +74,15 @@ class PromptInputToolbar extends ConsumerWidget {
             height: 32,
             child: Row(
               children: [
-                const CompactSeedInput(),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: PromptTypeSwitch(
-                    controller: controller,
-                    commands: commands,
-                    expand: true,
-                    compact: true,
-                  ),
+                const Expanded(
+                  child: CompactSeedInput(),
+                ),
+                const SizedBox(width: 5),
+                PromptTypeSwitch(
+                  controller: controller,
+                  commands: commands,
+                  expand: false,
+                  compact: true,
                 ),
                 const SizedBox(width: 4),
                 Row(
@@ -611,7 +611,7 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
 
     return Container(
       height: 32,
-      constraints: const BoxConstraints(maxWidth: 135, minWidth: 85),
+      constraints: const BoxConstraints(minWidth: 90),
       decoration: BoxDecoration(
         color: controlSurfaceColor(theme.colorScheme),
         borderRadius: BorderRadius.circular(5),

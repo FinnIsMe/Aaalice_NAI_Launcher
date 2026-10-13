@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -77,29 +78,37 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
             .updateNSamples(value);
       },
     );
-    final leftActions = <Widget>[opusUsage, anlasBalance];
-    final rightActions = <Widget>[
-      if (compact)
+    final leftActions = <Widget>[
+      opusUsage,
+      anlasBalance,
+      if (compact) ...[
         Visibility.maintain(
           visible: !showCancel,
           child: const BatchSettingsButton(compact: true),
         ),
-      if (!compact) sampleCountInput,
-      if (compact)
         Visibility.maintain(visible: !showCancel, child: sampleCountInput),
-      if (showRandomTools)
-        RandomModeToggle(enabled: randomMode, compact: compact),
-      if (compact) const AutoSaveToggleChip(compact: true),
+        const AutoSaveToggleChip(compact: true),
+        if (showRandomTools)
+          RandomModeToggle(enabled: randomMode, compact: compact),
+      ],
+    ];
+    final rightActions = <Widget>[
+      if (!compact) ...[
+        sampleCountInput,
+        if (showRandomTools)
+          RandomModeToggle(enabled: randomMode, compact: compact),
+      ],
     ];
 
     // 由子控件的实际布局尺寸决定是否换行，而不是把 compact 或文本
-    // 缩放直接等同于窄布局。这样能放下时始终保持单行和主按钮几何居中。
+    // 缩放直接等同于窄布局。紧凑模式下参数靠左，主按钮收紧居右。
     return _GenerationControlsLayout(
+      compact: compact,
       leftActions: leftActions,
       primaryAction: SizedBox(
         key: const ValueKey('generation-footer-primary-action'),
         child: GenerateButtonWithCost(
-          height: 48,
+          height: compact ? 30 : 36,
           isGenerating: isGenerating,
           showCancel: showCancel,
           batchStatus: batchStatus,
@@ -151,6 +160,7 @@ class _GenerationControlsLayout extends MultiChildRenderObjectWidget {
     required List<Widget> leftActions,
     required Widget primaryAction,
     required List<Widget> rightActions,
+    this.compact = false,
   }) : super(
          key: const ValueKey('generation-footer-adaptive-layout'),
          children: [
@@ -171,9 +181,19 @@ class _GenerationControlsLayout extends MultiChildRenderObjectWidget {
          ],
        );
 
+  final bool compact;
+
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderGenerationControlsLayout();
+      _RenderGenerationControlsLayout(compact: compact);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderGenerationControlsLayout renderObject,
+  ) {
+    renderObject.compact = compact;
+  }
 }
 
 class _GenerationControlSlot
@@ -207,6 +227,16 @@ class _RenderGenerationControlsLayout extends RenderBox
           RenderBox,
           _GenerationControlsParentData
         > {
+  _RenderGenerationControlsLayout({bool compact = false}) : _compact = compact;
+
+  bool _compact;
+  bool get compact => _compact;
+  set compact(bool value) {
+    if (_compact == value) return;
+    _compact = value;
+    markNeedsLayout();
+  }
+
   static const double _itemSpacing = 2;
   static const double _primarySpacing = 8;
   static const double _runSpacing = 8;
@@ -264,7 +294,9 @@ class _RenderGenerationControlsLayout extends RenderBox
         : naturalWidth;
     final useSingleRow = naturalWidth <= layoutWidth;
     final primaryWidth = useSingleRow
-        ? layoutWidth - leftWidth - rightWidth - _primarySpacing * 2
+        ? (_compact
+            ? math.max(minimumPrimaryWidth, 150.0)
+            : layoutWidth - leftWidth - rightWidth - _primarySpacing * 2)
         : layoutWidth;
     primaryChild.layout(
       BoxConstraints.tightFor(width: primaryWidth),
@@ -296,7 +328,9 @@ class _RenderGenerationControlsLayout extends RenderBox
     );
     final leftWidth = _groupWidth(left);
     final rightWidth = _groupWidth(right);
-    final primaryX = leftWidth + _primarySpacing;
+    final primaryX = _compact
+        ? width - rightWidth - primary.size.width
+        : leftWidth + _primarySpacing;
     _positionGroup(left, 0, height);
     _position(primary, primaryX, (height - primary.size.height) / 2);
     _positionGroup(right, width - rightWidth, height);

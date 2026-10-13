@@ -138,7 +138,7 @@ class MainWorkspace extends ConsumerWidget {
 
             // 底部生成控制区
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface.withValues(alpha: 0.5),
                 border: Border(

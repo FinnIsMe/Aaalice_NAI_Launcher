@@ -581,45 +581,49 @@ class _PaginationBarState extends State<PaginationBar> {
     );
   }
 
+  double get _pageButtonWidth {
+    final digits = widget.totalPages.toString().length;
+    final calculated = 16.0 + digits * 8.5;
+    return calculated < 36.0 ? 36.0 : calculated;
+  }
+
   List<Widget> _buildPageNumbers(ThemeData theme, ColorScheme colorScheme) {
     final List<Widget> buttons = [];
     final int current = widget.currentPage;
     final int total = widget.totalPages;
 
     if (total <= 7) {
-      // Show all pages
+      // 7页及以内直接展示全部页码
       for (int i = 0; i < total; i++) {
         buttons.add(_buildPageButton(i, theme, colorScheme));
       }
     } else {
-      // Show with ellipsis
-      // Always show first page
+      // 严格保证总共 7 个元素，避免任何漏页或数量增减导致跳动
+      // 始终显示第一页
       buttons.add(_buildPageButton(0, theme, colorScheme));
 
-      if (current > 3) {
+      if (current < 4) {
+        // 靠前：1, 2, 3, 4, 5, ..., total
+        for (int i = 1; i <= 4; i++) {
+          buttons.add(_buildPageButton(i, theme, colorScheme));
+        }
+        buttons.add(_buildEllipsis(theme));
+      } else if (current > total - 5) {
+        // 靠后：1, ..., total-4, total-3, total-2, total-1, total
+        buttons.add(_buildEllipsis(theme));
+        for (int i = total - 5; i <= total - 2; i++) {
+          buttons.add(_buildPageButton(i, theme, colorScheme));
+        }
+      } else {
+        // 居中：1, ..., current-1, current, current+1, ..., total
+        buttons.add(_buildEllipsis(theme));
+        buttons.add(_buildPageButton(current - 1, theme, colorScheme));
+        buttons.add(_buildPageButton(current, theme, colorScheme));
+        buttons.add(_buildPageButton(current + 1, theme, colorScheme));
         buttons.add(_buildEllipsis(theme));
       }
 
-      // Show pages around current
-      int start = (current - 1).clamp(1, total - 4);
-      int end = (current + 1).clamp(3, total - 2);
-
-      if (current <= 3) {
-        end = 4;
-      }
-      if (current >= total - 4) {
-        start = total - 5;
-      }
-
-      for (int i = start; i <= end; i++) {
-        buttons.add(_buildPageButton(i, theme, colorScheme));
-      }
-
-      if (current < total - 4) {
-        buttons.add(_buildEllipsis(theme));
-      }
-
-      // Always show last page
+      // 始终显示最后一页
       buttons.add(_buildPageButton(total - 1, theme, colorScheme));
     }
 
@@ -628,6 +632,7 @@ class _PaginationBarState extends State<PaginationBar> {
 
   Widget _buildPageButton(int page, ThemeData theme, ColorScheme colorScheme) {
     final isSelected = page == widget.currentPage;
+    final width = _pageButtonWidth;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -646,11 +651,11 @@ class _PaginationBarState extends State<PaginationBar> {
             borderRadius: BorderRadius.circular(6),
             child: Container(
               constraints: BoxConstraints(
-                minWidth: context.interactionPolicy.minimumControlExtent,
+                minWidth: width,
                 minHeight: context.interactionPolicy.minimumControlExtent,
               ),
               alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Text(
                 '${page + 1}',
                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -668,8 +673,12 @@ class _PaginationBarState extends State<PaginationBar> {
   }
 
   Widget _buildEllipsis(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+    return Container(
+      constraints: BoxConstraints(
+        minWidth: _pageButtonWidth,
+      ),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Text(
         '...',
         style: theme.textTheme.bodyMedium?.copyWith(

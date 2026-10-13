@@ -339,53 +339,49 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
             children: [
-              // 左侧：参数摘要点击展开/收起参数抽屉
-              Expanded(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: _toggleParamsMenu,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            context.l10n.generation_params,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
+              // 左侧：参数摘要点击展开/收起参数抽屉 (按内容紧凑展示)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: _toggleParamsMenu,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          context.l10n.generation_params,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '$samplerDisplayName · ${paramsSummary.steps}步',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$samplerDisplayName · ${paramsSummary.steps}步',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 11.5,
                           ),
-                          const SizedBox(width: 4),
-                          // 箭头随抽屉开合旋转（收起朝上提示拉出方向）
-                          RotationTransition(
-                            turns: Tween<double>(
-                              begin: 0,
-                              end: 0.5,
-                            ).animate(_menuAnimation),
-                            child: Icon(
-                              Icons.keyboard_arrow_up,
-                              size: 18,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                        ),
+                        const SizedBox(width: 3),
+                        // 箭头随抽屉开合旋转（收起朝上提示拉出方向）
+                        RotationTransition(
+                          turns: Tween<double>(
+                            begin: 0,
+                            end: 0.5,
+                          ).animate(_menuAnimation),
+                          child: Icon(
+                            Icons.keyboard_arrow_up,
+                            size: 17,
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -393,85 +389,90 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
 
               const SizedBox(width: 8),
 
-              // 右侧：独立模型上拉框 (一步到位切换模型)
-              PopupMenuButton<String>(
-                tooltip: context.l10n.generation_model,
-                initialValue: selectorModel,
-                position: PopupMenuPosition.over,
-                onSelected: (value) {
-                  if (value != selectorModel) {
-                    ref
-                        .read(generationParamsNotifierProvider.notifier)
-                        .updateModel(value);
-                  }
-                },
-                itemBuilder: (context) {
-                  return ImageModels.visibleModels(current: selectorModel).map((model) {
-                    final isCur = model == selectorModel;
-                    return PopupMenuItem<String>(
-                      value: model,
-                      height: 36,
+              // 右侧：独立模型上拉框 (放宽宽度完整展示全称，不截断为...)
+              Expanded(
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: PopupMenuButton<String>(
+                    tooltip: context.l10n.generation_model,
+                    initialValue: selectorModel,
+                    position: PopupMenuPosition.over,
+                    onSelected: (value) {
+                      if (value != selectorModel) {
+                        ref
+                            .read(generationParamsNotifierProvider.notifier)
+                            .updateModel(value);
+                      }
+                    },
+                    itemBuilder: (context) {
+                      return ImageModels.visibleModels(current: selectorModel).map((model) {
+                        final isCur = model == selectorModel;
+                        return PopupMenuItem<String>(
+                          value: model,
+                          height: 36,
+                          child: Row(
+                            children: [
+                              ModelFamilyIcon(
+                                modelId: model,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  ImageModels.modelDisplayNames[model] ?? model,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
+                                    color: isCur ? theme.colorScheme.primary : null,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isCur) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
+                              ],
+                            ],
+                          ),
+                        );
+                      }).toList();
+                    },
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: theme.dividerColor, width: 1),
+                      ),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           ModelFamilyIcon(
-                            modelId: model,
-                            size: 16,
+                            modelId: selectorModel,
+                            size: 15,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
+                          const SizedBox(width: 5),
+                          Flexible(
                             child: Text(
-                              ImageModels.modelDisplayNames[model] ?? model,
+                              modelDisplayName,
                               style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
-                                color: isCur ? theme.colorScheme.primary : null,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.primary,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (isCur) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
-                          ],
+                          const SizedBox(width: 3),
+                          Icon(
+                            Icons.unfold_more,
+                            size: 15,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ],
                       ),
-                    );
-                  }).toList();
-                },
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 130),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: theme.dividerColor, width: 1),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ModelFamilyIcon(
-                        modelId: selectorModel,
-                        size: 15,
-                      ),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          modelDisplayName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: theme.colorScheme.primary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      Icon(
-                        Icons.unfold_more,
-                        size: 15,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -481,7 +482,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
 
         // 钉底生成控制条（压扁）
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface.withValues(alpha: 0.5),
             border: Border(

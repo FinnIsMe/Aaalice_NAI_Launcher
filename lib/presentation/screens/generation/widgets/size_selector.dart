@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/utils/localization_extension.dart';
 import '../../../../core/utils/nai_resolution_adapter.dart';
 import '../../../../data/models/image/resolution_preset.dart';
+import '../../../widgets/common/app_toast.dart';
 import '../../../widgets/common/input_surface_container.dart';
 import '../../../widgets/common/themed_dropdown.dart';
 
@@ -87,6 +89,9 @@ class SizeSelector extends StatefulWidget {
 }
 
 class _SizeSelectorState extends State<SizeSelector> {
+  static const String _savedPresetsPrefsKey = 'custom_saved_resolution_presets';
+  List<(int width, int height)> _savedPresets = [];
+
   late TextEditingController _widthController;
   late TextEditingController _heightController;
   late FocusNode _widthFocusNode;
@@ -98,7 +103,6 @@ class _SizeSelectorState extends State<SizeSelector> {
   final OverlayPortalController _overlayController = OverlayPortalController();
   final LayerLink _layerLink = LayerLink();
   final GlobalKey _triggerKey = GlobalKey();
-  double? _targetWidth;
 
   @override
   void initState() {
@@ -111,6 +115,7 @@ class _SizeSelectorState extends State<SizeSelector> {
     if (_selectedPresetId == 'custom') {
       _customSize = (widget.width, widget.height);
     }
+    _loadSavedPresets();
   }
 
   @override
@@ -193,19 +198,10 @@ class _SizeSelectorState extends State<SizeSelector> {
     };
   }
 
-  void _updateTargetWidth() {
-    final renderBox =
-        _triggerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox != null && renderBox.hasSize) {
-      _targetWidth = renderBox.size.width;
-    }
-  }
-
   void _togglePopup() {
     if (_overlayController.isShowing) {
       _overlayController.hide();
     } else {
-      _updateTargetWidth();
       _overlayController.show();
     }
     setState(() {});
@@ -234,6 +230,74 @@ class _SizeSelectorState extends State<SizeSelector> {
     if (_customSize != null) {
       widget.onChanged(_customSize!.$1, _customSize!.$2);
     }
+  }
+
+  Future<void> _loadSavedPresets() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_savedPresetsPrefsKey) ?? [];
+      final parsed = <(int, int)>[];
+      for (final s in list) {
+        final parts = s.split('x');
+        if (parts.length == 2) {
+          final w = int.tryParse(parts[0]);
+          final h = int.tryParse(parts[1]);
+          if (w != null && h != null && w > 0 && h > 0) {
+            parsed.add((w, h));
+          }
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _savedPresets = parsed;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveCurrentPreset() async {
+    final w = int.tryParse(_widthController.text.trim()) ?? widget.width;
+    final h = int.tryParse(_heightController.text.trim()) ?? widget.height;
+    if (w <= 0 || h <= 0) return;
+
+    if (_savedPresets.any((p) => p.$1 == w && p.$2 == h)) {
+      if (mounted) {
+        AppToast.info(context, '该尺寸已在保存预设中');
+      }
+      return;
+    }
+
+    final next = [..._savedPresets, (w, h)];
+    setState(() {
+      _savedPresets = next;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _savedPresetsPrefsKey,
+        next.map((p) => '${p.$1}x${p.$2}').toList(),
+      );
+      if (mounted) {
+        AppToast.success(context, '已保存自定义尺寸 $w×$h');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _removeSavedPreset((int, int) size) async {
+    final next = _savedPresets.where((p) => p != size).toList();
+    setState(() {
+      _savedPresets = next;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _savedPresetsPrefsKey,
+        next.map((p) => '${p.$1}x${p.$2}').toList(),
+      );
+      if (mounted) {
+        AppToast.info(context, '已移除预设尺寸 ${size.$1}×${size.$2}');
+      }
+    } catch (_) {}
   }
 
   void _onManualSizeChanged() {
@@ -268,13 +332,10 @@ class _SizeSelectorState extends State<SizeSelector> {
     if (_selectedPresetId != null && _selectedPresetId != 'custom') {
       final p = ResolutionPreset.findById(_selectedPresetId!);
       if (p != null) {
-        final groupName = _getGroupName(context, p.group);
-        final typeName = _getTypeName(context, p.type);
-        return '$groupName - ${p.getDisplayName(typeName)}';
+        return _getTypeName(context, p.type);
       }
     }
-    final customName = _getGroupName(context, ResolutionGroup.custom);
-    return '$customName (${widget.width}×${widget.height})';
+    return _getTypeName(context, ResolutionType.custom);
   }
 
   Widget _buildPresetButton(
@@ -294,10 +355,10 @@ class _SizeSelectorState extends State<SizeSelector> {
           borderRadius: BorderRadius.circular(6),
           onTap: onTap,
           child: Container(
-            width: 54,
-            height: 28,
+            width: 48,
+            height: 26,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(5),
               border: Border.all(
                 color: isSelected
                     ? theme.colorScheme.primary
@@ -314,7 +375,7 @@ class _SizeSelectorState extends State<SizeSelector> {
               child: _AspectGeometryIcon(
                 type: type,
                 isSelected: isSelected,
-                size: 16,
+                size: 15,
               ),
             ),
           ),
@@ -330,26 +391,26 @@ class _SizeSelectorState extends State<SizeSelector> {
   }) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
       child: Row(
         children: [
           SizedBox(
-            width: 48,
+            width: 42,
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: Row(
               children: [
                 for (int i = 0; i < buttons.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 8),
+                  if (i > 0) const SizedBox(width: 5),
                   buttons[i],
                 ],
               ],
@@ -387,7 +448,7 @@ class _SizeSelectorState extends State<SizeSelector> {
             ),
           ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -410,8 +471,65 @@ class _SizeSelectorState extends State<SizeSelector> {
               }).toList(),
             ),
 
-            // 2. 定制（如果有定制的话，定制放到第二行）
-            if (hasCustom)
+            // 2. 大图
+            _buildGridRow(
+              context,
+              label: _getGroupName(context, ResolutionGroup.large),
+              buttons: largePresets.map((p) {
+                final isSelected =
+                    widget.width == p.width && widget.height == p.height;
+                final typeName = _getTypeName(context, p.type);
+                return _buildPresetButton(
+                  context,
+                  type: p.type,
+                  tooltip: p.getDisplayName(typeName),
+                  isSelected: isSelected,
+                  onTap: () => _onPresetSelected(p),
+                );
+              }).toList(),
+            ),
+
+            // 3. 壁纸
+            _buildGridRow(
+              context,
+              label: _getGroupName(context, ResolutionGroup.wallpaper),
+              buttons: wallpaperPresets.map((p) {
+                final isSelected =
+                    widget.width == p.width && widget.height == p.height;
+                final typeName = _getTypeName(context, p.type);
+                return _buildPresetButton(
+                  context,
+                  type: p.type,
+                  tooltip: p.getDisplayName(typeName),
+                  isSelected: isSelected,
+                  onTap: () => _onPresetSelected(p),
+                );
+              }).toList(),
+            ),
+
+            // 4. 小图
+            _buildGridRow(
+              context,
+              label: _getGroupName(context, ResolutionGroup.small),
+              buttons: smallPresets.map((p) {
+                final isSelected =
+                    widget.width == p.width && widget.height == p.height;
+                final typeName = _getTypeName(context, p.type);
+                return _buildPresetButton(
+                  context,
+                  type: p.type,
+                  tooltip: p.getDisplayName(typeName),
+                  isSelected: isSelected,
+                  onTap: () => _onPresetSelected(p),
+                );
+              }).toList(),
+            ),
+
+            // 5. 我的保存预设（直接显示尺寸数字，不显示几何形状图标）
+            if (_savedPresets.isNotEmpty) ...[
+              const Divider(height: 8),
+              _buildSavedPresetsRow(context),
+            ] else if (hasCustom)
               _buildGridRow(
                 context,
                 label: _getGroupName(context, ResolutionGroup.custom),
@@ -432,62 +550,112 @@ class _SizeSelectorState extends State<SizeSelector> {
                   }(),
                 ],
               ),
-
-            // 3. 大图
-            _buildGridRow(
-              context,
-              label: _getGroupName(context, ResolutionGroup.large),
-              buttons: largePresets.map((p) {
-                final isSelected =
-                    widget.width == p.width && widget.height == p.height;
-                final typeName = _getTypeName(context, p.type);
-                return _buildPresetButton(
-                  context,
-                  type: p.type,
-                  tooltip: p.getDisplayName(typeName),
-                  isSelected: isSelected,
-                  onTap: () => _onPresetSelected(p),
-                );
-              }).toList(),
-            ),
-
-            // 4. 壁纸
-            _buildGridRow(
-              context,
-              label: _getGroupName(context, ResolutionGroup.wallpaper),
-              buttons: wallpaperPresets.map((p) {
-                final isSelected =
-                    widget.width == p.width && widget.height == p.height;
-                final typeName = _getTypeName(context, p.type);
-                return _buildPresetButton(
-                  context,
-                  type: p.type,
-                  tooltip: p.getDisplayName(typeName),
-                  isSelected: isSelected,
-                  onTap: () => _onPresetSelected(p),
-                );
-              }).toList(),
-            ),
-
-            // 5. 小图
-            _buildGridRow(
-              context,
-              label: _getGroupName(context, ResolutionGroup.small),
-              buttons: smallPresets.map((p) {
-                final isSelected =
-                    widget.width == p.width && widget.height == p.height;
-                final typeName = _getTypeName(context, p.type);
-                return _buildPresetButton(
-                  context,
-                  type: p.type,
-                  tooltip: p.getDisplayName(typeName),
-                  isSelected: isSelected,
-                  onTap: () => _onPresetSelected(p),
-                );
-              }).toList(),
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSavedPresetsRow(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 42,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '我的',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final p in _savedPresets)
+                  () {
+                    final isSelected =
+                        widget.width == p.$1 && widget.height == p.$2;
+                    return Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        height: 24,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : theme.dividerColor.withValues(alpha: 0.6),
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
+                          color: isSelected
+                              ? theme.colorScheme.primary.withValues(
+                                  alpha: 0.16,
+                                )
+                              : theme.colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.25),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () {
+                                _closePopup();
+                                widget.onChanged(p.$1, p.$2);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                ),
+                                child: Text(
+                                  '${p.$1}×${p.$2}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontFamily: 'monospace',
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    color: isSelected
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () => _removeSavedPreset(p),
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 3),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 11,
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.45),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -507,135 +675,171 @@ class _SizeSelectorState extends State<SizeSelector> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 预设触发框 (附带 OverlayPortal 弹出紧凑宫格)
-        CompositedTransformTarget(
-          link: _layerLink,
-          child: OverlayPortal(
-            controller: _overlayController,
-            overlayChildBuilder: (context) {
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _closePopup,
-                    ),
-                  ),
-                  CompositedTransformFollower(
-                    link: _layerLink,
-                    targetAnchor: Alignment.bottomLeft,
-                    followerAnchor: Alignment.topLeft,
-                    offset: const Offset(0, 4),
-                    child: SizedBox(
-                      width: _targetWidth ?? 320,
-                      child: _buildGridPanel(context),
-                    ),
-                  ),
-                ],
-              );
-            },
-            child: InputSurfaceContainer(
-              key: _triggerKey,
-              borderRadius: 8.0,
-              keyboardFocusOnly: true,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8.0),
-                onTap: _togglePopup,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      _AspectGeometryIcon(
-                        type: currentType,
-                        isSelected: true,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          currentDisplayText,
-                          style: const TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Icon(
-                        _overlayController.isShowing
-                            ? Icons.arrow_drop_up
-                            : Icons.arrow_drop_down,
-                        color:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // 宽高输入框
+        // 单行合并尺寸控制行（左侧输入数值+互换+保存，右侧预设下拉按钮）
         Row(
           children: [
             // 宽度输入
             Expanded(
-              child: ThemedTextField(
-                controller: _widthController,
-                focusNode: _widthFocusNode,
-                keyboardType: TextInputType.number,
-                labelText: l10n.resolution_width,
-                style: const TextStyle(fontSize: 13),
-                onChanged: (_) => _onManualSizeChanged(),
+              child: SizedBox(
+                height: 32,
+                child: ThemedTextField(
+                  controller: _widthController,
+                  focusNode: _widthFocusNode,
+                  keyboardType: TextInputType.number,
+                  prefixText: '宽 ',
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 6,
+                  ),
+                  isDense: true,
+                  onChanged: (_) => _onManualSizeChanged(),
+                ),
               ),
             ),
-            // × 符号
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 3),
               child: Text(
                 '×',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
+                style: TextStyle(fontSize: 13, color: Colors.grey),
               ),
             ),
             // 高度输入
             Expanded(
-              child: ThemedTextField(
-                controller: _heightController,
-                focusNode: _heightFocusNode,
-                keyboardType: TextInputType.number,
-                labelText: l10n.resolution_height,
-                style: const TextStyle(fontSize: 13),
-                onChanged: (_) => _onManualSizeChanged(),
+              child: SizedBox(
+                height: 32,
+                child: ThemedTextField(
+                  controller: _heightController,
+                  focusNode: _heightFocusNode,
+                  keyboardType: TextInputType.number,
+                  prefixText: '高 ',
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 6,
+                  ),
+                  isDense: true,
+                  onChanged: (_) => _onManualSizeChanged(),
+                ),
               ),
             ),
             // 交换宽高按钮
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: () {
-                final temp = _widthController.text;
-                _widthController.text = _heightController.text;
-                _heightController.text = temp;
-                _onManualSizeChanged();
-              },
-              icon: const Icon(Icons.swap_horiz, size: 20),
-              tooltip: context.l10n.common_swap,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+            const SizedBox(width: 3),
+            SizedBox(
+              width: 26,
+              height: 28,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                onPressed: () {
+                  final temp = _widthController.text;
+                  _widthController.text = _heightController.text;
+                  _heightController.text = temp;
+                  _onManualSizeChanged();
+                },
+                icon: const Icon(Icons.swap_horiz, size: 17),
+                tooltip: context.l10n.common_swap,
+                style: IconButton.styleFrom(
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.25),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ),
+            // 保存自定义预设按钮
+            const SizedBox(width: 3),
+            SizedBox(
+              width: 26,
+              height: 28,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                onPressed: _saveCurrentPreset,
+                icon: const Icon(Icons.bookmark_add_outlined, size: 16),
+                tooltip: '保存当前尺寸',
+                style: IconButton.styleFrom(
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.25),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ),
+            // 右侧预设下拉按钮
+            const SizedBox(width: 5),
+            CompositedTransformTarget(
+              link: _layerLink,
+              child: OverlayPortal(
+                controller: _overlayController,
+                overlayChildBuilder: (context) {
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _closePopup,
+                        ),
+                      ),
+                      CompositedTransformFollower(
+                        link: _layerLink,
+                        targetAnchor: Alignment.bottomRight,
+                        followerAnchor: Alignment.topRight,
+                        offset: const Offset(0, 4),
+                        child: SizedBox(
+                          width: 224,
+                          child: _buildGridPanel(context),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                child: SizedBox(
+                  height: 32,
+                  child: InputSurfaceContainer(
+                    key: _triggerKey,
+                    borderRadius: 6.0,
+                    keyboardFocusOnly: true,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6.0),
+                      onTap: _togglePopup,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 7),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _AspectGeometryIcon(
+                              type: currentType,
+                              isSelected: true,
+                              size: 13,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              currentDisplayText,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              _overlayController.isShowing
+                                  ? Icons.arrow_drop_up
+                                  : Icons.arrow_drop_down,
+                              size: 18,
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
         ),
         if (resolutionIssue != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             l10n.generation_invalidResolutionHint(
               resolutionIssue.width,
@@ -646,6 +850,7 @@ class _SizeSelectorState extends State<SizeSelector> {
             key: const ValueKey('invalid-resolution-hint'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.error,
+              fontSize: 11,
             ),
           ),
         ],

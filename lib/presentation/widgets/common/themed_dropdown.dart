@@ -123,6 +123,18 @@ class ThemedTextField extends StatelessWidget {
   /// 输入格式化器
   final List<dynamic>? inputFormatters;
 
+  /// 前缀文本
+  final String? prefixText;
+
+  /// 前缀文本样式
+  final TextStyle? prefixStyle;
+
+  /// 是否紧凑布局
+  final bool? isDense;
+
+  /// 容器内边距
+  final EdgeInsetsGeometry? contentPadding;
+
   /// 容器圆角
   final double borderRadius;
 
@@ -134,6 +146,10 @@ class ThemedTextField extends StatelessWidget {
     this.labelText,
     this.prefixIcon,
     this.suffixIcon,
+    this.prefixText,
+    this.prefixStyle,
+    this.isDense,
+    this.contentPadding,
     this.obscureText = false,
     this.keyboardType,
     this.maxLines = 1,
@@ -170,16 +186,24 @@ class ThemedTextField extends StatelessWidget {
           labelText: labelText,
           prefixIcon: prefixIcon,
           suffixIcon: suffixIcon,
+          prefixText: prefixText,
+          prefixStyle: prefixStyle ??
+              TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+          isDense: isDense,
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           disabledBorder: InputBorder.none,
           errorBorder: InputBorder.none,
           focusedErrorBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 8,
-          ),
+          contentPadding: contentPadding ??
+              const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
           // 浮动标签样式
           labelStyle: TextStyle(
             fontSize: 12,
