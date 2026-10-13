@@ -138,6 +138,9 @@ class ThemedTextField extends StatelessWidget {
   /// 容器圆角
   final double borderRadius;
 
+  /// 垂直对齐方式
+  final TextAlignVertical? textAlignVertical;
+
   const ThemedTextField({
     super.key,
     this.controller,
@@ -150,6 +153,7 @@ class ThemedTextField extends StatelessWidget {
     this.prefixStyle,
     this.isDense,
     this.contentPadding,
+    this.textAlignVertical,
     this.obscureText = false,
     this.keyboardType,
     this.maxLines = 1,
@@ -171,6 +175,7 @@ class ThemedTextField extends StatelessWidget {
       child: TextField(
         controller: controller,
         focusNode: focusNode,
+        textAlignVertical: textAlignVertical ?? TextAlignVertical.center,
         obscureText: obscureText,
         keyboardType: keyboardType,
         maxLines: maxLines,

@@ -78,6 +78,9 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
             .updateNSamples(value);
       },
     );
+    final pinnedBeforePrimary = <Widget>[
+      if (compact) const AutoSaveToggleChip(compact: true),
+    ];
     final leftActions = <Widget>[
       opusUsage,
       anlasBalance,
@@ -87,7 +90,6 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
           child: const BatchSettingsButton(compact: true),
         ),
         Visibility.maintain(visible: !showCancel, child: sampleCountInput),
-        const AutoSaveToggleChip(compact: true),
         if (showRandomTools)
           RandomModeToggle(enabled: randomMode, compact: compact),
       ],
@@ -105,6 +107,7 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
     return _GenerationControlsLayout(
       compact: compact,
       leftActions: leftActions,
+      pinnedActions: pinnedBeforePrimary,
       primaryAction: SizedBox(
         key: const ValueKey('generation-footer-primary-action'),
         child: GenerateButtonWithCost(
@@ -153,11 +156,12 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
   }
 }
 
-enum _GenerationControlGroup { left, primary, right }
+enum _GenerationControlGroup { left, pinnedBeforePrimary, primary, right }
 
 class _GenerationControlsLayout extends MultiChildRenderObjectWidget {
   _GenerationControlsLayout({
     required List<Widget> leftActions,
+    List<Widget> pinnedActions = const [],
     required Widget primaryAction,
     required List<Widget> rightActions,
     this.compact = false,
@@ -167,6 +171,11 @@ class _GenerationControlsLayout extends MultiChildRenderObjectWidget {
            for (final action in leftActions)
              _GenerationControlSlot(
                group: _GenerationControlGroup.left,
+               child: action,
+             ),
+           for (final action in pinnedActions)
+             _GenerationControlSlot(
+               group: _GenerationControlGroup.pinnedBeforePrimary,
                child: action,
              ),
            _GenerationControlSlot(
@@ -255,6 +264,7 @@ class _RenderGenerationControlsLayout extends RenderBox
         : 100000.0;
     final actionConstraints = BoxConstraints(maxWidth: availableWidth);
     final left = <RenderBox>[];
+    final pinned = <RenderBox>[];
     final right = <RenderBox>[];
     RenderBox? primary;
 
@@ -265,6 +275,9 @@ class _RenderGenerationControlsLayout extends RenderBox
         case _GenerationControlGroup.left:
           child.layout(actionConstraints, parentUsesSize: true);
           if (!child.size.isEmpty) left.add(child);
+        case _GenerationControlGroup.pinnedBeforePrimary:
+          child.layout(actionConstraints, parentUsesSize: true);
+          if (!child.size.isEmpty) pinned.add(child);
         case _GenerationControlGroup.primary:
           primary = child;
         case _GenerationControlGroup.right:
@@ -286,16 +299,18 @@ class _RenderGenerationControlsLayout extends RenderBox
     final minimumPrimaryWidth = primaryChild.size.width;
 
     final leftWidth = _groupWidth(left);
+    final pinnedWidth = _groupWidth(pinned);
+    final pinnedGap = pinned.isNotEmpty ? 20.0 : 0.0;
     final rightWidth = _groupWidth(right);
     final naturalWidth =
-        leftWidth + rightWidth + minimumPrimaryWidth + _primarySpacing * 2;
+        leftWidth + rightWidth + pinnedWidth + pinnedGap + minimumPrimaryWidth + _primarySpacing * 2;
     final layoutWidth = constraints.hasBoundedWidth
         ? constraints.maxWidth
         : naturalWidth;
     final useSingleRow = naturalWidth <= layoutWidth;
     final primaryWidth = useSingleRow
         ? (_compact
-            ? math.max(minimumPrimaryWidth, 150.0)
+            ? math.max(minimumPrimaryWidth, 210.0)
             : layoutWidth - leftWidth - rightWidth - _primarySpacing * 2)
         : layoutWidth;
     primaryChild.layout(
@@ -303,8 +318,8 @@ class _RenderGenerationControlsLayout extends RenderBox
       parentUsesSize: true,
     );
     final contentHeight = useSingleRow
-        ? _layoutSingleRow(left, primaryChild, right, layoutWidth)
-        : _layoutWrapped(left, primaryChild, right, layoutWidth);
+        ? _layoutSingleRow(left, pinned, primaryChild, right, layoutWidth)
+        : _layoutWrapped([...left, ...pinned], primaryChild, right, layoutWidth);
     size = constraints.constrain(Size(layoutWidth, contentHeight));
   }
 
@@ -316,22 +331,28 @@ class _RenderGenerationControlsLayout extends RenderBox
 
   double _layoutSingleRow(
     List<RenderBox> left,
+    List<RenderBox> pinned,
     RenderBox primary,
     List<RenderBox> right,
     double width,
   ) {
-    final allChildren = [...left, primary, ...right];
+    final allChildren = [...left, ...pinned, primary, ...right];
     final height = allChildren.fold<double>(
       0,
       (maximum, child) =>
           child.size.height > maximum ? child.size.height : maximum,
     );
     final leftWidth = _groupWidth(left);
+    final pinnedWidth = _groupWidth(pinned);
     final rightWidth = _groupWidth(right);
     final primaryX = _compact
         ? width - rightWidth - primary.size.width
-        : leftWidth + _primarySpacing;
+        : leftWidth + _primarySpacing + (pinned.isNotEmpty ? pinnedWidth + 20.0 : 0.0);
     _positionGroup(left, 0, height);
+    if (pinned.isNotEmpty) {
+      final pinnedX = primaryX - 20.0 - pinnedWidth;
+      _positionGroup(pinned, pinnedX, height);
+    }
     _position(primary, primaryX, (height - primary.size.height) / 2);
     _positionGroup(right, width - rightWidth, height);
     return height;
@@ -367,7 +388,8 @@ class _RenderGenerationControlsLayout extends RenderBox
       actionsBottom = _layoutGroupRuns(right, width, y, alignRight: true);
     }
 
-    _position(primary, 0, actionsBottom + _runSpacing);
+    final primaryX = _compact ? width - primary.size.width : 0.0;
+    _position(primary, primaryX, actionsBottom + _runSpacing);
     return actionsBottom + _runSpacing + primary.size.height;
   }
 

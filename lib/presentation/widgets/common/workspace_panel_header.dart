@@ -4,6 +4,14 @@ import '../../themes/core/layered_surface_style.dart';
 
 /// 生成工作区各主面板共享的紧凑标题栏。
 class WorkspacePanelHeader extends StatelessWidget {
+  final IconData icon;
+  final Widget title;
+  final Widget? leading;
+  final List<Widget> actions;
+  final Widget? trailing;
+  final double? minHeight;
+  final double? verticalPadding;
+
   const WorkspacePanelHeader({
     super.key,
     required this.icon,
@@ -11,6 +19,8 @@ class WorkspacePanelHeader extends StatelessWidget {
     this.leading,
     this.actions = const [],
     this.trailing,
+    this.minHeight,
+    this.verticalPadding,
   });
 
   static const double _edgePadding = 4;
@@ -26,26 +36,21 @@ class WorkspacePanelHeader extends StatelessWidget {
       _iconSize +
       _iconGap;
 
-  final IconData icon;
-  final Widget title;
-  final Widget? leading;
-  final List<Widget> actions;
-  final Widget? trailing;
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final vPadding = verticalPadding ?? 4.0;
 
     return ColoredBox(
       color: sectionSurfaceColor(colors),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 36),
+        constraints: BoxConstraints(minHeight: minHeight ?? 36),
         child: Padding(
           padding: EdgeInsets.only(
             left: leading == null ? _titleOnlyStartPadding : _edgePadding,
             right: _edgePadding,
-            top: 4,
-            bottom: 4,
+            top: vPadding,
+            bottom: vPadding,
           ),
           child: Row(
             children: [

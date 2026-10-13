@@ -17,7 +17,6 @@ import '../../../widgets/prompt/toolbar/toolbar.dart';
 import '../../../widgets/prompt/uc_preset_selector.dart';
 import 'prompt_input_controller.dart';
 import 'prompt_input_models.dart';
-import '../../../themes/core/layered_surface_style.dart';
 import '../../../widgets/common/app_toast.dart';
 import 'generation_param_sections.dart';
 import 'prompt_type_switch.dart';
@@ -609,24 +608,28 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
 
     _syncSeedController(seed);
 
-    return Container(
-      height: 32,
-      constraints: const BoxConstraints(minWidth: 90),
-      decoration: BoxDecoration(
-        color: controlSurfaceColor(theme.colorScheme),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          width: 0.8,
-        ),
-      ),
+    return SizedBox(
+      height: 28,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 2),
+            child: Text(
+              'Seed:',
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
           Expanded(
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
               keyboardType: TextInputType.number,
+              textAlignVertical: TextAlignVertical.center,
               style: const TextStyle(fontSize: 11),
               decoration: InputDecoration(
                 hintText: context.l10n.generation_seedRandom,
@@ -635,8 +638,13 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
                   color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 ),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
               ),
               onChanged: (value) {
                 final newSeed = value.isEmpty ? -1 : (int.tryParse(value) ?? -1);

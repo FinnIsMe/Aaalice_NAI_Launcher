@@ -76,12 +76,16 @@ class SizeSelector extends StatefulWidget {
   final int width;
   final int height;
   final void Function(int width, int height) onChanged;
+  final Widget? leading;
+  final Widget? trailing;
 
   const SizeSelector({
     super.key,
     required this.width,
     required this.height,
     required this.onChanged,
+    this.leading,
+    this.trailing,
   });
 
   @override
@@ -677,20 +681,26 @@ class _SizeSelectorState extends State<SizeSelector> {
       children: [
         // 单行合并尺寸控制行（左侧输入数值+互换+保存，右侧预设下拉按钮）
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            if (widget.leading != null) ...[
+              widget.leading!,
+              const SizedBox(width: 6),
+            ],
             // 宽度输入
             Expanded(
               child: SizedBox(
-                height: 32,
+                height: 28,
                 child: ThemedTextField(
                   controller: _widthController,
                   focusNode: _widthFocusNode,
                   keyboardType: TextInputType.number,
                   prefixText: '宽 ',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  textAlignVertical: TextAlignVertical.center,
+                  style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 6,
+                    horizontal: 5,
+                    vertical: 0,
                   ),
                   isDense: true,
                   onChanged: (_) => _onManualSizeChanged(),
@@ -698,25 +708,26 @@ class _SizeSelectorState extends State<SizeSelector> {
               ),
             ),
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 3),
+              padding: EdgeInsets.symmetric(horizontal: 2.5),
               child: Text(
                 '×',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ),
             // 高度输入
             Expanded(
               child: SizedBox(
-                height: 32,
+                height: 28,
                 child: ThemedTextField(
                   controller: _heightController,
                   focusNode: _heightFocusNode,
                   keyboardType: TextInputType.number,
                   prefixText: '高 ',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  textAlignVertical: TextAlignVertical.center,
+                  style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 6,
+                    horizontal: 5,
+                    vertical: 0,
                   ),
                   isDense: true,
                   onChanged: (_) => _onManualSizeChanged(),
@@ -795,7 +806,7 @@ class _SizeSelectorState extends State<SizeSelector> {
                   );
                 },
                 child: SizedBox(
-                  height: 32,
+                  height: 28,
                   child: InputSurfaceContainer(
                     key: _triggerKey,
                     borderRadius: 6.0,
@@ -807,6 +818,7 @@ class _SizeSelectorState extends State<SizeSelector> {
                         padding: const EdgeInsets.symmetric(horizontal: 7),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             _AspectGeometryIcon(
                               type: currentType,
@@ -836,6 +848,10 @@ class _SizeSelectorState extends State<SizeSelector> {
                 ),
               ),
             ),
+            if (widget.trailing != null) ...[
+              const SizedBox(width: 4),
+              widget.trailing!,
+            ],
           ],
         ),
         if (resolutionIssue != null) ...[

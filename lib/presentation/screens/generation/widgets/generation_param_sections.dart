@@ -106,25 +106,19 @@ class SizeSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            ParamSectionTitle(context.l10n.generation_imageSize),
-            const Spacer(),
-            // 端到端 ×2 放大：模型按基础分辨率生成，服务端输出边长翻倍
-            if (size.supportsE2eUpscale)
-              GenerationToggleButton(
-                label: '×${E2eUpscale.factor}',
-                isEnabled: size.e2eUpscale,
-                onChanged: (value) {
-                  ref
-                      .read(generationParamsNotifierProvider.notifier)
-                      .updateE2eUpscale(value);
-                },
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
         SizeSelector(
+          leading: ParamSectionTitle(context.l10n.generation_imageSize),
+          trailing: size.supportsE2eUpscale
+              ? GenerationToggleButton(
+                  label: '×${E2eUpscale.factor}',
+                  isEnabled: size.e2eUpscale,
+                  onChanged: (value) {
+                    ref
+                        .read(generationParamsNotifierProvider.notifier)
+                        .updateE2eUpscale(value);
+                  },
+                )
+              : null,
           width: size.width,
           height: size.height,
           onChanged: (width, height) {

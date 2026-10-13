@@ -118,15 +118,16 @@ class AnlasBalanceChip extends ConsumerWidget {
       },
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _buildIcon(theme, isInsufficient),
-          const SizedBox(width: 4),
+          const SizedBox(width: 3),
           Text(
             formatter.format(balance),
             style: TextStyle(
               color: textColor,
-              fontWeight: FontWeight.w600,
-              fontSize: compact ? 12 : 14,
+              fontWeight: FontWeight.w500,
+              fontSize: 12,
             ),
           ),
         ],
@@ -203,13 +204,14 @@ class _ChipContainer extends StatelessWidget {
     final theme = Theme.of(context);
 
     return SurfaceInkWell(
-      borderRadius: BorderRadius.circular(8),
-      color: backgroundColor ?? theme.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(4),
+      color: backgroundColor ??
+          (compact ? Colors.transparent : theme.colorScheme.surfaceContainerHigh),
       onTap: onTap,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 12,
-          vertical: compact ? 4 : 6,
+          horizontal: compact ? 4 : 12,
+          vertical: compact ? 2 : 6,
         ),
         child: child,
       ),

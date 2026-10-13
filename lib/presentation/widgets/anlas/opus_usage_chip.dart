@@ -85,31 +85,24 @@ class OpusUsageChip extends ConsumerWidget {
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 300),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 6 : 8,
-          vertical: compact ? 3 : 4,
-        ),
-        decoration: BoxDecoration(
-          color: accentColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(compact ? 10 : 12),
-          border: Border.all(color: accentColor.withValues(alpha: 0.35)),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
               exhausted ? Icons.hourglass_bottom_rounded : Icons.bolt_rounded,
-              size: compact ? 12 : 14,
+              size: 14,
               color: accentColor,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 3),
             Text(
               '${percent.round()}%',
               style: TextStyle(
                 color: accentColor,
-                fontWeight: FontWeight.w600,
-                fontSize: compact ? 11 : 12,
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
               ),
             ),
           ],

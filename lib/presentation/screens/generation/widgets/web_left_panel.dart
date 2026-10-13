@@ -389,91 +389,124 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
 
               const SizedBox(width: 8),
 
-              // 右侧：独立模型上拉框 (放宽宽度完整展示全称，不截断为...)
+              // 右侧：独立模型上拉框 (加宽至210px与生成按钮等宽，向上弹出，V5橙色高亮)
               Expanded(
                 child: Align(
                   alignment: AlignmentDirectional.centerEnd,
-                  child: PopupMenuButton<String>(
-                    tooltip: context.l10n.generation_model,
-                    initialValue: selectorModel,
-                    position: PopupMenuPosition.over,
-                    onSelected: (value) {
-                      if (value != selectorModel) {
-                        ref
-                            .read(generationParamsNotifierProvider.notifier)
-                            .updateModel(value);
-                      }
-                    },
-                    itemBuilder: (context) {
-                      return ImageModels.visibleModels(current: selectorModel).map((model) {
-                        final isCur = model == selectorModel;
-                        return PopupMenuItem<String>(
-                          value: model,
-                          height: 36,
-                          child: Row(
-                            children: [
-                              ModelFamilyIcon(
-                                modelId: model,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  ImageModels.modelDisplayNames[model] ?? model,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
-                                    color: isCur ? theme.colorScheme.primary : null,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                  child: () {
+                    bool isV5Model(String m) =>
+                        m.contains('-5-') || m.contains('v5') || m == 'custom';
+                    const v5OrangeColor = Color(0xFFF59E0B);
+                    final isCurrentV5 = isV5Model(selectorModel);
+                    final currentTextColor =
+                        isCurrentV5 ? v5OrangeColor : theme.colorScheme.primary;
+
+                    return PopupMenuButton<String>(
+                      tooltip: context.l10n.generation_model,
+                      initialValue: selectorModel,
+                      position: PopupMenuPosition.over,
+                      offset: const Offset(0, -320),
+                      onSelected: (value) {
+                        if (value != selectorModel) {
+                          ref
+                              .read(generationParamsNotifierProvider.notifier)
+                              .updateModel(value);
+                        }
+                      },
+                      itemBuilder: (context) {
+                        // 倒过来排，越新的模型排越下面
+                        final orderedModels = ImageModels.visibleModels(
+                          current: selectorModel,
+                        ).reversed.toList();
+
+                        return orderedModels.map((model) {
+                          final isCur = model == selectorModel;
+                          final isV5 = isV5Model(model);
+                          final itemColor = isCur
+                              ? (isV5 ? v5OrangeColor : theme.colorScheme.primary)
+                              : (isV5 ? v5OrangeColor : null);
+
+                          return PopupMenuItem<String>(
+                            value: model,
+                            height: 36,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                ModelFamilyIcon(
+                                  modelId: model,
+                                  size: 16,
                                 ),
-                              ),
-                              if (isCur) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    ImageModels.modelDisplayNames[model] ?? model,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
+                                      color: itemColor,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (isCur) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: isV5 ? v5OrangeColor : theme.colorScheme.primary,
+                                  ),
+                                ],
                               ],
-                            ],
-                          ),
-                        );
-                      }).toList();
-                    },
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 180),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: theme.dividerColor, width: 1),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ModelFamilyIcon(
-                            modelId: selectorModel,
-                            size: 15,
-                          ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              modelDisplayName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: theme.colorScheme.primary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
                             ),
+                          );
+                        }).toList();
+                      },
+                      child: Container(
+                        width: 210,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isCurrentV5
+                                ? v5OrangeColor.withValues(alpha: 0.4)
+                                : theme.dividerColor,
+                            width: 1,
                           ),
-                          const SizedBox(width: 3),
-                          Icon(
-                            Icons.unfold_more,
-                            size: 15,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.max,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            ModelFamilyIcon(
+                              modelId: selectorModel,
+                              size: 15,
+                            ),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                modelDisplayName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: currentTextColor,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Icon(
+                              Icons.unfold_more,
+                              size: 15,
+                              color: isCurrentV5
+                                  ? v5OrangeColor
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  }(),
                 ),
               ),
             ],
