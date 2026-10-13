@@ -22,12 +22,14 @@ class PreviewInfoBar extends ConsumerWidget {
   final GeneratedImage image;
   final bool comparisonEnabled;
   final ValueChanged<bool>? onComparisonChanged;
+  final VoidCallback? onReturnToGrid;
 
   const PreviewInfoBar({
     super.key,
     required this.image,
     this.comparisonEnabled = false,
     this.onComparisonChanged,
+    this.onReturnToGrid,
   });
 
   static const double barHeight = 44;
@@ -74,7 +76,8 @@ class PreviewInfoBar extends ConsumerWidget {
               !constraints.maxWidth.isFinite ||
               constraints.maxWidth >= resolutionMinWidth;
 
-          final compactInfo = !showResolution && onComparisonChanged == null;
+          final compactInfo =
+              !showResolution && onComparisonChanged == null && onReturnToGrid == null;
           final info = compactInfo
               ? Row(
                   mainAxisSize: MainAxisSize.min,
@@ -88,6 +91,14 @@ class PreviewInfoBar extends ConsumerWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (onReturnToGrid != null) ...[
+                        _InfoPill(
+                          tooltip: context.l10n.common_grid,
+                          onTap: onReturnToGrid,
+                          child: const Icon(Icons.grid_view_rounded, size: 16),
+                        ),
+                        const _PillDivider(),
+                      ],
                       if (showResolution) ...[
                         _InfoPill(
                           child: Row(

@@ -17,7 +17,6 @@ import '../../../widgets/prompt/toolbar/toolbar.dart';
 import '../../../widgets/prompt/uc_preset_selector.dart';
 import 'prompt_input_controller.dart';
 import 'prompt_input_models.dart';
-import '../../../widgets/common/app_toast.dart';
 import 'generation_param_sections.dart';
 import 'prompt_type_switch.dart';
 import '../../../providers/generation/web_panel_modules_provider.dart';
@@ -600,6 +599,64 @@ class _MobilePromptToolbarAction extends StatelessWidget {
       SizedBox(key: actionKey, height: 48, child: child);
 }
 
+class _SeedActionButton extends StatefulWidget {
+  final IconData icon;
+  final double iconSize;
+  final String tooltip;
+  final Color? normalColor;
+  final Color? hoverColor;
+  final VoidCallback onTap;
+
+  const _SeedActionButton({
+    required this.icon,
+    this.iconSize = 17,
+    required this.tooltip,
+    this.normalColor,
+    this.hoverColor,
+    required this.onTap,
+  });
+
+  @override
+  State<_SeedActionButton> createState() => _SeedActionButtonState();
+}
+
+class _SeedActionButtonState extends State<_SeedActionButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final effectiveNormalColor =
+        widget.normalColor ?? theme.colorScheme.onSurfaceVariant;
+    final effectiveHoverColor =
+        widget.hoverColor ?? theme.colorScheme.primary;
+
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          hoverColor: effectiveHoverColor.withValues(alpha: 0.12),
+          onTap: widget.onTap,
+          child: Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            child: Icon(
+              widget.icon,
+              size: widget.iconSize,
+              color: _isHovered ? effectiveHoverColor : effectiveNormalColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class CompactSeedInput extends ConsumerStatefulWidget {
   const CompactSeedInput({super.key});
 
@@ -651,6 +708,8 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
 
     _syncSeedController(seed);
 
+    const grassGreen = Color(0xFF4CAF50);
+
     return SizedBox(
       height: 32,
       child: Row(
@@ -662,20 +721,24 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
               focusNode: _focusNode,
               keyboardType: TextInputType.number,
               textAlignVertical: TextAlignVertical.center,
-              style: const TextStyle(fontSize: 11.5),
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: grassGreen,
+                fontWeight: FontWeight.w500,
+              ),
               decoration: InputDecoration(
                 filled: false,
                 isDense: true,
                 prefixText: 'Seed: ',
-                prefixStyle: TextStyle(
+                prefixStyle: const TextStyle(
                   fontSize: 11.5,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                  fontWeight: FontWeight.w500,
+                  color: grassGreen,
+                  fontWeight: FontWeight.w600,
                 ),
                 hintText: context.l10n.generation_seedRandom,
                 hintStyle: TextStyle(
                   fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  color: grassGreen.withValues(alpha: 0.6),
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 border: InputBorder.none,
@@ -693,100 +756,46 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
               },
             ),
           ),
-          // 1. 切换为当前图像种子
-          Tooltip(
-            message: '设为当前图像种子',
-            child: SizedBox(
-              height: 32,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(3),
-                onTap: () {
-                  final displayImages =
-                      ref.read(imageGenerationNotifierProvider).displayImages;
-                  final currentSeed = displayImages.firstOrNull?.metadata?.seed;
-                  if (currentSeed != null && currentSeed > 0) {
-                    ref
-                        .read(generationParamsNotifierProvider.notifier)
-                        .updateSeed(currentSeed);
-                    _controller.text = currentSeed.toString();
-                  } else {
-                    AppToast.info(context, '当前没有生成图像或无种子数据');
-                  }
-                },
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Icon(
-                      Icons.restore,
-                      size: 14,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          // 1. 清空 (设为随机 -1)
+          _SeedActionButton(
+            tooltip: context.l10n.common_clear,
+            icon: Icons.clear_rounded,
+            iconSize: 17,
+            normalColor: theme.colorScheme.onSurfaceVariant,
+            hoverColor: theme.colorScheme.primary,
+            onTap: () {
+              _controller.clear();
+              ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
+            },
           ),
-          // 2. 清空 (设为随机 -1)
-          Tooltip(
-            message: context.l10n.common_clear,
-            child: SizedBox(
-              height: 32,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(3),
-                onTap: () {
-                  _controller.clear();
-                  ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
-                },
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Icon(
-                      Icons.clear_rounded,
-                      size: 14,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // 3. 锁定 / 解锁
-          Tooltip(
-            message: isLocked
+          const SizedBox(width: 2),
+          // 2. 锁定 / 解锁
+          _SeedActionButton(
+            tooltip: isLocked
                 ? context.l10n.generation_seedUnlock
                 : context.l10n.generation_seedLock,
-            child: SizedBox(
-              height: 32,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(3),
-                onTap: () {
-                  final inputText = _controller.text.trim();
-                  final inputSeed =
-                      inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
-                  if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
-                    ref
-                        .read(generationParamsNotifierProvider.notifier)
-                        .updateSeed(inputSeed);
-                  }
-                  ref
-                      .read(generationParamsNotifierProvider.notifier)
-                      .toggleSeedLock();
-                  setState(() {});
-                },
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Icon(
-                      isLocked ? Icons.lock : Icons.lock_open_rounded,
-                      size: 14,
-                      color: isLocked
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            icon: isLocked ? Icons.lock : Icons.lock_open_rounded,
+            iconSize: 17,
+            normalColor: isLocked
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+            hoverColor: isLocked
+                ? theme.colorScheme.primary.withValues(alpha: 0.8)
+                : theme.colorScheme.primary,
+            onTap: () {
+              final inputText = _controller.text.trim();
+              final inputSeed =
+                  inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
+              if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
+                ref
+                    .read(generationParamsNotifierProvider.notifier)
+                    .updateSeed(inputSeed);
+              }
+              ref
+                  .read(generationParamsNotifierProvider.notifier)
+                  .toggleSeedLock();
+              setState(() {});
+            },
           ),
         ],
       ),

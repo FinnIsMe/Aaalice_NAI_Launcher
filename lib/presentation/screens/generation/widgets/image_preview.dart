@@ -72,7 +72,10 @@ class PreviewNavShortcuts extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final focusNode = ref.watch(generationPreviewFocusNodeProvider);
     final behavior = ref.watch(historyClickBehaviorNotifierProvider);
-    if (behavior != HistoryClickBehavior.selectPreview) {
+    final hasPreviewSelection =
+        ref.watch(generationPreviewSelectionProvider) != null;
+    if (behavior != HistoryClickBehavior.selectPreview &&
+        !hasPreviewSelection) {
       return Focus(focusNode: focusNode, child: child);
     }
 
@@ -293,12 +296,21 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
       return const CharacterPositionCanvasView();
     }
 
-    final behavior = ref.watch(historyClickBehaviorNotifierProvider);
-    if (behavior == HistoryClickBehavior.selectPreview) {
-      final selectedId = ref.watch(generationPreviewSelectionProvider);
+    final selectedId = ref.watch(generationPreviewSelectionProvider);
+    if (selectedId != null) {
       final selectedImage = state.findImageById(selectedId);
       if (selectedImage != null) {
-        return _buildImageView(context, ref, selectedImage, theme);
+        return _buildImageView(
+          context,
+          ref,
+          selectedImage,
+          theme,
+          onReturnToGrid: state.displayImages.length > 1
+              ? () => ref
+                  .read(generationPreviewSelectionProvider.notifier)
+                  .clear()
+              : null,
+        );
       }
     }
 
@@ -385,6 +397,11 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
               image: image,
               index: index,
               showIndex: true,
+              onTapOverride: () {
+                ref
+                    .read(generationPreviewSelectionProvider.notifier)
+                    .select(image.id);
+              },
             );
           },
         );
@@ -433,6 +450,11 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
                 image: image,
                 index: index,
                 showIndex: true,
+                onTapOverride: () {
+                  ref
+                      .read(generationPreviewSelectionProvider.notifier)
+                      .select(image.id);
+                },
               );
             }
 
@@ -655,8 +677,9 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
     BuildContext context,
     WidgetRef ref,
     GeneratedImage image,
-    ThemeData theme,
-  ) {
+    ThemeData theme, {
+    VoidCallback? onReturnToGrid,
+  }) {
     final comparisonAvailable = image.canCompareWithSource;
     final comparisonEnabled =
         comparisonAvailable && ref.watch(generationComparisonEnabledProvider);
@@ -711,6 +734,7 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
                                     .state =
                                 enabled
                       : null,
+                  onReturnToGrid: onReturnToGrid,
                 ),
               ),
             ),
@@ -727,6 +751,7 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
     required bool showIndex,
     int? index,
     bool comparisonEnabled = false,
+    VoidCallback? onTapOverride,
   }) {
     final imageBytes = image.bytes;
     final canUseAsInput = image.canUseAsGenerationInput;
@@ -795,7 +820,7 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
           : image.postprocessError != null
           ? context.l10n.generation_enhancementRetryHint
           : null,
-      onTap: () => _showFullscreenImage(image),
+      onTap: onTapOverride ?? () => _showFullscreenImage(image),
       onReversePrompt: canUseAsInput
           ? () => unawaited(_sendPreviewImageToReversePrompt(context, image))
           : null,
