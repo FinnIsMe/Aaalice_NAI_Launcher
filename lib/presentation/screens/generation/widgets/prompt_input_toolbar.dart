@@ -16,7 +16,9 @@ import '../../../widgets/prompt/toolbar/toolbar.dart';
 import '../../../widgets/prompt/uc_preset_selector.dart';
 import 'prompt_input_controller.dart';
 import 'prompt_input_models.dart';
-import '../../../widgets/prompt/prompt_footer_style.dart';
+import '../../../themes/core/layered_surface_style.dart';
+import '../../../widgets/common/app_toast.dart';
+import 'generation_param_sections.dart';
 import 'prompt_type_switch.dart';
 
 class PromptInputToolbar extends ConsumerWidget {
@@ -68,9 +70,11 @@ class PromptInputToolbar extends ConsumerWidget {
               constraints.maxWidth >= (viewData.showMaximizeButton ? 520 : 450);
           return SizedBox(
             key: const ValueKey('generation_prompt_compact_single_row'),
-            height: 48,
+            height: 32,
             child: Row(
               children: [
+                const CompactSeedInput(),
+                const SizedBox(width: 4),
                 Expanded(
                   child: PromptTypeSwitch(
                     controller: controller,
@@ -91,21 +95,21 @@ class PromptInputToolbar extends ConsumerWidget {
                       iconOnly: !showUtilityLabels,
                       maxLabelWidth: showUtilityLabels ? 48 : null,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 3),
                     QualityTagsSelector(
                       model: model,
                       compact: true,
                       iconOnly: !showUtilityLabels,
                       maxLabelWidth: showUtilityLabels ? 48 : null,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 3),
                     UcPresetSelector(
                       model: model,
                       compact: true,
                       iconOnly: !showUtilityLabels,
                       maxLabelWidth: showUtilityLabels ? 48 : null,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 3),
                     toolbar,
                   ],
                 ),
@@ -552,3 +556,172 @@ class _MobilePromptToolbarAction extends StatelessWidget {
   Widget build(BuildContext context) =>
       SizedBox(key: actionKey, height: 48, child: child);
 }
+
+class CompactSeedInput extends ConsumerStatefulWidget {
+  const CompactSeedInput({super.key});
+
+  @override
+  ConsumerState<CompactSeedInput> createState() => _CompactSeedInputState();
+}
+
+class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _syncSeedController(int seed) {
+    final nextText = resolveSeedFieldSyncText(
+      currentText: _controller.text,
+      seed: seed,
+      hasFocus: _focusNode.hasFocus,
+    );
+    if (nextText == null) return;
+    _controller.value = _controller.value.copyWith(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+      composing: TextRange.empty,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final seed = ref.watch(
+      generationParamsNotifierProvider.select((params) => params.seed),
+    );
+    final isLocked = ref.watch(
+      generationParamsNotifierProvider.notifier,
+    ).isSeedLocked;
+
+    _syncSeedController(seed);
+
+    return Container(
+      height: 32,
+      constraints: const BoxConstraints(maxWidth: 135, minWidth: 85),
+      decoration: BoxDecoration(
+        color: controlSurfaceColor(theme.colorScheme),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(fontSize: 11),
+              decoration: InputDecoration(
+                hintText: context.l10n.generation_seedRandom,
+                hintStyle: TextStyle(
+                  fontSize: 10.5,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                ),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                border: InputBorder.none,
+              ),
+              onChanged: (value) {
+                final newSeed = value.isEmpty ? -1 : (int.tryParse(value) ?? -1);
+                if (newSeed != seed) {
+                  ref.read(generationParamsNotifierProvider.notifier).updateSeed(newSeed);
+                }
+              },
+            ),
+          ),
+          // 1. 切换为当前图像种子
+          InkWell(
+            borderRadius: BorderRadius.circular(3),
+            tooltip: '设为当前图像种子',
+            onTap: () {
+              final displayImages =
+                  ref.read(imageGenerationNotifierProvider).displayImages;
+              final currentSeed = displayImages.firstOrNull?.metadata?.seed;
+              if (currentSeed != null && currentSeed > 0) {
+                ref
+                    .read(generationParamsNotifierProvider.notifier)
+                    .updateSeed(currentSeed);
+                _controller.text = currentSeed.toString();
+              } else {
+                AppToast.info(context, '当前没有生成图像或无种子数据');
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.5),
+              child: Icon(
+                Icons.restore,
+                size: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          // 2. 清空 (设为随机 -1)
+          InkWell(
+            borderRadius: BorderRadius.circular(3),
+            tooltip: context.l10n.common_clear,
+            onTap: () {
+              _controller.clear();
+              ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.5),
+              child: Icon(
+                Icons.clear_rounded,
+                size: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          // 3. 锁定 / 解锁
+          InkWell(
+            borderRadius: BorderRadius.circular(3),
+            tooltip: isLocked
+                ? context.l10n.generation_seedUnlock
+                : context.l10n.generation_seedLock,
+            onTap: () {
+              final inputText = _controller.text.trim();
+              final inputSeed =
+                  inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
+              if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
+                ref
+                    .read(generationParamsNotifierProvider.notifier)
+                    .updateSeed(inputSeed);
+              }
+              ref
+                  .read(generationParamsNotifierProvider.notifier)
+                  .toggleSeedLock();
+              setState(() {});
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: Icon(
+                isLocked ? Icons.lock : Icons.lock_open_rounded,
+                size: 13,
+                color: isLocked
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

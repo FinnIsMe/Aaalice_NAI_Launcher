@@ -128,7 +128,9 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                 promptType: FixedTagPromptType.combo,
                 title: '正负组合',
                 icon: Icons.tune_rounded,
-                accentColor: theme.colorScheme.primary,
+                accentColor: theme.brightness == Brightness.dark
+                    ? const Color(0xFFFFA726)
+                    : const Color(0xFFE65100),
                 sections: comboSections,
                 totalCount: fixedState.comboEntries.length,
                 enabledCount: fixedState.comboEnabledEntries.length,
@@ -434,30 +436,31 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
               onTap: onToggleExpanded,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+                  horizontal: 8,
+                  vertical: 3,
                 ),
                 child: Row(
                   children: [
-                    Icon(icon, size: 16, color: accentColor),
-                    const SizedBox(width: 6),
+                    Icon(icon, size: 14, color: accentColor),
+                    const SizedBox(width: 5),
                     Flexible(
                       fit: FlexFit.loose,
                       child: Text(
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
                           color: accentColor,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 5),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
+                        horizontal: 5,
+                        vertical: 0.5,
                       ),
                       decoration: BoxDecoration(
                         color: accentColor.withValues(alpha: 0.15),
@@ -468,7 +471,7 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: accentColor,
                           fontWeight: FontWeight.w700,
-                          fontSize: 10,
+                          fontSize: 9.5,
                         ),
                       ),
                     ),
@@ -484,7 +487,7 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                       isExpanded
                           ? Icons.keyboard_arrow_down_rounded
                           : Icons.keyboard_arrow_right_rounded,
-                      size: 18,
+                      size: 16,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ],
@@ -618,25 +621,26 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
               });
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               child: Row(
                 children: [
-                  Icon(Icons.folder_rounded, size: 15, color: section.color),
-                  const SizedBox(width: 6),
+                  Icon(Icons.folder_rounded, size: 13, color: section.color),
+                  const SizedBox(width: 5),
                   Expanded(
                     child: Text(
                       section.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
+                      horizontal: 4,
+                      vertical: 0.5,
                     ),
                     decoration: BoxDecoration(
                       color: section.color.withValues(alpha: 0.12),
@@ -647,45 +651,51 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: section.color,
                         fontWeight: FontWeight.w700,
-                        fontSize: 10,
+                        fontSize: 9.5,
                       ),
                     ),
                   ),
                   if (section.isCustomCategory) ...[
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz_rounded, size: 16),
-                      padding: EdgeInsets.zero,
-                      onSelected: (val) async {
-                        if (val == 'up') {
-                          onMove(-1);
-                        } else if (val == 'down') {
-                          onMove(1);
-                        } else if (val == 'rename') {
-                          _showRenameCategoryDialog(section);
-                        } else if (val == 'delete') {
-                          _deleteCategory(section);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        if (canMoveUp)
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_horiz_rounded, size: 14),
+                        padding: EdgeInsets.zero,
+                        tooltip: '',
+                        constraints: const BoxConstraints(minWidth: 100),
+                        onSelected: (val) async {
+                          if (val == 'up') {
+                            onMove(-1);
+                          } else if (val == 'down') {
+                            onMove(1);
+                          } else if (val == 'rename') {
+                            _showRenameCategoryDialog(section);
+                          } else if (val == 'delete') {
+                            _deleteCategory(section);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          if (canMoveUp)
+                            const PopupMenuItem(
+                              value: 'up',
+                              child: Text('上移'),
+                            ),
+                          if (canMoveDown)
+                            const PopupMenuItem(
+                              value: 'down',
+                              child: Text('下移'),
+                            ),
                           const PopupMenuItem(
-                            value: 'up',
-                            child: Text('上移'),
+                            value: 'rename',
+                            child: Text('重命名'),
                           ),
-                        if (canMoveDown)
                           const PopupMenuItem(
-                            value: 'down',
-                            child: Text('下移'),
+                            value: 'delete',
+                            child: Text('删除文件夹'),
                           ),
-                        const PopupMenuItem(
-                          value: 'rename',
-                          child: Text('重命名'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Text('删除文件夹'),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                   const SizedBox(width: 2),
@@ -768,7 +778,7 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
         final columnCount = constraints.crossAxisExtent < 260
             ? 3
             : (constraints.crossAxisExtent / 85).floor().clamp(3, 6);
-        final cardExtent = hasAnyThumbnail ? 78.0 : 42.0;
+        final cardExtent = hasAnyThumbnail ? 78.0 : 22.0;
 
         return SliverGrid.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(

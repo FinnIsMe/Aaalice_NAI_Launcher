@@ -163,14 +163,14 @@ class MainNavRail extends ConsumerWidget {
                         navigationShell.goBranch(AppBranch.localGallery.index),
                   ),
 
-                  // 在线画廊
+                  // 词库
                   _NavIcon(
-                    key: const Key('nav-branch-2'),
-                    icon: Icons.photo_library, // Online Gallery
-                    label: context.l10n.nav_onlineGallery,
-                    isSelected: selectedIndex == 2,
+                    key: const Key('nav-branch-6'),
+                    icon: Icons.book,
+                    label: context.l10n.nav_dictionary,
+                    isSelected: selectedIndex == 6,
                     onTap: () =>
-                        navigationShell.goBranch(AppBranch.onlineGallery.index),
+                        navigationShell.goBranch(AppBranch.tagLibrary.index),
                   ),
 
                   // Vibe库
@@ -194,14 +194,14 @@ class MainNavRail extends ConsumerWidget {
                     ),
                   ),
 
-                  // 词库
+                  // 在线画廊
                   _NavIcon(
-                    key: const Key('nav-branch-6'),
-                    icon: Icons.book,
-                    label: context.l10n.nav_dictionary,
-                    isSelected: selectedIndex == 6,
+                    key: const Key('nav-branch-2'),
+                    icon: Icons.photo_library, // Online Gallery
+                    label: context.l10n.nav_onlineGallery,
+                    isSelected: selectedIndex == 2,
                     onTap: () =>
-                        navigationShell.goBranch(AppBranch.tagLibrary.index),
+                        navigationShell.goBranch(AppBranch.onlineGallery.index),
                   ),
 
                   // 随机配置

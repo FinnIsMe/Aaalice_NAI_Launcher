@@ -18,15 +18,17 @@ class GenerationWorkspaceHeader extends StatelessWidget {
         context.l10n.nav_canvas,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.titleMedium?.copyWith(
+        style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w600,
         ),
       ),
       trailing: IconButton(
         key: const ValueKey('generation-workspace-collapse'),
         tooltip: context.l10n.common_collapse,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
         onPressed: onCollapse,
-        icon: const Icon(Icons.chevron_left),
+        icon: const Icon(Icons.chevron_left, size: 18),
       ),
     );
   }

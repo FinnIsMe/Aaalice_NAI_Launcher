@@ -147,7 +147,7 @@ class _PromptTypeButtonState extends State<PromptTypeButton> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final button = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 52),
+      constraints: BoxConstraints(minHeight: widget.compact ? 32 : 52),
       child: PromptControlButton(
         color: widget.color,
         active: widget.isSelected,
@@ -155,7 +155,7 @@ class _PromptTypeButtonState extends State<PromptTypeButton> {
         onPressed: widget.onTap,
         padding: EdgeInsets.symmetric(
           horizontal: widget.compact ? 6 : 14,
-          vertical: 8,
+          vertical: widget.compact ? 4 : 8,
         ),
         builder: (colors) => LayoutBuilder(
           builder: (context, constraints) {
@@ -166,7 +166,7 @@ class _PromptTypeButtonState extends State<PromptTypeButton> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: widget.compact ? 12 : 13,
                 fontWeight: widget.isSelected
                     ? FontWeight.w600
                     : FontWeight.w500,
@@ -180,11 +180,13 @@ class _PromptTypeButtonState extends State<PromptTypeButton> {
                   : MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Padding(
-                  padding: EdgeInsets.all(widget.compact ? 2 : 4),
-                  child: Icon(widget.icon, size: 16, color: colors.accent),
-                ),
-                SizedBox(width: widget.compact ? 4 : 8),
+                if (!widget.compact) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(widget.icon, size: 16, color: colors.accent),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 if (fillsAvailableWidth) Flexible(child: label) else label,
                 SizedBox(width: widget.compact ? 3 : 6),
                 PromptTagCountBadge(

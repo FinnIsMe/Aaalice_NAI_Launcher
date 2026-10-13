@@ -16,7 +16,7 @@ class WorkspacePanelHeader extends StatelessWidget {
   static const double _edgePadding = 4;
   static const double _titleOnlyStartPadding = 12;
   static const double _leadingGap = 4;
-  static const double _iconSize = 20;
+  static const double _iconSize = 17;
   static const double _iconGap = 8;
 
   /// 标题栏自身占用的水平宽度（不含 leading、actions 与标题）。
@@ -39,7 +39,7 @@ class WorkspacePanelHeader extends StatelessWidget {
     return ColoredBox(
       color: sectionSurfaceColor(colors),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
+        constraints: const BoxConstraints(minHeight: 36),
         child: Padding(
           padding: EdgeInsets.only(
             left: leading == null ? _titleOnlyStartPadding : _edgePadding,

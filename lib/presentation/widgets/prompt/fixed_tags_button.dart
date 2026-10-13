@@ -62,31 +62,18 @@ class _FixedTagsButtonState extends ConsumerState<FixedTagsButton> {
               key: const Key('fixed-tags-button-surface'),
               color: theme.promptSemanticColors.fixedTag,
               active: hasEnabled,
-              onPressed: () {
-                final sidebarExpanded = ref.read(
-                  layoutStateNotifierProvider.select(
-                    (state) => state.fixedTagsSidebarExpanded,
-                  ),
-                );
-                if (!sidebarExpanded) _showFixedTagsDialog(context);
-              },
-              onLongPress: () => ref
+              onPressed: () => ref
                   .read(layoutStateNotifierProvider.notifier)
                   .toggleFixedTagsSidebar(),
+              onLongPress: () => _showFixedTagsDialog(context),
               padding: EdgeInsets.symmetric(
-                horizontal: widget.compact ? 8 : 10,
-                vertical: widget.compact ? 4 : 6,
+                horizontal: widget.compact ? 6 : 8,
+                vertical: widget.compact ? 3 : 5,
               ),
               builder: (colors) => Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    hasEnabled ? Icons.push_pin : Icons.push_pin_outlined,
-                    size: widget.compact ? 15 : 16,
-                    color: colors.accent,
-                  ),
                   if (!widget.iconOnly) ...[
-                    const SizedBox(width: 4),
                     ConstrainedBox(
                       constraints: BoxConstraints(
                         maxWidth: widget.maxLabelWidth ?? double.infinity,
@@ -106,27 +93,20 @@ class _FixedTagsButtonState extends ConsumerState<FixedTagsButton> {
                     ),
                   ],
                   if (hasEnabled) ...[
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 4),
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+                        horizontal: 4,
+                        vertical: 1,
                       ),
                       child: Text(
                         enabledCount.toString(),
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w600,
                           color: colors.foreground,
                         ),
                       ),
-                    ),
-                  ] else if (hasEntries) ...[
-                    const SizedBox(width: 3),
-                    Icon(
-                      Icons.visibility_off,
-                      size: 14,
-                      color: colors.foreground,
                     ),
                   ],
                 ],

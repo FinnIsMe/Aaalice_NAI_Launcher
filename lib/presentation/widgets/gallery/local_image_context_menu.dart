@@ -286,10 +286,8 @@ class LocalImageContextMenu {
         enabled: enabled,
         isDanger: isDanger,
         showOnHover: const {
-          LocalImageContextAction.addToAgent,
           LocalImageContextAction.copyPrompt,
           LocalImageContextAction.delete,
-          LocalImageContextAction.dlssEnhance,
         }.contains(value),
       );
 }

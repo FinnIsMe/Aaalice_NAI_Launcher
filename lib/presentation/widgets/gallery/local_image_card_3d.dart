@@ -27,6 +27,7 @@ import '../common/card_action_buttons.dart';
 import '../common/image_card_action.dart';
 import '../common/image_card_action_region.dart';
 import 'package:go_router/go_router.dart';
+import '../common/image_card_context_menu.dart';
 import '../../router/app_routes.dart';
 import '../../../data/models/metadata/metadata_import_options.dart';
 import '../../utils/metadata_import_coordinator.dart';
@@ -538,26 +539,143 @@ class _LocalImageCard3DState extends ConsumerState<LocalImageCard3D> {
     List<ImageCardAction> actions,
     Axis direction,
     double cardHeight,
-  ) => Listener(
-    behavior: HitTestBehavior.opaque,
-    onPointerDown: (_) => _suppressCardTap = true,
-    onPointerUp: (_) {
-      scheduleMicrotask(() => _suppressCardTap = false);
-    },
-    onPointerCancel: (_) => _suppressCardTap = false,
-    child: CardActionButtons(
-      availableSize: Size(widget.width - 8, cardHeight - 8),
-      visible: _isHovered || _isFocused,
-      direction: direction,
-      buttons: actions,
-      groupMenus: {
-        ImageCardActionGroup.use: (
-          icon: Icons.send,
-          label: context.l10n.localGallery_moreImageActions,
-        ),
+  ) {
+    final interactionPolicy = context.interactionPolicy;
+    if (interactionPolicy.usesTouchActionMenu) {
+      return CardActionButtons(
+        availableSize: Size(widget.width - 8, cardHeight - 8),
+        visible: _isHovered || _isFocused,
+        direction: direction,
+        buttons: actions,
+        groupMenus: {
+          ImageCardActionGroup.use: (
+            icon: Icons.send,
+            label: context.l10n.localGallery_moreImageActions,
+          ),
+        },
+      );
+    }
+
+    if (!(_isHovered || _isFocused)) return const SizedBox.shrink();
+
+    final extent = interactionPolicy.touchAvailable
+        ? interactionPolicy.minimumControlExtent
+        : 32.0;
+
+    ImageCardAction? findAction(ImageCardActionId id) {
+      for (final a in actions) {
+        if (a.id == id && a.visible) return a;
+      }
+      return null;
+    }
+
+    final copyPromptAction = findAction(ImageCardActionId.copyPrompt);
+    final copyImageAction = findAction(ImageCardActionId.copy);
+    final favoriteAction = findAction(ImageCardActionId.favorite);
+
+    final replicateAction = findAction(ImageCardActionId.sendToGeneration);
+    final inpaintAction = findAction(ImageCardActionId.inpaint);
+    final deleteAction = findAction(ImageCardActionId.delete);
+
+    final overflowActions = actions
+        .where((a) => a.visible && a.group == ImageCardActionGroup.use)
+        .toList();
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => _suppressCardTap = true,
+      onPointerUp: (_) {
+        scheduleMicrotask(() => _suppressCardTap = false);
       },
-    ),
-  );
+      onPointerCancel: (_) => _suppressCardTap = false,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 左列 (Column 1): 复制Prompt、复制图片、收藏
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (copyPromptAction != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: ImageCardOverlayActionButton(
+                    config: copyPromptAction,
+                    extent: extent,
+                  ),
+                ),
+              if (copyImageAction != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: ImageCardOverlayActionButton(
+                    config: copyImageAction,
+                    extent: extent,
+                  ),
+                ),
+              if (favoriteAction != null)
+                ImageCardOverlayActionButton(
+                  config: favoriteAction,
+                  extent: extent,
+                ),
+            ],
+          ),
+          const SizedBox(width: 4),
+          // 右列 (Column 2): 复刻、局部重绘、更多操作、删除
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (replicateAction != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: ImageCardOverlayActionButton(
+                    config: replicateAction,
+                    extent: extent,
+                  ),
+                ),
+              if (inpaintAction != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: ImageCardOverlayActionButton(
+                    config: inpaintAction,
+                    extent: extent,
+                  ),
+                ),
+              if (overflowActions.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: SizedBox.square(
+                    dimension: extent,
+                    child: IconButton(
+                      tooltip: context.l10n.localGallery_moreImageActions,
+                      padding: EdgeInsets.zero,
+                      style: ImageOverlayControlStyle.iconButton(
+                        context,
+                        extent: extent,
+                      ),
+                      icon: const Icon(Icons.send, size: 16),
+                      onPressed: () async {
+                        final anchor =
+                            context.findRenderObject()! as RenderBox;
+                        await ImageCardContextMenu.show(
+                          context: context,
+                          position: anchor.localToGlobal(Offset.zero),
+                          actions: overflowActions,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              if (deleteAction != null)
+                ImageCardOverlayActionButton(
+                  config: deleteAction,
+                  extent: extent,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildSelectionIndicator(ColorScheme colorScheme) {
     return Container(

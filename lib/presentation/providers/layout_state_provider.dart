@@ -205,7 +205,7 @@ class LayoutStateNotifier extends _$LayoutStateNotifier {
 
   /// 设置固定词侧边栏宽度
   Future<void> setFixedTagsSidebarWidth(double width) async {
-    final clamped = width.clamp(240.0, 400.0).toDouble();
+    final clamped = width.clamp(180.0, 400.0).toDouble();
     state = state.copyWith(fixedTagsSidebarWidth: clamped);
 
     final storage = ref.read(localStorageServiceProvider);

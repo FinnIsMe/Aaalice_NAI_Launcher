@@ -15,6 +15,7 @@ import 'generation_controls/generation_controls.dart';
 import 'generation_param_sections.dart';
 import 'generation_workspace_header.dart';
 import 'img2img_panel.dart';
+import 'model_option_controls.dart';
 import 'precise_reference_panel.dart';
 import 'prompt_input.dart';
 import 'prompt_input_controller.dart';
@@ -177,11 +178,27 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
   }
 
   Widget _buildExpanded(BuildContext context, ThemeData theme) {
-    final modelName = ref.watch(
-      generationParamsNotifierProvider.select(
-        (params) => ImageModels.modelDisplayNames[params.model] ?? params.model,
-      ),
+    final paramsSummary = ref.watch(
+      generationParamsNotifierProvider.select((params) {
+        final isDdim =
+            params.effectiveSampler == Samplers.ddim ||
+            params.effectiveSampler == Samplers.ddimV3;
+        final sampler = params.isV4Model && isDdim
+            ? Samplers.kEulerAncestral
+            : params.effectiveSampler;
+        return (
+          sampler: sampler,
+          steps: params.steps,
+          model: params.model,
+        );
+      }),
     );
+    final samplerDisplayName =
+        Samplers.samplerDisplayNames[paramsSummary.sampler] ??
+        paramsSummary.sampler;
+    final selectorModel = ImageModels.selectorModel(paramsSummary.model);
+    final modelDisplayName =
+        ImageModels.modelDisplayNames[selectorModel] ?? selectorModel;
 
     return Column(
       children: [
@@ -210,11 +227,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                         const SizeSection(),
                         const SizedBox(height: 10),
 
-                        // 种子：位于尺寸与提示词之间
-                        const SeedSection(),
-                        const SizedBox(height: 10),
-
-                        // 提示词：随内容自由增高（官网式）
+                        // 提示词：内部首行已集成种子与快捷操作
                         PromptInputWidget(
                           key: widget.promptInputKey,
                           controller: widget.promptInputController,
@@ -224,18 +237,16 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                         ),
                         const SizedBox(height: 10),
 
-                        // 角色区：内联在主提示词正下方（官网式，内容常显）
-                        const InlineCharacterSection(),
-                        const SizedBox(height: 10),
-
-                        // 功能面板：反推 / 图生图 / 风格迁移 / 精准参考
-                        const ReversePromptPanel(),
-                        const SizedBox(height: 8),
+                        // 功能面板顺序：图生图、角色、精准参考、风格迁移、反推
                         const Img2ImgPanel(),
+                        const SizedBox(height: 8),
+                        const InlineCharacterSection(),
+                        const SizedBox(height: 8),
+                        const PreciseReferencePanel(),
                         const SizedBox(height: 8),
                         const UnifiedReferencePanel(),
                         const SizedBox(height: 8),
-                        const PreciseReferencePanel(),
+                        const ReversePromptPanel(),
                       ],
                     ),
                   ),
@@ -291,7 +302,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                                     crossAxisAlignment:
                                         CrossAxisAlignment.stretch,
                                     children: [
-                                      ModelSection(),
+                                      ModelOptionControls(),
                                       SizedBox(height: 10),
                                       SamplerSection(),
                                       SizedBox(height: 10),
@@ -316,54 +327,154 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
           ),
         ),
 
-        // 参数二级菜单触发条：固定在钉底控制条上方，永远一步可达
-        Material(
-          color: theme.colorScheme.surface,
-          child: InkWell(
-            onTap: _toggleParamsMenu,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: theme.dividerColor, width: 1),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    context.l10n.generation_params,
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Align(
-                      alignment: AlignmentDirectional.centerEnd,
-                      child: ModelNameLabel(
-                        modelId: ref.watch(
-                          generationParamsNotifierProvider.select(
-                            (params) => params.model,
+        // 参数与模型栏：固定在钉底控制条上方，解耦为左侧参数摘要与右侧独立模型切换
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(
+              top: BorderSide(color: theme.dividerColor, width: 1),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            children: [
+              // 左侧：参数摘要点击展开/收起参数抽屉
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: _toggleParamsMenu,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            context.l10n.generation_params,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        displayName: modelName,
-                        iconSize: 16,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '$samplerDisplayName · ${paramsSummary.steps}步',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          // 箭头随抽屉开合旋转（收起朝上提示拉出方向）
+                          RotationTransition(
+                            turns: Tween<double>(
+                              begin: 0,
+                              end: 0.5,
+                            ).animate(_menuAnimation),
+                            child: Icon(
+                              Icons.keyboard_arrow_up,
+                              size: 18,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  // 箭头随抽屉开合旋转（收起朝上提示拉出方向）
-                  RotationTransition(
-                    turns: Tween<double>(
-                      begin: 0,
-                      end: 0.5,
-                    ).animate(_menuAnimation),
-                    child: const Icon(Icons.keyboard_arrow_up, size: 20),
-                  ),
-                ],
+                ),
               ),
-            ),
+
+              const SizedBox(width: 8),
+
+              // 右侧：独立模型上拉框 (一步到位切换模型)
+              PopupMenuButton<String>(
+                tooltip: context.l10n.generation_model,
+                initialValue: selectorModel,
+                position: PopupMenuPosition.over,
+                onSelected: (value) {
+                  if (value != selectorModel) {
+                    ref
+                        .read(generationParamsNotifierProvider.notifier)
+                        .updateModel(value);
+                  }
+                },
+                itemBuilder: (context) {
+                  return ImageModels.visibleModels(current: selectorModel).map((model) {
+                    final isCur = model == selectorModel;
+                    return PopupMenuItem<String>(
+                      value: model,
+                      height: 36,
+                      child: Row(
+                        children: [
+                          ModelFamilyIcon(
+                            family: ImageModels.familyOf(model),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              ImageModels.modelDisplayNames[model] ?? model,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
+                                color: isCur ? theme.colorScheme.primary : null,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isCur) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
+                          ],
+                        ],
+                      ),
+                    );
+                  }).toList();
+                },
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 130),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: theme.dividerColor, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ModelFamilyIcon(
+                        family: ImageModels.familyOf(selectorModel),
+                        size: 15,
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          modelDisplayName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: theme.colorScheme.primary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Icon(
+                        Icons.unfold_more,
+                        size: 15,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
 

@@ -127,6 +127,44 @@ class _LocalGalleryCategoryPanelState
                   isSelected: _allImagesSelected,
                   onTap: _selectAllImages,
                 ),
+                LibrarySidebarRootDropTarget<GalleryCategory>(
+                  canDrop: (category) => category.parentId != null,
+                  onDrop: (category) =>
+                      widget.onCategoryMove(category.id, null),
+                  child: GallerySidebarSectionHeader(
+                    toggleKey: const ValueKey('local-gallery-folders-toggle'),
+                    icon: Icons.folder_outlined,
+                    title: context.l10n.localGallery_folderSectionTitle,
+                    trailing: const GallerySidebarSortControl(
+                      section: LibrarySidebarSection.folders,
+                    ),
+                    isExpanded: _foldersExpanded,
+                    onToggle: () =>
+                        setState(() => _foldersExpanded = !_foldersExpanded),
+                    onCreate: widget.onCreateCategory,
+                  ),
+                ),
+                if (_foldersExpanded)
+                  GalleryCategoryTreeView(
+                    categories: widget.categoryState.categories,
+                    sort: folderSort,
+                    totalImageCount: widget.galleryState.totalCount,
+                    selectedCategoryId: widget.categoryState.selectedCategoryId,
+                    includeRootNodes: false,
+                    embedded: true,
+                    showScanProgress: false,
+                    onCategorySelected: (id) {
+                      widget.onCategorySelected(id);
+                      widget.afterSelection?.call();
+                    },
+                    onCategoryRename: widget.onCategoryRename,
+                    onCategoryDelete: widget.onCategoryDelete,
+                    onAddSubCategory: widget.onAddSubCategory,
+                    onCategoryMove: widget.onCategoryMove,
+                    onCategoryMoveToSlot: widget.onCategoryMoveToSlot,
+                    onImagesDrop: widget.onImagesDrop,
+                    onSyncWithFileSystem: widget.onSyncWithFileSystem,
+                  ),
                 LibrarySidebarRootDropTarget<GalleryAlbum>(
                   canDrop: (album) => album.parentId != null,
                   onDrop: (album) async {
@@ -169,44 +207,6 @@ class _LocalGalleryCategoryPanelState
                       onImagesFavoriteDrop: widget.onImagesFavoriteDrop,
                       onCreateAlbumRequest: () => widget.onCreateAlbum(null),
                     ),
-                  ),
-                LibrarySidebarRootDropTarget<GalleryCategory>(
-                  canDrop: (category) => category.parentId != null,
-                  onDrop: (category) =>
-                      widget.onCategoryMove(category.id, null),
-                  child: GallerySidebarSectionHeader(
-                    toggleKey: const ValueKey('local-gallery-folders-toggle'),
-                    icon: Icons.folder_outlined,
-                    title: context.l10n.localGallery_folderSectionTitle,
-                    trailing: const GallerySidebarSortControl(
-                      section: LibrarySidebarSection.folders,
-                    ),
-                    isExpanded: _foldersExpanded,
-                    onToggle: () =>
-                        setState(() => _foldersExpanded = !_foldersExpanded),
-                    onCreate: widget.onCreateCategory,
-                  ),
-                ),
-                if (_foldersExpanded)
-                  GalleryCategoryTreeView(
-                    categories: widget.categoryState.categories,
-                    sort: folderSort,
-                    totalImageCount: widget.galleryState.totalCount,
-                    selectedCategoryId: widget.categoryState.selectedCategoryId,
-                    includeRootNodes: false,
-                    embedded: true,
-                    showScanProgress: false,
-                    onCategorySelected: (id) {
-                      widget.onCategorySelected(id);
-                      widget.afterSelection?.call();
-                    },
-                    onCategoryRename: widget.onCategoryRename,
-                    onCategoryDelete: widget.onCategoryDelete,
-                    onAddSubCategory: widget.onAddSubCategory,
-                    onCategoryMove: widget.onCategoryMove,
-                    onCategoryMoveToSlot: widget.onCategoryMoveToSlot,
-                    onImagesDrop: widget.onImagesDrop,
-                    onSyncWithFileSystem: widget.onSyncWithFileSystem,
                   ),
               ],
             ),

@@ -74,17 +74,17 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
         child: Material(
           color: _backgroundColor(theme),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(widget.isListMode ? 6 : 8),
+            borderRadius: BorderRadius.circular(widget.isListMode ? 4 : 5),
             side: BorderSide(
               color: isEnabled
                   ? statusColor
                   : theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
-              width: isEnabled ? 1.5 : 1.0,
+              width: isEnabled ? 1.2 : 0.8,
             ),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            borderRadius: BorderRadius.circular(widget.isListMode ? 6 : 8),
+            borderRadius: BorderRadius.circular(widget.isListMode ? 4 : 5),
             onFocusChange: (focused) => setState(() => _isFocused = focused),
             onTap: widget.onToggle,
             child: AnimatedContainer(
@@ -125,7 +125,9 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
       case FixedTagPromptType.negative:
         return theme.promptSemanticColors.negativeFixedTag;
       case FixedTagPromptType.combo:
-        return theme.colorScheme.primary;
+        return theme.brightness == Brightness.dark
+            ? const Color(0xFFFFA726)
+            : const Color(0xFFE65100);
     }
   }
 
@@ -138,7 +140,7 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
             : theme.colorScheme.onSurfaceVariant;
 
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           child: Row(
             children: [
               Expanded(
@@ -147,7 +149,8 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
                     widget.entry.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium?.copyWith(
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontSize: 11,
                       color: foreground,
                       fontWeight: widget.entry.enabled
                           ? FontWeight.w700
@@ -157,7 +160,7 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
                 ),
               ),
               if (showActions) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 _buildActions(theme),
               ],
             ],
@@ -219,19 +222,19 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
 
         return Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: isNarrow ? 4 : 6,
-            vertical: isNarrow ? 3 : 5,
+            horizontal: isNarrow ? 3 : 5,
+            vertical: 1,
           ),
           child: isNarrow
               ? Center(
                   child: _buildDragRegion(
                     Text(
                       widget.entry.displayName,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.labelSmall?.copyWith(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         color: foreground,
                         fontWeight: widget.entry.enabled
                             ? FontWeight.w700
@@ -240,31 +243,26 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
                     ),
                   ),
                 )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              : Row(
                   children: [
                     Expanded(
                       child: _buildDragRegion(
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            widget.entry.displayName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: foreground,
-                              fontWeight: widget.entry.enabled
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
+                        Text(
+                          widget.entry.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 11,
+                            color: foreground,
+                            fontWeight: widget.entry.enabled
+                                ? FontWeight.w700
+                                : FontWeight.w500,
                           ),
                         ),
                       ),
                     ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _buildActions(theme),
-                    ),
+                    const SizedBox(width: 4),
+                    _buildActions(theme),
                   ],
                 ),
         );

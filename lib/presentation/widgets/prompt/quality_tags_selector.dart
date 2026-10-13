@@ -68,19 +68,13 @@ class _QualityTagsSelectorState extends ConsumerState<QualityTagsSelector> {
           active: isEnabled,
           onPressed: () => _showMenu(context, presetState, customEntries),
           padding: EdgeInsets.symmetric(
-            horizontal: widget.compact ? 8 : 10,
-            vertical: widget.compact ? 4 : 6,
+            horizontal: widget.compact ? 6 : 8,
+            vertical: widget.compact ? 3 : 5,
           ),
           builder: (colors) => Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                isEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
-                size: 16,
-                color: colors.accent,
-              ),
               if (!widget.iconOnly) ...[
-                const SizedBox(width: 4),
                 ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: widget.maxLabelWidth ?? double.infinity,
@@ -90,13 +84,12 @@ class _QualityTagsSelectorState extends ConsumerState<QualityTagsSelector> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: isEnabled ? FontWeight.w600 : FontWeight.w500,
                       color: colors.foreground,
                     ),
                   ),
                 ),
-                const SizedBox(width: 2),
                 Icon(Icons.arrow_drop_down, size: 14, color: colors.accent),
               ],
             ],
