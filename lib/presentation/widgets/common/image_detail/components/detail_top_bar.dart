@@ -31,6 +31,7 @@ class DetailTopBar extends StatelessWidget {
   final VoidCallback? onMosaic;
   final VoidCallback? onSendToImg2Img;
   final VoidCallback? onSendToReversePrompt;
+  final VoidCallback? onInpaint;
 
   const DetailTopBar({
     super.key,
@@ -49,6 +50,7 @@ class DetailTopBar extends StatelessWidget {
     this.onMosaic,
     this.onSendToImg2Img,
     this.onSendToReversePrompt,
+    this.onInpaint,
   });
 
   @override
@@ -126,6 +128,7 @@ class DetailTopBar extends StatelessWidget {
                 onMosaic: onMosaic,
                 onSendToImg2Img: onSendToImg2Img,
                 onSendToReversePrompt: onSendToReversePrompt,
+                onInpaint: onInpaint,
               ),
             ),
           ],
@@ -163,6 +166,7 @@ class _DetailTopBarActions extends ConsumerWidget {
     this.onMosaic,
     this.onSendToImg2Img,
     this.onSendToReversePrompt,
+    this.onInpaint,
   });
 
   final ImageDetailData currentImage;
@@ -178,6 +182,7 @@ class _DetailTopBarActions extends ConsumerWidget {
   final VoidCallback? onMosaic;
   final VoidCallback? onSendToImg2Img;
   final VoidCallback? onSendToReversePrompt;
+  final VoidCallback? onInpaint;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -445,6 +450,12 @@ class _DetailTopBarActions extends ConsumerWidget {
             tooltip: l10n.shortcut_action_copy_image,
           ),
         if (favorite != null) favorite,
+        if (onInpaint != null)
+          IconButton(
+            icon: const Icon(Icons.draw_outlined, color: Colors.white),
+            onPressed: onInpaint,
+            tooltip: l10n.img2img_inpaint,
+          ),
       ],
     );
   }

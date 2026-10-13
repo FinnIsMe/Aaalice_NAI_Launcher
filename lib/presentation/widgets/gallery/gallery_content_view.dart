@@ -9,12 +9,16 @@ import '../../../core/utils/app_logger.dart';
 import '../../../core/platform/platform_capabilities.dart';
 import '../../../core/utils/localization_extension.dart';
 import '../../../data/models/gallery/local_image_record.dart';
+import '../../../data/models/metadata/metadata_import_options.dart';
+import '../../providers/generation/generation_params_notifier.dart';
 import '../../providers/krita/krita_bridge_notifier.dart';
 import '../../providers/local_gallery_provider.dart';
 import '../../providers/reverse_prompt_provider.dart';
 import '../../router/app_routes.dart';
 import '../../services/image_workflow_launcher.dart';
 import '../../providers/selection_mode_provider.dart';
+import '../../utils/local_gallery_metadata_resolver.dart';
+import '../../utils/metadata_import_coordinator.dart';
 import '../common/app_toast.dart';
 import '../../widgets/grouped_grid_view.dart';
 import '../../utils/image_detail_opener.dart';
@@ -630,6 +634,39 @@ class LocalGalleryContentView extends ConsumerWidget {
             } catch (e) {
               if (context.mounted) {
                 AppToast.error(context, context.l10n.gallery_sendFailed('$e'));
+              }
+            }
+          },
+          onInpaint: (data) async {
+            final l10n = context.l10n;
+            try {
+              if (data is LocalImageDetailData) {
+                final metadata = await resolveLocalGalleryMetadata(data.record);
+                if (metadata != null && metadata.hasData) {
+                  await MetadataImportCoordinator.apply(
+                    read: ref.read,
+                    metadata: metadata,
+                    options: MetadataImportOptions.all().copyWith(
+                      importSeed: false,
+                    ),
+                    l10n: l10n,
+                  );
+                }
+                ref
+                    .read(generationParamsNotifierProvider.notifier)
+                    .randomizeSeed();
+              }
+              final bytes = await data.getImageBytes();
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              context.go(AppRoutes.home);
+              await ImageWorkflowLauncher.openInpaint(context, ref, bytes);
+              if (context.mounted) {
+                AppToast.success(context, '已载入局部重绘（参数已应用，种子已重置）');
+              }
+            } catch (e) {
+              if (context.mounted) {
+                AppToast.error(context, l10n.gallery_sendFailed('$e'));
               }
             }
           },
