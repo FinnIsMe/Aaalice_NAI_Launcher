@@ -12,6 +12,7 @@ import '../../../widgets/common/horizontal_action_strip.dart';
 import '../../../widgets/prompt/fixed_tags_button.dart';
 import '../../../widgets/prompt/quality_tags_selector.dart';
 import '../../../widgets/prompt/regex_rules_dialog.dart';
+import '../../../widgets/prompt/prompt_footer_style.dart';
 import '../../../widgets/prompt/toolbar/toolbar.dart';
 import '../../../widgets/prompt/uc_preset_selector.dart';
 import 'prompt_input_controller.dart';
@@ -646,76 +647,82 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
             ),
           ),
           // 1. 切换为当前图像种子
-          InkWell(
-            borderRadius: BorderRadius.circular(3),
-            tooltip: '设为当前图像种子',
-            onTap: () {
-              final displayImages =
-                  ref.read(imageGenerationNotifierProvider).displayImages;
-              final currentSeed = displayImages.firstOrNull?.metadata?.seed;
-              if (currentSeed != null && currentSeed > 0) {
-                ref
-                    .read(generationParamsNotifierProvider.notifier)
-                    .updateSeed(currentSeed);
-                _controller.text = currentSeed.toString();
-              } else {
-                AppToast.info(context, '当前没有生成图像或无种子数据');
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2.5),
-              child: Icon(
-                Icons.restore,
-                size: 13,
-                color: theme.colorScheme.onSurfaceVariant,
+          Tooltip(
+            message: '设为当前图像种子',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(3),
+              onTap: () {
+                final displayImages =
+                    ref.read(imageGenerationNotifierProvider).displayImages;
+                final currentSeed = displayImages.firstOrNull?.metadata?.seed;
+                if (currentSeed != null && currentSeed > 0) {
+                  ref
+                      .read(generationParamsNotifierProvider.notifier)
+                      .updateSeed(currentSeed);
+                  _controller.text = currentSeed.toString();
+                } else {
+                  AppToast.info(context, '当前没有生成图像或无种子数据');
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                child: Icon(
+                  Icons.restore,
+                  size: 13,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),
           // 2. 清空 (设为随机 -1)
-          InkWell(
-            borderRadius: BorderRadius.circular(3),
-            tooltip: context.l10n.common_clear,
-            onTap: () {
-              _controller.clear();
-              ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2.5),
-              child: Icon(
-                Icons.clear_rounded,
-                size: 13,
-                color: theme.colorScheme.onSurfaceVariant,
+          Tooltip(
+            message: context.l10n.common_clear,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(3),
+              onTap: () {
+                _controller.clear();
+                ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                child: Icon(
+                  Icons.clear_rounded,
+                  size: 13,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),
           // 3. 锁定 / 解锁
-          InkWell(
-            borderRadius: BorderRadius.circular(3),
-            tooltip: isLocked
+          Tooltip(
+            message: isLocked
                 ? context.l10n.generation_seedUnlock
                 : context.l10n.generation_seedLock,
-            onTap: () {
-              final inputText = _controller.text.trim();
-              final inputSeed =
-                  inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
-              if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
+            child: InkWell(
+              borderRadius: BorderRadius.circular(3),
+              onTap: () {
+                final inputText = _controller.text.trim();
+                final inputSeed =
+                    inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
+                if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
+                  ref
+                      .read(generationParamsNotifierProvider.notifier)
+                      .updateSeed(inputSeed);
+                }
                 ref
                     .read(generationParamsNotifierProvider.notifier)
-                    .updateSeed(inputSeed);
-              }
-              ref
-                  .read(generationParamsNotifierProvider.notifier)
-                  .toggleSeedLock();
-              setState(() {});
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: Icon(
-                isLocked ? Icons.lock : Icons.lock_open_rounded,
-                size: 13,
-                color: isLocked
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
+                    .toggleSeedLock();
+                setState(() {});
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Icon(
+                  isLocked ? Icons.lock : Icons.lock_open_rounded,
+                  size: 13,
+                  color: isLocked
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),

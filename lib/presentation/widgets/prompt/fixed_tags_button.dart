@@ -40,7 +40,6 @@ class _FixedTagsButtonState extends ConsumerState<FixedTagsButton> {
     final enabledCount = fixedTagsState.entries
         .where((entry) => entry.enabled)
         .length;
-    final hasEntries = fixedTagsState.entries.isNotEmpty;
     final hasEnabled = enabledCount > 0;
     final mediaQuery = MediaQuery.of(context);
     return MediaQuery(

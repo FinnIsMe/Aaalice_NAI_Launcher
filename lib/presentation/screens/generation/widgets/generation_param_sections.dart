@@ -729,7 +729,6 @@ class _UnavailableCfgRescale extends StatelessWidget {
   }
 }
 
-@visibleForTesting
 String? resolveSeedFieldSyncText({
   required String currentText,
   required int seed,

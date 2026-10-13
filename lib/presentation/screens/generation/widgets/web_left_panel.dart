@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nai_launcher/core/utils/localization_extension.dart';
 import '../../../../core/constants/api_constants.dart';
+import '../../../../data/models/image/image_params.dart';
 import '../../../providers/generation/generation_panel_expansion_provider.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../providers/layout_state_provider.dart';
@@ -413,7 +414,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                       child: Row(
                         children: [
                           ModelFamilyIcon(
-                            family: ImageModels.familyOf(model),
+                            modelId: model,
                             size: 16,
                           ),
                           const SizedBox(width: 8),
@@ -449,7 +450,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ModelFamilyIcon(
-                        family: ImageModels.familyOf(selectorModel),
+                        modelId: selectorModel,
                         size: 15,
                       ),
                       const SizedBox(width: 5),
