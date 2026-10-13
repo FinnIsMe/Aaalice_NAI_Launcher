@@ -20,6 +20,7 @@ import 'prompt_input_models.dart';
 import '../../../widgets/common/app_toast.dart';
 import 'generation_param_sections.dart';
 import 'prompt_type_switch.dart';
+import '../../../providers/generation/web_panel_modules_provider.dart';
 
 class PromptInputToolbar extends ConsumerWidget {
   const PromptInputToolbar({
@@ -234,11 +235,45 @@ class PromptInputToolbar extends ConsumerWidget {
         .read(completion_settings.autocompleteSettingsProvider)
         .relatedTagsEnabled;
     final regexCount = ref.read(promptRegexRulesProvider).length;
+    final modules = ref.read(webPanelModulesProvider);
     final value = await showMenu<String>(
       context: context,
       position: position,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       items: [
+        _toggleItem(
+          context,
+          theme,
+          'module_character',
+          modules.showCharacter,
+          '角色区域',
+          '在左侧面板显示角色区域卡片',
+        ),
+        _toggleItem(
+          context,
+          theme,
+          'module_precise_ref',
+          modules.showPreciseReference,
+          '精准参考',
+          '在左侧面板显示精准参考卡片',
+        ),
+        _toggleItem(
+          context,
+          theme,
+          'module_vibe_transfer',
+          modules.showVibeTransfer,
+          '风格迁移',
+          '在左侧面板显示风格迁移/氛围参考卡片',
+        ),
+        _toggleItem(
+          context,
+          theme,
+          'module_tag_extraction',
+          modules.showTagExtraction,
+          '反推',
+          '在左侧面板显示图片反推卡片',
+        ),
+        const PopupMenuDivider(),
         _toggleItem(
           context,
           theme,
@@ -298,6 +333,14 @@ class PromptInputToolbar extends ConsumerWidget {
     );
     if (!context.mounted) return;
     switch (value) {
+      case 'module_character':
+        ref.read(webPanelModulesProvider.notifier).toggleCharacter();
+      case 'module_precise_ref':
+        ref.read(webPanelModulesProvider.notifier).togglePreciseReference();
+      case 'module_vibe_transfer':
+        ref.read(webPanelModulesProvider.notifier).toggleVibeTransfer();
+      case 'module_tag_extraction':
+        ref.read(webPanelModulesProvider.notifier).toggleTagExtraction();
       case 'autocomplete':
         ref.read(autocompleteSettingsProvider.notifier).toggle();
       case 'auto_format':

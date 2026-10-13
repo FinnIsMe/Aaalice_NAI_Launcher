@@ -22,6 +22,7 @@ import 'prompt_input.dart';
 import 'prompt_input_controller.dart';
 import 'reverse_prompt_panel.dart';
 import 'unified_reference_panel.dart';
+import '../../../providers/generation/web_panel_modules_provider.dart';
 
 /// 官网式布局左栏
 ///
@@ -200,6 +201,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
     final selectorModel = ImageModels.selectorModel(paramsSummary.model);
     final modelDisplayName =
         ImageModels.modelDisplayNames[selectorModel] ?? selectorModel;
+    final panelModules = ref.watch(webPanelModulesProvider);
 
     return Column(
       children: [
@@ -240,14 +242,22 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
 
                         // 功能面板顺序：图生图、角色、精准参考、风格迁移、反推
                         const Img2ImgPanel(),
-                        const SizedBox(height: 8),
-                        const InlineCharacterSection(),
-                        const SizedBox(height: 8),
-                        const PreciseReferencePanel(),
-                        const SizedBox(height: 8),
-                        const UnifiedReferencePanel(),
-                        const SizedBox(height: 8),
-                        const ReversePromptPanel(),
+                        if (panelModules.showCharacter) ...[
+                          const SizedBox(height: 8),
+                          const InlineCharacterSection(),
+                        ],
+                        if (panelModules.showPreciseReference) ...[
+                          const SizedBox(height: 8),
+                          const PreciseReferencePanel(),
+                        ],
+                        if (panelModules.showVibeTransfer) ...[
+                          const SizedBox(height: 8),
+                          const UnifiedReferencePanel(),
+                        ],
+                        if (panelModules.showTagExtraction) ...[
+                          const SizedBox(height: 8),
+                          const ReversePromptPanel(),
+                        ],
                       ],
                     ),
                   ),
