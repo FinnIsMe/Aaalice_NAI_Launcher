@@ -394,8 +394,12 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                 child: Align(
                   alignment: AlignmentDirectional.centerEnd,
                   child: () {
-                    bool isV5Model(String m) =>
-                        m.contains('-5-') || m.contains('v5') || m == 'custom';
+                    bool isV5Model(String m) {
+                      if (m.contains('4-5') || m.contains('4.5')) return false;
+                      return ImageModels.isV5Model(m) ||
+                          m.toLowerCase().contains('v5') ||
+                          m == 'custom';
+                    }
                     const v5OrangeColor = Color(0xFFF59E0B);
                     final isCurrentV5 = isV5Model(selectorModel);
                     final currentTextColor =
@@ -405,7 +409,7 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                       tooltip: context.l10n.generation_model,
                       initialValue: selectorModel,
                       position: PopupMenuPosition.over,
-                      offset: const Offset(0, -320),
+                      offset: const Offset(0, -380),
                       onSelected: (value) {
                         if (value != selectorModel) {
                           ref

@@ -9,6 +9,7 @@ class WorkspacePanelHeader extends StatelessWidget {
   final Widget? leading;
   final List<Widget> actions;
   final Widget? trailing;
+  final double? height;
   final double? minHeight;
   final double? verticalPadding;
 
@@ -19,6 +20,7 @@ class WorkspacePanelHeader extends StatelessWidget {
     this.leading,
     this.actions = const [],
     this.trailing,
+    this.height,
     this.minHeight,
     this.verticalPadding,
   });
@@ -41,32 +43,37 @@ class WorkspacePanelHeader extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final vPadding = verticalPadding ?? 4.0;
 
+    final content = Padding(
+      padding: EdgeInsets.only(
+        left: leading == null ? _titleOnlyStartPadding : _edgePadding,
+        right: _edgePadding,
+        top: vPadding,
+        bottom: vPadding,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (leading != null) ...[
+            leading!,
+            const SizedBox(width: _leadingGap),
+          ],
+          Icon(icon, size: _iconSize, color: colors.primary),
+          const SizedBox(width: _iconGap),
+          Expanded(child: title),
+          ...actions,
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+
     return ColoredBox(
       color: sectionSurfaceColor(colors),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: minHeight ?? 36),
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: leading == null ? _titleOnlyStartPadding : _edgePadding,
-            right: _edgePadding,
-            top: vPadding,
-            bottom: vPadding,
-          ),
-          child: Row(
-            children: [
-              if (leading != null) ...[
-                leading!,
-                const SizedBox(width: _leadingGap),
-              ],
-              Icon(icon, size: _iconSize, color: colors.primary),
-              const SizedBox(width: _iconGap),
-              Expanded(child: title),
-              ...actions,
-              if (trailing != null) trailing!,
-            ],
-          ),
-        ),
-      ),
+      child: height != null
+          ? SizedBox(height: height, child: content)
+          : ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight ?? 36),
+              child: content,
+            ),
     );
   }
 }

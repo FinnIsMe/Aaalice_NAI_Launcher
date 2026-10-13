@@ -13,8 +13,8 @@ class GenerationWorkspaceHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return WorkspacePanelHeader(
-      minHeight: 24,
-      verticalPadding: 1,
+      height: 28,
+      verticalPadding: 0,
       icon: Icons.brush_outlined,
       title: Text(
         context.l10n.nav_canvas,
@@ -29,6 +29,11 @@ class GenerationWorkspaceHeader extends StatelessWidget {
         key: const ValueKey('generation-workspace-collapse'),
         tooltip: context.l10n.common_collapse,
         padding: EdgeInsets.zero,
+        style: IconButton.styleFrom(
+          minimumSize: Size.zero,
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
         constraints: const BoxConstraints.tightFor(width: 22, height: 22),
         onPressed: onCollapse,
         icon: const Icon(Icons.chevron_left, size: 16),
