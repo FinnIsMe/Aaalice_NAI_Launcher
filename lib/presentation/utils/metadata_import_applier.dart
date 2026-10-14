@@ -1,5 +1,6 @@
 import '../../core/constants/api_constants.dart';
 import '../../core/enums/image_model_mode.dart';
+import '../../core/utils/nai_prompt_formatter.dart';
 import '../../data/models/gallery/nai_image_metadata.dart';
 import '../../data/models/metadata/metadata_import_options.dart';
 
@@ -65,7 +66,8 @@ class MetadataImportApplier {
           (options.importFixedTags || metadata.hasSeparatedFields)
               ? metadata.mainPrompt
               : metadata.prompt;
-      target.updatePrompt(promptToUse);
+      final formattedPrompt = NaiPromptFormatter.format(promptToUse);
+      target.updatePrompt(formattedPrompt);
       // 数据集前缀已从提示词剥离，模式随提示词一起恢复才能复现原图。
       final modelMode = metadata.modelMode;
       if (modelMode != null) target.updateModelMode(modelMode);
@@ -73,13 +75,13 @@ class MetadataImportApplier {
     }
 
     if (options.importNegativePrompt) {
-      target.updateNegativePrompt(
-        resolveImportedNegativePrompt(
-          metadata,
-          importUcPreset: options.importUcPreset,
-          currentModel: currentModel,
-        ),
+      final negativeToUse = resolveImportedNegativePrompt(
+        metadata,
+        importUcPreset: options.importUcPreset,
+        currentModel: currentModel,
       );
+      final formattedNegative = NaiPromptFormatter.format(negativeToUse);
+      target.updateNegativePrompt(formattedNegative);
       if (metadata.negativePrompt.isNotEmpty ||
           (options.importUcPreset && metadata.ucPreset != null)) {
         count++;

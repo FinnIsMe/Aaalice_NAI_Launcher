@@ -13,6 +13,10 @@ import '../../data/models/vibe/vibe_reference.dart';
 import '../../data/services/vibe_library_storage_service.dart';
 import '../providers/generation/image_workflow_controller.dart';
 import '../providers/reverse_prompt_provider.dart';
+import '../../core/constants/api_constants.dart';
+import '../../core/utils/nai_prompt_parser.dart';
+import '../providers/uc_preset_provider.dart';
+import 'active_preset_deduplicator.dart';
 import 'metadata_import_applier.dart';
 import 'fixed_tag_import_resolution.dart';
 import 'prompt_preset_import_utils.dart';
@@ -99,6 +103,70 @@ class MetadataImportCoordinator {
       l10n,
       resolution,
     );
+
+    // 导入完成之后，根据当前已激活的预设/固定词进行一次全量去重联动与清洗
+    if (options.importPrompt) {
+      final genState = read(generationParamsNotifierProvider);
+      final currentPrompt = genState.prompt;
+      final fixedState = read(fixedTagsNotifierProvider);
+      final activeFixed = [
+        ...fixedState.enabledEntries,
+        ...fixedState.comboEnabledEntries,
+      ];
+      List<String>? activeQualityTags;
+      final qualityState = read(qualityPresetNotifierProvider);
+      if (qualityState.isEnabled) {
+        final qContent = QualityTags.getQualityTagsForTier(
+              genState.model,
+              qualityState.naiTierId,
+            ) ??
+            QualityTags.getQualityTags(genState.model);
+        if (qContent != null && qContent.trim().isNotEmpty) {
+          activeQualityTags = NaiPromptParser.splitSegments(qContent);
+        }
+      }
+
+      final dedup = ActivePresetDeduplicator.deduplicate(
+        text: currentPrompt,
+        isNegative: false,
+        activeFixedEntries: activeFixed,
+        activeSystemPresetTags: activeQualityTags,
+      );
+      if (dedup.hasRemovals) {
+        notifier.updatePrompt(dedup.cleanedText);
+      }
+    }
+
+    if (options.importNegativePrompt) {
+      final genState = read(generationParamsNotifierProvider);
+      final currentNegative = genState.negativePrompt;
+      final fixedState = read(fixedTagsNotifierProvider);
+      final activeNegativeFixed = [
+        ...fixedState.negativeEnabledEntries,
+        ...fixedState.comboEnabledEntries,
+      ];
+      List<String>? activeUcTags;
+      final ucState = read(ucPresetNotifierProvider);
+      if (ucState.presetType != UcPresetType.none) {
+        final ucContent = UcPresets.getPresetContent(
+          genState.model,
+          ucState.presetType,
+        );
+        if (ucContent.trim().isNotEmpty) {
+          activeUcTags = NaiPromptParser.splitSegments(ucContent);
+        }
+      }
+
+      final dedupNeg = ActivePresetDeduplicator.deduplicate(
+        text: currentNegative,
+        isNegative: true,
+        activeFixedEntries: activeNegativeFixed,
+        activeSystemPresetTags: activeUcTags,
+      );
+      if (dedupNeg.hasRemovals) {
+        notifier.updateNegativePrompt(dedupNeg.cleanedText);
+      }
+    }
 
     return appliedCount;
   }

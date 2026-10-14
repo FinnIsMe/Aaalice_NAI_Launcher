@@ -20,7 +20,7 @@ class TagLibraryEntryHoverPreview extends StatefulWidget {
     required this.entry,
     required this.child,
     this.enabled = true,
-    this.hoverDelay = const Duration(milliseconds: 700),
+    this.hoverDelay = const Duration(milliseconds: 280),
   });
 
   final TagLibraryEntry entry;
@@ -35,7 +35,7 @@ class TagLibraryEntryHoverPreview extends StatefulWidget {
 
 class _TagLibraryEntryHoverPreviewState
     extends State<TagLibraryEntryHoverPreview> {
-  static const _dismissDelay = Duration(milliseconds: 120);
+  static const _dismissDelay = Duration(milliseconds: 350);
 
   final _layerLink = LayerLink();
   late final ImageHoverPreviewController _hoverController;

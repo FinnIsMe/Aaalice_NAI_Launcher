@@ -184,18 +184,68 @@ _MatchResult _matchAndStripTags({
     }
   }
 
-  // 构建从原提示词中扣除固定词后的极简净文本
-  final remainingTags = <String>[];
-  for (var i = 0; i < rawTags.length; i++) {
-    if (!consumedIndices.contains(i)) {
-      remainingTags.add(rawTags[i]);
-    }
+  if (consumedIndices.isEmpty) {
+    return _MatchResult(
+      prefix: matchedPrefix,
+      suffix: matchedSuffix,
+      cleanedPrompt: prompt,
+    );
   }
+
+  // 构建从原提示词中扣除固定词后的极简净文本（严格保留换行、空行与缩进）
+  final lineBreakPattern = RegExp(r'\r\n|\r|\n');
+  final leadingWhitespacePattern = RegExp(r'^[ \t]*');
+  final trailingWhitespacePattern = RegExp(r'[ \t]*$');
+
+  final consumedNormTags = <String>{
+    for (final idx in consumedIndices) normTags[idx],
+  };
+
+  final cleanedPrompt = prompt.splitMapJoin(
+    lineBreakPattern,
+    onMatch: (match) => match.group(0)!,
+    onNonMatch: (line) {
+      if (line.isEmpty) return line;
+
+      final leadingWhitespace =
+          leadingWhitespacePattern.firstMatch(line)?.group(0) ?? '';
+      final trailingWhitespace =
+          trailingWhitespacePattern.firstMatch(line)?.group(0) ?? '';
+      final contentEnd = line.length - trailingWhitespace.length;
+      if (leadingWhitespace.length >= contentEnd) {
+        return line;
+      }
+
+      final content = line.substring(leadingWhitespace.length, contentEnd);
+      final keepsTrailingComma = content.trim().endsWith(',');
+
+      final lineTags = _extractTags(content);
+      if (lineTags.isEmpty) return line;
+
+      final remainingLineTags = <String>[];
+      for (final rawTag in lineTags) {
+        final norm = _normalizeTag(rawTag);
+        if (!consumedNormTags.contains(norm)) {
+          remainingLineTags.add(rawTag);
+        }
+      }
+
+      if (remainingLineTags.isEmpty) {
+        return '';
+      }
+
+      var formatted = remainingLineTags.join(', ');
+      if (keepsTrailingComma && formatted.isNotEmpty) {
+        formatted = '$formatted,';
+      }
+      return '$leadingWhitespace$formatted$trailingWhitespace';
+    },
+  );
 
   return _MatchResult(
     prefix: matchedPrefix,
     suffix: matchedSuffix,
-    cleanedPrompt: remainingTags.join(', '),
+    cleanedPrompt: cleanedPrompt,
   );
 }
 

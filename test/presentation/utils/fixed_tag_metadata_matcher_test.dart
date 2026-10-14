@@ -203,4 +203,23 @@ void main() {
       {2},
     );
   });
+
+  test('stripping fixed tags preserves newlines and empty lines', () {
+    final entry = FixedTagEntry.create(
+      name: 'boy',
+      content: 'boy',
+      position: FixedTagPosition.prefix,
+    );
+    final result = matchMetadataFixedTags(
+      metadata: const NaiImageMetadata(
+        prompt: 'boy, 1boy,\n\n  happy smile,\r\ncinematic lighting',
+      ),
+      positiveEntries: [entry],
+      negativeEntries: const [],
+    );
+    expect(
+      result.prompt,
+      equals('1boy,\n\n  happy smile,\r\ncinematic lighting'),
+    );
+  });
 }

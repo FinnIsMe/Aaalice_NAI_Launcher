@@ -9,6 +9,7 @@ import '../../../themes/core/layered_surface_style.dart';
 import '../../../themes/prompt_semantic_colors.dart';
 import '../../../widgets/common/thumbnail_display.dart';
 import '../../../widgets/common/tile_action_button.dart';
+import '../../../widgets/prompt/fixed_tag_hover_preview.dart';
 import '../../../widgets/tag_library/tag_library_entry_hover_preview.dart';
 
 typedef SidebarDragHandleBuilder = Widget Function(Widget child);
@@ -103,12 +104,14 @@ class _SidebarEntryTileState extends State<SidebarEntryTile> {
       ),
     );
 
-    final libraryEntry = widget.libraryEntry;
-    if (libraryEntry == null ||
-        !context.interactionPolicy.precisePointerAvailable) {
+    if (!context.interactionPolicy.precisePointerAvailable) {
       return tile;
     }
-    return TagLibraryEntryHoverPreview(entry: libraryEntry, child: tile);
+    final libraryEntry = widget.libraryEntry;
+    if (libraryEntry != null) {
+      return TagLibraryEntryHoverPreview(entry: libraryEntry, child: tile);
+    }
+    return FixedTagHoverPreview(entry: widget.entry, child: tile);
   }
 
   Color _backgroundColor(ThemeData theme) {

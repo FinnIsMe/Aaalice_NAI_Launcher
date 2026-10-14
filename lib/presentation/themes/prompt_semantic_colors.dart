@@ -20,7 +20,7 @@ class PromptSemanticColors extends ThemeExtension<PromptSemanticColors> {
   factory PromptSemanticColors.from(ColorScheme colors) {
     final isDark = colors.brightness == Brightness.dark;
     return PromptSemanticColors._(
-      positivePrompt: colors.primary,
+      positivePrompt: isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32),
       negativePrompt: colors.error,
       fixedTag: isDark ? const Color(0xFF6AA9E9) : const Color(0xFF285F98),
       mainPrompt: isDark ? const Color(0xFF82B1FF) : const Color(0xFF2457A7),

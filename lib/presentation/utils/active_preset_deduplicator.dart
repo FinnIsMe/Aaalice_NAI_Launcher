@@ -70,19 +70,56 @@ class ActivePresetDeduplicator {
       );
     }
 
-    final remainingTags = <String>[];
+    final lineBreakPattern = RegExp(r'\r\n|\r|\n');
+    final leadingWhitespacePattern = RegExp(r'^[ \t]*');
+    final trailingWhitespacePattern = RegExp(r'[ \t]*$');
+
     final removedTags = <String>[];
     final sources = <String>{};
 
-    for (final rawTag in rawTags) {
-      final norm = _normalizeTag(rawTag);
-      if (norm.isNotEmpty && targetPresetMap.containsKey(norm)) {
-        removedTags.add(rawTag.trim());
-        sources.add(targetPresetMap[norm]!);
-      } else {
-        remainingTags.add(rawTag);
-      }
-    }
+    final cleaned = text.splitMapJoin(
+      lineBreakPattern,
+      onMatch: (match) => match.group(0)!,
+      onNonMatch: (line) {
+        if (line.isEmpty) return line;
+
+        final leadingWhitespace =
+            leadingWhitespacePattern.firstMatch(line)?.group(0) ?? '';
+        final trailingWhitespace =
+            trailingWhitespacePattern.firstMatch(line)?.group(0) ?? '';
+        final contentEnd = line.length - trailingWhitespace.length;
+        if (leadingWhitespace.length >= contentEnd) {
+          return line;
+        }
+
+        final content = line.substring(leadingWhitespace.length, contentEnd);
+        final keepsTrailingComma = content.trim().endsWith(',');
+
+        final lineTags = NaiPromptParser.splitSegments(content);
+        if (lineTags.isEmpty) return line;
+
+        final remainingLineTags = <String>[];
+        for (final rawTag in lineTags) {
+          final norm = _normalizeTag(rawTag);
+          if (norm.isNotEmpty && targetPresetMap.containsKey(norm)) {
+            removedTags.add(rawTag.trim());
+            sources.add(targetPresetMap[norm]!);
+          } else {
+            remainingLineTags.add(rawTag);
+          }
+        }
+
+        if (remainingLineTags.isEmpty) {
+          return '';
+        }
+
+        var formatted = remainingLineTags.join(', ');
+        if (keepsTrailingComma && formatted.isNotEmpty) {
+          formatted = '$formatted,';
+        }
+        return '$leadingWhitespace$formatted$trailingWhitespace';
+      },
+    );
 
     if (removedTags.isEmpty) {
       return ActivePresetDeduplicationResult(
@@ -90,12 +127,6 @@ class ActivePresetDeduplicator {
         removedTags: const [],
         sources: const [],
       );
-    }
-
-    final keepsTrailingComma = text.trim().endsWith(',');
-    var cleaned = remainingTags.join(', ');
-    if (keepsTrailingComma && cleaned.isNotEmpty) {
-      cleaned = '$cleaned,';
     }
 
     return ActivePresetDeduplicationResult(
