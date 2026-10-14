@@ -53,19 +53,19 @@ void main() {
     expect(resolution.metadata.mainPrompt, '1girl');
   });
 
-  test('legacy fields are authoritative and block extra inference', () {
+  test('image with recorded fields without library match yields unknown and no fabricated entries', () {
     final resolution = resolveFixedTagImport(
       metadata: const NaiImageMetadata(
         prompt: 'recorded, current, subject',
         fixedPrefixTags: ['recorded'],
         hasRecordedFixedTagFields: true,
       ),
-      entries: [FixedTagEntry.create(name: 'current', content: 'current')],
+      entries: const [],
     );
 
-    expect(resolution.source, FixedTagImportSource.legacyFields);
-    expect(resolution.metadata.fixedPrefixTags, ['recorded']);
-    expect(resolution.snapshot?.entries.single.renderedContent, 'recorded');
+    expect(resolution.source, FixedTagImportSource.unknown);
+    expect(resolution.snapshot, isNull);
+    expect(resolution.metadata.prompt, 'recorded, current, subject');
   });
 
   test('old image can match exact boundaries from the current library', () {

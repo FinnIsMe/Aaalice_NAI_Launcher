@@ -41,44 +41,20 @@ FixedTagImportResolution resolveFixedTagImport({
       )
       .toList(growable: false);
 
-  final structured = metadata.fixedTagUsageSnapshot;
-  if (structured != null) {
-    final projected = projectFixedTagUsageSnapshot(metadata);
-    final stripped = matchMetadataFixedTags(
-      metadata: projected,
-      positiveEntries: positive,
-      negativeEntries: negative,
-    );
-    return FixedTagImportResolution(
-      metadata: stripped,
-      source: FixedTagImportSource.structured,
-      snapshot: structured,
-    );
-  }
-
-  if (metadata.hasRecordedFixedTagFields || _hasRecordedTags(metadata)) {
-    final stripped = matchMetadataFixedTags(
-      metadata: metadata,
-      positiveEntries: positive,
-      negativeEntries: negative,
-    );
-    return FixedTagImportResolution(
-      metadata: stripped,
-      source: FixedTagImportSource.legacyFields,
-      snapshot: _legacySnapshot(metadata),
-    );
-  }
   final inferred = matchMetadataFixedTags(
     metadata: metadata,
     positiveEntries: positive,
     negativeEntries: negative,
   );
   if (_hasRecordedTags(inferred)) {
-    return FixedTagImportResolution(
-      metadata: inferred,
-      source: FixedTagImportSource.currentLibrary,
-      snapshot: _snapshotFromMatches(inferred, entries),
-    );
+    final snapshot = _snapshotFromMatches(inferred, entries);
+    if (snapshot.entries.isNotEmpty) {
+      return FixedTagImportResolution(
+        metadata: inferred,
+        source: FixedTagImportSource.currentLibrary,
+        snapshot: snapshot,
+      );
+    }
   }
   return FixedTagImportResolution(
     metadata: metadata,
@@ -92,49 +68,6 @@ bool _hasRecordedTags(NaiImageMetadata metadata) =>
     metadata.fixedNegativePrefixTags.isNotEmpty ||
     metadata.fixedNegativeSuffixTags.isNotEmpty;
 
-FixedTagUsageSnapshot _legacySnapshot(NaiImageMetadata metadata) {
-  final result = <FixedTagUsageEntry>[];
-  void add(
-    Iterable<String> values,
-    FixedTagPromptType promptType,
-    FixedTagPosition position,
-  ) {
-    for (final value in values) {
-      final content = value.trim();
-      if (content.isEmpty) continue;
-      result.add(
-        FixedTagUsageEntry.legacy(
-          renderedContent: content,
-          position: position,
-          promptType: promptType,
-          order: result.length,
-        ),
-      );
-    }
-  }
-
-  add(
-    metadata.fixedPrefixTags,
-    FixedTagPromptType.positive,
-    FixedTagPosition.prefix,
-  );
-  add(
-    metadata.fixedSuffixTags,
-    FixedTagPromptType.positive,
-    FixedTagPosition.suffix,
-  );
-  add(
-    metadata.fixedNegativePrefixTags,
-    FixedTagPromptType.negative,
-    FixedTagPosition.prefix,
-  );
-  add(
-    metadata.fixedNegativeSuffixTags,
-    FixedTagPromptType.negative,
-    FixedTagPosition.suffix,
-  );
-  return FixedTagUsageSnapshot(entries: result);
-}
 
 FixedTagUsageSnapshot _snapshotFromMatches(
   NaiImageMetadata metadata,
@@ -162,18 +95,12 @@ FixedTagUsageSnapshot _snapshotFromMatches(
         },
         orElse: () => null,
       );
-      if (entry != null && matched.any((m) => m.fixedTagId == entry.id)) {
+      if (entry == null) continue;
+      if (matched.any((m) => m.fixedTagId == entry.id)) {
         continue;
       }
       matched.add(
-        entry == null
-            ? FixedTagUsageEntry.legacy(
-                renderedContent: value,
-                position: position,
-                promptType: promptType,
-                order: matched.length,
-              )
-            : FixedTagUsageEntry.fromFixedTag(entry, order: matched.length),
+        FixedTagUsageEntry.fromFixedTag(entry, order: matched.length),
       );
     }
   }

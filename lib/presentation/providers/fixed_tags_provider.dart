@@ -815,24 +815,8 @@ class FixedTagsNotifier extends _$FixedTagsNotifier {
           enabled: true,
           updatedAt: now,
         );
-        continue;
       }
-
-      nextEntries.add(
-        FixedTagEntry.create(
-          name: hasChangedOriginal
-              ? buildImageVersionName(usage.name)
-              : usage.name,
-          content: usage.content,
-          weight: usage.weight,
-          position: usage.position,
-          promptType: usage.promptType,
-          enabled: true,
-          importedFromFixedTagId: hasChangedOriginal ? usage.fixedTagId : null,
-          importedSnapshotFingerprint: hasChangedOriginal ? fingerprint : null,
-          sortOrder: nextEntries.length,
-        ),
-      );
+      // 当前固定词库中不存在该条目，说明已被修改或删除废弃，严禁擅自自动新建或回补！
     }
 
     _commitState(state.copyWith(entries: nextEntries));

@@ -19,32 +19,9 @@ NaiImageMetadata matchMetadataFixedTags({
     base = projectFixedTagUsageSnapshot(base);
   }
 
+  // 严格只匹配用户当前本地词库中实际存在的固定词，绝不从图片元数据中凭空捏造任何临时条目
   final posCandidates = [...positiveEntries];
-  for (final tag in [...base.fixedPrefixTags, ...base.fixedSuffixTags]) {
-    if (!posCandidates.any((c) => c.content == tag)) {
-      posCandidates.add(FixedTagEntry.create(
-        name: tag,
-        content: tag,
-        position: FixedTagPosition.prefix,
-        promptType: FixedTagPromptType.positive,
-      ));
-    }
-  }
-
   final negCandidates = [...negativeEntries];
-  for (final tag in [
-    ...base.fixedNegativePrefixTags,
-    ...base.fixedNegativeSuffixTags,
-  ]) {
-    if (!negCandidates.any((c) => c.content == tag)) {
-      negCandidates.add(FixedTagEntry.create(
-        name: tag,
-        content: tag,
-        position: FixedTagPosition.prefix,
-        promptType: FixedTagPromptType.negative,
-      ));
-    }
-  }
 
   // 对于 Combo（正负组合）类型的条目，必须满足正向和反向同时 100% 严格匹配。
   // 只要任意一端有缺失（如负面缺少某些标签），该条目就判定为完全未命中，
