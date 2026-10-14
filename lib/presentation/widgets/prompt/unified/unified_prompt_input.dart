@@ -36,14 +36,16 @@ import '../tag_mode_prompt_field.dart';
 import '../prompt_text_selection_actions.dart';
 import 'unified_prompt_config.dart';
 import 'prompt_scroll_coordinator.dart';
+import '../prompt_weight_editing.dart';
 import 'package:nai_launcher/presentation/widgets/common/themed_input.dart';
 import 'package:nai_launcher/presentation/widgets/common/themed_text_selection_toolbar.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/utils/nai_prompt_parser.dart';
-import '../../../providers/generation_params_notifier.dart';
+import '../../../providers/image_generation_provider.dart';
 import '../../../providers/quality_preset_provider.dart';
+import '../../../providers/uc_preset_provider.dart';
 import '../../../screens/generation/widgets/prompt_input_models.dart';
-import '../../utils/active_preset_deduplicator.dart';
+import '../../../utils/active_preset_deduplicator.dart';
 
 /// 统一提示词输入组件
 ///
@@ -531,17 +533,21 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
           final qualityState = ref.read(qualityPresetNotifierProvider);
           if (qualityState.isEnabled) {
             final model = ref.read(generationParamsNotifierProvider).model;
-            final qContent = ref.read(qualityPresetNotifierProvider.notifier).getQualityTags(model);
-            if (qContent != null) {
+            final qContent = QualityTags.getQualityTagsForTier(
+                  model,
+                  qualityState.naiTierId,
+                ) ??
+                QualityTags.getQualityTags(model);
+            if (qContent != null && qContent.trim().isNotEmpty) {
               activeSystemTags = NaiPromptParser.splitSegments(qContent);
             }
           }
         } else {
-          final ucPreset = ref.read(generationParamsNotifierProvider).ucPreset;
-          if (ucPreset != null && ucPreset != 'none') {
+          final ucState = ref.read(ucPresetNotifierProvider);
+          if (ucState.presetType != UcPresetType.none) {
             final model = ref.read(generationParamsNotifierProvider).model;
-            final ucContent = ApiConstants.resolveUcPresetContent(model, ucPreset);
-            if (ucContent != null) {
+            final ucContent = UcPresets.getPresetContent(model, ucState.presetType);
+            if (ucContent.trim().isNotEmpty) {
               activeSystemTags = NaiPromptParser.splitSegments(ucContent);
             }
           }

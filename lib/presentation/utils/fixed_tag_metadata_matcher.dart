@@ -24,6 +24,7 @@ NaiImageMetadata matchMetadataFixedTags({
     if (!posCandidates.any((c) => c.content == tag)) {
       posCandidates.add(FixedTagEntry(
         id: 'meta_pos_${posCandidates.length}',
+        name: tag,
         content: tag,
         position: FixedTagPosition.prefix,
         promptType: FixedTagPromptType.positive,
@@ -40,6 +41,7 @@ NaiImageMetadata matchMetadataFixedTags({
     if (!negCandidates.any((c) => c.content == tag)) {
       negCandidates.add(FixedTagEntry(
         id: 'meta_neg_${negCandidates.length}',
+        name: tag,
         content: tag,
         position: FixedTagPosition.prefix,
         promptType: FixedTagPromptType.negative,
