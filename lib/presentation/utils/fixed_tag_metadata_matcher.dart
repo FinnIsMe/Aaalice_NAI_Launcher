@@ -46,6 +46,31 @@ NaiImageMetadata matchMetadataFixedTags({
     }
   }
 
+  // 对于 Combo（正负组合）类型的条目，必须满足正向和反向同时 100% 严格匹配。
+  // 只要任意一端有缺失（如负面缺少某些标签），该条目就判定为完全未命中，
+  // 既不从正向剥离，也不从反向剥离，确保不激活该组合词并将全量信息展示在输入框中。
+  final validCombos = <FixedTagEntry>{};
+  final allCandidates = [...posCandidates, ...negCandidates];
+  for (final entry in allCandidates) {
+    if (entry.promptType == FixedTagPromptType.combo) {
+      final posOk = _isTagsFullyContained(base.prompt, entry.content);
+      final negOk = _isTagsFullyContained(
+        base.negativePrompt,
+        entry.negativeContent ?? '',
+      );
+      if (posOk && negOk) {
+        validCombos.add(entry);
+      }
+    }
+  }
+
+  posCandidates.removeWhere(
+    (e) => e.promptType == FixedTagPromptType.combo && !validCombos.contains(e),
+  );
+  negCandidates.removeWhere(
+    (e) => e.promptType == FixedTagPromptType.combo && !validCombos.contains(e),
+  );
+
   final posMatch = _matchAndStripTags(
     prompt: base.prompt,
     candidates: posCandidates,
@@ -225,7 +250,7 @@ _MatchResult _matchAndStripTags({
       final remainingLineTags = <String>[];
       for (final rawTag in lineTags) {
         final norm = _normalizeTag(rawTag);
-        if (!consumedNormTags.contains(norm)) {
+        if (norm.isNotEmpty && !consumedNormTags.contains(norm)) {
           remainingLineTags.add(rawTag);
         }
       }
@@ -242,11 +267,40 @@ _MatchResult _matchAndStripTags({
     },
   );
 
+  var finalCleanedPrompt = cleanedPrompt;
+  // 若整段提示词剥离后已无任何有效单词标签（仅剩换行、空白或逗号等符号残渣），
+  // 则彻底净化为空字符串，避免残留无意义的空行或孤立回车符。
+  if (finalCleanedPrompt.replaceAll(RegExp(r'[\r\n\s,]+'), '').isEmpty) {
+    finalCleanedPrompt = '';
+  } else {
+    // 裁剪首尾因整行词条被剥离而留下的孤立空换行
+    finalCleanedPrompt = finalCleanedPrompt
+        .replaceAll(RegExp(r'^\s*[\r\n]+'), '')
+        .replaceAll(RegExp(r'[\r\n]+\s*$'), '');
+  }
+
   return _MatchResult(
     prefix: matchedPrefix,
     suffix: matchedSuffix,
-    cleanedPrompt: cleanedPrompt,
+    cleanedPrompt: finalCleanedPrompt,
   );
+}
+
+bool _isTagsFullyContained(String prompt, String content) {
+  final rawTags = _extractTags(prompt);
+  final normTags = rawTags.map(_normalizeTag).toList();
+  final entryTags = _extractTags(content).map(_normalizeTag).where((t) => t.isNotEmpty).toList();
+  if (entryTags.isEmpty) return false;
+  final matched = <int>[];
+  for (final eTag in entryTags) {
+    for (var i = 0; i < normTags.length; i++) {
+      if (!matched.contains(i) && normTags[i] == eTag) {
+        matched.add(i);
+        break;
+      }
+    }
+  }
+  return matched.length == entryTags.length;
 }
 
 Set<int> fixedPromptTagIndexes({

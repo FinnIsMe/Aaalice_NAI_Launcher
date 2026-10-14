@@ -162,6 +162,9 @@ FixedTagUsageSnapshot _snapshotFromMatches(
         },
         orElse: () => null,
       );
+      if (entry != null && matched.any((m) => m.fixedTagId == entry.id)) {
+        continue;
+      }
       matched.add(
         entry == null
             ? FixedTagUsageEntry.legacy(

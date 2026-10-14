@@ -222,4 +222,48 @@ void main() {
       equals('1boy,\n\n  happy smile,\r\ncinematic lighting'),
     );
   });
+
+  test('combo entry requires 100% match on both positive and negative prompts', () {
+    final combo = FixedTagEntry.create(
+      name: 'test_combo',
+      content: '1boy, masterpiece',
+      negativeContent: 'bad hands, lowres',
+      promptType: FixedTagPromptType.combo,
+      position: FixedTagPosition.prefix,
+    );
+
+    // 负面缺少 lowres，combo 判定不命中，正面和负面均不剥离
+    final result = matchMetadataFixedTags(
+      metadata: const NaiImageMetadata(
+        prompt: '1boy, masterpiece, solo',
+        negativePrompt: 'bad hands, blurry',
+      ),
+      positiveEntries: [combo],
+      negativeEntries: [combo],
+    );
+
+    expect(result.fixedPrefixTags, isEmpty);
+    expect(result.fixedNegativePrefixTags, isEmpty);
+    expect(result.prompt, equals('1boy, masterpiece, solo'));
+    expect(result.negativePrompt, equals('bad hands, blurry'));
+  });
+
+  test('stripping tags discards orphaned syntax tokens like isolated double colons', () {
+    final entry = FixedTagEntry.create(
+      name: 'neg_entry',
+      content: 'lowres, bad hands',
+      promptType: FixedTagPromptType.negative,
+      position: FixedTagPosition.prefix,
+    );
+
+    final result = matchMetadataFixedTags(
+      metadata: const NaiImageMetadata(
+        negativePrompt: 'lowres,\n::,\nbad hands',
+      ),
+      positiveEntries: const [],
+      negativeEntries: [entry],
+    );
+
+    expect(result.negativePrompt, isEmpty);
+  });
 }

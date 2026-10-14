@@ -104,7 +104,7 @@ class ActivePresetDeduplicator {
           if (norm.isNotEmpty && targetPresetMap.containsKey(norm)) {
             removedTags.add(rawTag.trim());
             sources.add(targetPresetMap[norm]!);
-          } else {
+          } else if (norm.isNotEmpty) {
             remainingLineTags.add(rawTag);
           }
         }
@@ -129,8 +129,17 @@ class ActivePresetDeduplicator {
       );
     }
 
+    var finalCleaned = cleaned;
+    if (finalCleaned.replaceAll(RegExp(r'[\r\n\s,]+'), '').isEmpty) {
+      finalCleaned = '';
+    } else {
+      finalCleaned = finalCleaned
+          .replaceAll(RegExp(r'^\s*[\r\n]+'), '')
+          .replaceAll(RegExp(r'[\r\n]+\s*$'), '');
+    }
+
     return ActivePresetDeduplicationResult(
-      cleanedText: cleaned,
+      cleanedText: finalCleaned,
       removedTags: removedTags,
       sources: sources.toList(),
     );
