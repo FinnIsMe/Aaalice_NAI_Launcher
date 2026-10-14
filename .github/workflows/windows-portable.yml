@@ -7,11 +7,11 @@ on:
       build-mode:
         description: Flutter build mode
         required: true
-        default: debug
+        default: release
         type: choice
         options:
-          - debug
           - release
+          - debug
 
 permissions:
   contents: read
