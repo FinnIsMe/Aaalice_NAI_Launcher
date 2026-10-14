@@ -25,23 +25,6 @@ FixedTagImportResolution resolveFixedTagImport({
   required NaiImageMetadata metadata,
   required Iterable<FixedTagEntry> entries,
 }) {
-  final structured = metadata.fixedTagUsageSnapshot;
-  if (structured != null) {
-    return FixedTagImportResolution(
-      metadata: projectFixedTagUsageSnapshot(metadata),
-      source: FixedTagImportSource.structured,
-      snapshot: structured,
-    );
-  }
-
-  if (metadata.hasRecordedFixedTagFields || _hasRecordedTags(metadata)) {
-    return FixedTagImportResolution(
-      metadata: metadata,
-      source: FixedTagImportSource.legacyFields,
-      snapshot: _legacySnapshot(metadata),
-    );
-  }
-
   final positive = entries
       .where(
         (entry) =>
@@ -57,6 +40,34 @@ FixedTagImportResolution resolveFixedTagImport({
                 (entry.negativeContent?.isNotEmpty ?? false)),
       )
       .toList(growable: false);
+
+  final structured = metadata.fixedTagUsageSnapshot;
+  if (structured != null) {
+    final projected = projectFixedTagUsageSnapshot(metadata);
+    final stripped = matchMetadataFixedTags(
+      metadata: projected,
+      positiveEntries: positive,
+      negativeEntries: negative,
+    );
+    return FixedTagImportResolution(
+      metadata: stripped,
+      source: FixedTagImportSource.structured,
+      snapshot: structured,
+    );
+  }
+
+  if (metadata.hasRecordedFixedTagFields || _hasRecordedTags(metadata)) {
+    final stripped = matchMetadataFixedTags(
+      metadata: metadata,
+      positiveEntries: positive,
+      negativeEntries: negative,
+    );
+    return FixedTagImportResolution(
+      metadata: stripped,
+      source: FixedTagImportSource.legacyFields,
+      snapshot: _legacySnapshot(metadata),
+    );
+  }
   final inferred = matchMetadataFixedTags(
     metadata: metadata,
     positiveEntries: positive,

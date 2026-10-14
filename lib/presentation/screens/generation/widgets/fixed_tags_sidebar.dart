@@ -418,166 +418,205 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
     required bool isListMode,
     required List<TagLibraryEntry> libraryEntries,
   }) {
-    final slivers = <Widget>[];
+    final isDark = theme.brightness == Brightness.dark;
+    // 整个框选区域背景色：正负组合为浅橙色背景，正向为浅绿色背景，负向为浅红色背景
+    final cardBgColor = Color.alphaBlend(
+      accentColor.withValues(alpha: isDark ? 0.08 : 0.06),
+      sectionSurfaceColor(theme.colorScheme),
+    );
+    final headerBgColor = Color.alphaBlend(
+      accentColor.withValues(alpha: isDark ? 0.16 : 0.12),
+      sectionSurfaceColor(theme.colorScheme),
+    );
+    final borderColor = accentColor.withValues(alpha: isDark ? 0.28 : 0.35);
 
-    // Group Header Card
-    slivers.add(
+    return [
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
         sliver: SliverToBoxAdapter(
-          child: Material(
-            color: Color.alphaBlend(
-              accentColor.withValues(alpha: 0.08),
-              sectionSurfaceColor(theme.colorScheme),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: borderColor, width: 1.0),
             ),
-            borderRadius: BorderRadius.circular(8),
             clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onToggleExpanded,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 14, color: accentColor),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      fit: FlexFit.loose,
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: accentColor,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Container(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Group Header
+                Material(
+                  color: headerBgColor,
+                  child: InkWell(
+                    onTap: onToggleExpanded,
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 0.5,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
-                      decoration: BoxDecoration(
-                        color: accentColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        '$enabledCount/$totalCount',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: accentColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 9.5,
-                        ),
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 14, color: accentColor),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            fit: FlexFit.loose,
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: accentColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 0.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: accentColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(
+                              '$enabledCount/$totalCount',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: accentColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 9.5,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          _EnabledOnlyAction(
+                            selected: enabledOnly,
+                            color: accentColor,
+                            iconOnly: true,
+                            label: context.l10n.fixedTags_enabledOnly,
+                            onPressed: onToggleEnabledOnly,
+                          ),
+                          Icon(
+                            isExpanded
+                                ? Icons.keyboard_arrow_down_rounded
+                                : Icons.keyboard_arrow_right_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ],
                       ),
                     ),
-                    const Spacer(),
-                    _EnabledOnlyAction(
-                      selected: enabledOnly,
-                      color: accentColor,
-                      iconOnly: true,
-                      label: context.l10n.fixedTags_enabledOnly,
-                      onPressed: onToggleEnabledOnly,
-                    ),
-                    Icon(
-                      isExpanded
-                          ? Icons.keyboard_arrow_down_rounded
-                          : Icons.keyboard_arrow_right_rounded,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+
+                // Expanded Content
+                if (isExpanded) ...[
+                  Container(
+                    height: 1,
+                    color: accentColor.withValues(alpha: 0.15),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
+                    child: sections.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Center(
+                              child: Text(
+                                emptyText,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (var sectionIndex = 0;
+                                  sectionIndex < sections.length;
+                                  sectionIndex++) ...[
+                                if (sectionIndex > 0) const SizedBox(height: 4),
+                                _buildSectionBox(
+                                  theme: theme,
+                                  section: sections[sectionIndex],
+                                  promptType: promptType,
+                                  sectionIndex: sectionIndex,
+                                  totalSections: sections.length,
+                                  isListMode: isListMode,
+                                  libraryEntries: libraryEntries,
+                                  sections: sections,
+                                ),
+                              ],
+                            ],
+                          ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
       ),
+    ];
+  }
+
+  Widget _buildSectionBox({
+    required ThemeData theme,
+    required _TagSection section,
+    required FixedTagPromptType promptType,
+    required int sectionIndex,
+    required int totalSections,
+    required bool isListMode,
+    required List<TagLibraryEntry> libraryEntries,
+    required List<_TagSection> sections,
+  }) {
+    final sectionKey = '${promptType.name}_${section.id}';
+    final isSectionCollapsed = _collapsedSectionIds.contains(sectionKey);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildSectionHeader(
+          theme: theme,
+          section: section,
+          promptType: promptType,
+          isCollapsed: isSectionCollapsed,
+          sectionKey: sectionKey,
+          canMoveUp: section.isCustomCategory && sectionIndex > 0,
+          canMoveDown: section.isCustomCategory &&
+              sectionIndex < totalSections - 1 &&
+              sections[sectionIndex + 1].isCustomCategory,
+          onMove: (delta) {
+            ref.read(fixedTagsNotifierProvider.notifier).reorderCategories(
+                  promptType,
+                  sectionIndex,
+                  sectionIndex + delta + (delta > 0 ? 1 : 0),
+                );
+          },
+        ),
+        if (!isSectionCollapsed && section.entries.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: isListMode
+                ? _buildEntryListWidget(
+                    section: section,
+                    promptType: promptType,
+                    libraryEntries: libraryEntries,
+                  )
+                : _buildEntryGridWidget(
+                    section: section,
+                    promptType: promptType,
+                    libraryEntries: libraryEntries,
+                  ),
+          ),
+        ],
+      ],
     );
-
-    if (!isExpanded) {
-      return slivers;
-    }
-
-    if (sections.isEmpty) {
-      slivers.add(
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Center(
-              child: Text(
-                emptyText,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      return slivers;
-    }
-
-    // Sections (Folders) within group
-    for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
-      final section = sections[sectionIndex];
-      final sectionKey = '${promptType.name}_${section.id}';
-      final isSectionCollapsed = _collapsedSectionIds.contains(sectionKey);
-
-      slivers.add(
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
-          sliver: SliverMainAxisGroup(
-            slivers: [
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  theme: theme,
-                  section: section,
-                  promptType: promptType,
-                  isCollapsed: isSectionCollapsed,
-                  sectionKey: sectionKey,
-                  canMoveUp: section.isCustomCategory && sectionIndex > 0,
-                  canMoveDown:
-                      section.isCustomCategory &&
-                      sectionIndex < sections.length - 1 &&
-                      sections[sectionIndex + 1].isCustomCategory,
-                  onMove: (delta) {
-                    ref
-                        .read(fixedTagsNotifierProvider.notifier)
-                        .reorderCategories(
-                          promptType,
-                          sectionIndex,
-                          sectionIndex + delta + (delta > 0 ? 1 : 0),
-                        );
-                  },
-                ),
-              ),
-              if (!isSectionCollapsed)
-                SliverPadding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 4),
-                  sliver: isListMode
-                      ? _buildEntryListSliver(
-                          section: section,
-                          promptType: promptType,
-                          libraryEntries: libraryEntries,
-                        )
-                      : _buildEntryGridSliver(
-                          section: section,
-                          promptType: promptType,
-                          libraryEntries: libraryEntries,
-                        ),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return slivers;
   }
 
   Widget _buildSectionHeader({
@@ -716,254 +755,292 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
     );
   }
 
-  Widget _buildEntryListSliver({
+  Widget _buildEntryListWidget({
     required _TagSection section,
     required FixedTagPromptType promptType,
     required List<TagLibraryEntry> libraryEntries,
   }) {
     final theme = Theme.of(context);
-    return SliverList.builder(
-      itemCount: section.entries.length,
-      itemBuilder: (context, index) {
-        final entry = section.entries[index];
-        return DragTarget<FixedTagEntry>(
-          key: ValueKey('entry_target_${entry.id}'),
-          onWillAcceptWithDetails: (details) =>
-              details.data.id != entry.id &&
-              details.data.promptType == promptType,
-          onAcceptWithDetails: (details) async {
-            final dragged = details.data;
-            final targetCatId = section.id == _uncategorizedSectionId
-                ? null
-                : section.id;
-            if (dragged.categoryId != targetCatId) {
-              await ref
-                  .read(fixedTagsNotifierProvider.notifier)
-                  .updateEntry(dragged.copyWith(categoryId: targetCatId));
-            }
-            final currentVisibleIds =
-                section.entries.map((e) => e.id).toList();
-            final oldIdx = currentVisibleIds.indexOf(dragged.id);
-            if (oldIdx != -1) {
-              await ref
-                  .read(fixedTagsNotifierProvider.notifier)
-                  .reorderWithinVisibleIds(
-                    promptType: promptType,
-                    visibleIds: currentVisibleIds,
-                    oldIndex: oldIdx,
-                    newIndex: index,
-                  );
-            }
-          },
-          builder: (context, candidateData, rejectedData) {
-            final isHovered = candidateData.isNotEmpty;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Container(
-                decoration: BoxDecoration(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var index = 0; index < section.entries.length; index++)
+          _buildEntryListItem(
+            section: section,
+            entry: section.entries[index],
+            index: index,
+            promptType: promptType,
+            libraryEntries: libraryEntries,
+            theme: theme,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildEntryListItem({
+    required _TagSection section,
+    required FixedTagEntry entry,
+    required int index,
+    required FixedTagPromptType promptType,
+    required List<TagLibraryEntry> libraryEntries,
+    required ThemeData theme,
+  }) {
+    return DragTarget<FixedTagEntry>(
+      key: ValueKey('entry_target_${entry.id}'),
+      onWillAcceptWithDetails: (details) =>
+          details.data.id != entry.id &&
+          details.data.promptType == promptType,
+      onAcceptWithDetails: (details) async {
+        final dragged = details.data;
+        final targetCatId = section.id == _uncategorizedSectionId
+            ? null
+            : section.id;
+        if (dragged.categoryId != targetCatId) {
+          await ref
+              .read(fixedTagsNotifierProvider.notifier)
+              .updateEntry(dragged.copyWith(categoryId: targetCatId));
+        }
+        final currentVisibleIds =
+            section.entries.map((e) => e.id).toList();
+        final oldIdx = currentVisibleIds.indexOf(dragged.id);
+        if (oldIdx != -1) {
+          await ref
+              .read(fixedTagsNotifierProvider.notifier)
+              .reorderWithinVisibleIds(
+                promptType: promptType,
+                visibleIds: currentVisibleIds,
+                oldIndex: oldIdx,
+                newIndex: index,
+              );
+        }
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: isHovered
+                  ? Border.all(color: section.color, width: 1.5)
+                  : null,
+            ),
+            child: SidebarEntryTile(
+              key: ValueKey('entry_${entry.id}'),
+              entry: entry,
+              categoryColor: section.color,
+              isListMode: true,
+              libraryEntry:
+                  resolveFixedTagLibraryEntry(entry, libraryEntries),
+              dragHandleBuilder: (child) => Draggable<FixedTagEntry>(
+                data: entry,
+                dragAnchorStrategy: pointerDragAnchorStrategy,
+                feedback: Material(
+                  elevation: 8,
                   borderRadius: BorderRadius.circular(6),
-                  border: isHovered
-                      ? Border.all(color: section.color, width: 1.5)
-                      : null,
-                ),
-                child: SidebarEntryTile(
-                  key: ValueKey('entry_${entry.id}'),
-                  entry: entry,
-                  categoryColor: section.color,
-                  isListMode: true,
-                  libraryEntry:
-                      resolveFixedTagLibraryEntry(entry, libraryEntries),
-                  dragHandleBuilder: (child) => Draggable<FixedTagEntry>(
-                    data: entry,
-                    dragAnchorStrategy: pointerDragAnchorStrategy,
-                    feedback: Material(
-                      elevation: 8,
-                      borderRadius: BorderRadius.circular(6),
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      shadowColor: Colors.black.withValues(alpha: 0.45),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: 220,
-                          maxHeight: 34,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  shadowColor: Colors.black.withValues(alpha: 0.45),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 220,
+                      maxHeight: 34,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.drag_indicator,
+                            size: 14,
+                            color: section.color,
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.drag_indicator,
-                                size: 14,
-                                color: section.color,
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              entry.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onSurface,
                               ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  entry.displayName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
-                    childWhenDragging: Opacity(opacity: 0.25, child: child),
-                    child: child,
                   ),
-                  onToggle: () => ref
-                      .read(fixedTagsNotifierProvider.notifier)
-                      .toggleEnabled(entry.id),
-                  onEdit: () => _editEntry(entry),
-                  onDelete: () => _deleteEntry(entry),
                 ),
+                childWhenDragging: Opacity(opacity: 0.25, child: child),
+                child: child,
               ),
-            );
-          },
+              onToggle: () => ref
+                  .read(fixedTagsNotifierProvider.notifier)
+                  .toggleEnabled(entry.id),
+              onEdit: () => _editEntry(entry),
+              onDelete: () => _deleteEntry(entry),
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget _buildEntryGridSliver({
+  Widget _buildEntryGridWidget({
     required _TagSection section,
     required FixedTagPromptType promptType,
     required List<TagLibraryEntry> libraryEntries,
   }) {
     final theme = Theme.of(context);
-    return SliverLayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 4.0;
-        final hasAnyThumbnail = section.entries.any(
-          (e) =>
-              resolveFixedTagLibraryEntry(e, libraryEntries)?.hasThumbnail ??
-              false,
-        );
-        // 侧栏在 180px 宽度下严格每行排 3 张卡片
-        final columnCount = constraints.crossAxisExtent < 260
-            ? 3
-            : (constraints.crossAxisExtent / 85).floor().clamp(3, 6);
-        final cardExtent = hasAnyThumbnail ? 78.0 : 22.0;
+    const spacing = 4.0;
+    final hasAnyThumbnail = section.entries.any(
+      (e) =>
+          resolveFixedTagLibraryEntry(e, libraryEntries)?.hasThumbnail ??
+          false,
+    );
+    final cardExtent = hasAnyThumbnail ? 78.0 : 22.0;
 
-        return SliverGrid.builder(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columnCount,
-            mainAxisSpacing: spacing,
-            crossAxisSpacing: spacing,
-            mainAxisExtent: cardExtent,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columnCount = constraints.maxWidth < 260
+            ? 3
+            : (constraints.maxWidth / 85).floor().clamp(3, 6);
+        final itemWidth =
+            (constraints.maxWidth - (columnCount - 1) * spacing) / columnCount;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (var index = 0; index < section.entries.length; index++)
+              SizedBox(
+                width: itemWidth,
+                height: cardExtent,
+                child: _buildEntryGridItem(
+                  section: section,
+                  entry: section.entries[index],
+                  index: index,
+                  promptType: promptType,
+                  libraryEntries: libraryEntries,
+                  theme: theme,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildEntryGridItem({
+    required _TagSection section,
+    required FixedTagEntry entry,
+    required int index,
+    required FixedTagPromptType promptType,
+    required List<TagLibraryEntry> libraryEntries,
+    required ThemeData theme,
+  }) {
+    return DragTarget<FixedTagEntry>(
+      key: ValueKey('grid_target_${entry.id}'),
+      onWillAcceptWithDetails: (details) =>
+          details.data.id != entry.id &&
+          details.data.promptType == promptType,
+      onAcceptWithDetails: (details) async {
+        final dragged = details.data;
+        final targetCatId = section.id == _uncategorizedSectionId
+            ? null
+            : section.id;
+        if (dragged.categoryId != targetCatId) {
+          await ref
+              .read(fixedTagsNotifierProvider.notifier)
+              .updateEntry(dragged.copyWith(categoryId: targetCatId));
+        }
+        final currentVisibleIds =
+            section.entries.map((e) => e.id).toList();
+        final oldIdx = currentVisibleIds.indexOf(dragged.id);
+        if (oldIdx != -1) {
+          await ref
+              .read(fixedTagsNotifierProvider.notifier)
+              .reorderWithinVisibleIds(
+                promptType: promptType,
+                visibleIds: currentVisibleIds,
+                oldIndex: oldIdx,
+                newIndex: index,
+              );
+        }
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: isHovered
+                ? Border.all(color: section.color, width: 1.5)
+                : null,
           ),
-          itemCount: section.entries.length,
-          itemBuilder: (context, index) {
-            final entry = section.entries[index];
-            return DragTarget<FixedTagEntry>(
-              key: ValueKey('grid_target_${entry.id}'),
-              onWillAcceptWithDetails: (details) =>
-                  details.data.id != entry.id &&
-                  details.data.promptType == promptType,
-              onAcceptWithDetails: (details) async {
-                final dragged = details.data;
-                final targetCatId = section.id == _uncategorizedSectionId
-                    ? null
-                    : section.id;
-                if (dragged.categoryId != targetCatId) {
-                  await ref
-                      .read(fixedTagsNotifierProvider.notifier)
-                      .updateEntry(dragged.copyWith(categoryId: targetCatId));
-                }
-                final currentVisibleIds =
-                    section.entries.map((e) => e.id).toList();
-                final oldIdx = currentVisibleIds.indexOf(dragged.id);
-                if (oldIdx != -1) {
-                  await ref
-                      .read(fixedTagsNotifierProvider.notifier)
-                      .reorderWithinVisibleIds(
-                        promptType: promptType,
-                        visibleIds: currentVisibleIds,
-                        oldIndex: oldIdx,
-                        newIndex: index,
-                      );
-                }
-              },
-              builder: (context, candidateData, rejectedData) {
-                final isHovered = candidateData.isNotEmpty;
-                return Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
-                    border: isHovered
-                        ? Border.all(color: section.color, width: 1.5)
-                        : null,
+          child: SidebarEntryTile(
+            key: ValueKey('grid_entry_${entry.id}'),
+            entry: entry,
+            categoryColor: section.color,
+            isListMode: false,
+            libraryEntry:
+                resolveFixedTagLibraryEntry(entry, libraryEntries),
+            dragHandleBuilder: (child) => Draggable<FixedTagEntry>(
+              data: entry,
+              dragAnchorStrategy: pointerDragAnchorStrategy,
+              feedback: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(6),
+                color: theme.colorScheme.surfaceContainerHighest,
+                shadowColor: Colors.black.withValues(alpha: 0.45),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 160,
+                    maxHeight: 34,
                   ),
-                  child: SidebarEntryTile(
-                    key: ValueKey('grid_entry_${entry.id}'),
-                    entry: entry,
-                    categoryColor: section.color,
-                    isListMode: false,
-                    libraryEntry:
-                        resolveFixedTagLibraryEntry(entry, libraryEntries),
-                    dragHandleBuilder: (child) => Draggable<FixedTagEntry>(
-                      data: entry,
-                      dragAnchorStrategy: pointerDragAnchorStrategy,
-                      feedback: Material(
-                        elevation: 8,
-                        borderRadius: BorderRadius.circular(6),
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        shadowColor: Colors.black.withValues(alpha: 0.45),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: 160,
-                            maxHeight: 34,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.drag_indicator,
-                                  size: 14,
-                                  color: section.color,
-                                ),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    entry.displayName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: theme.colorScheme.onSurface,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.drag_indicator,
+                          size: 14,
+                          color: section.color,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            entry.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: theme.colorScheme.onSurface,
                             ),
                           ),
                         ),
-                      ),
-                      childWhenDragging: Opacity(opacity: 0.25, child: child),
-                      child: child,
+                      ],
                     ),
-                    onToggle: () => ref
-                        .read(fixedTagsNotifierProvider.notifier)
-                        .toggleEnabled(entry.id),
-                    onEdit: () => _editEntry(entry),
-                    onDelete: () => _deleteEntry(entry),
                   ),
-                );
-              },
-            );
-          },
+                ),
+              ),
+              childWhenDragging: Opacity(opacity: 0.25, child: child),
+              child: child,
+            ),
+            onToggle: () => ref
+                .read(fixedTagsNotifierProvider.notifier)
+                .toggleEnabled(entry.id),
+            onEdit: () => _editEntry(entry),
+            onDelete: () => _deleteEntry(entry),
+          ),
         );
       },
     );

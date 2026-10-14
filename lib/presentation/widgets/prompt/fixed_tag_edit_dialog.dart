@@ -27,6 +27,7 @@ import '../prompt/prompt_formatter_wrapper.dart';
 import '../prompt/tag_mode_prompt_field.dart';
 
 import '../common/app_toast.dart';
+import '../common/model_family_icon.dart';
 import '../../providers/fixed_tags_provider.dart';
 
 /// 固定词编辑对话框
@@ -818,13 +819,30 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
 
   Widget _buildModelSelector(ThemeData theme) {
     if (_promptType != FixedTagPromptType.combo) return const SizedBox.shrink();
-    const models = [
-      ('', '不绑定模型 (保持当前选择)'),
-      ('nai-diffusion-4-full', 'NAI Diffusion V4 Full'),
-      ('nai-diffusion-4-curated-preview', 'NAI Diffusion V4 Curated'),
-      ('nai-diffusion-3', 'NAI Diffusion V3 (Anime)'),
-      ('nai-diffusion-3-furry', 'NAI Diffusion V3 Furry'),
+    // 排序要求：
+    // 第一个是 V5 模型 full，第二个是 4.5 模型 full，其余模型按照从新到旧的顺序排列
+    final orderedModelIds = <String>[
+      ImageModels.animeDiffusionV5Full,
+      ImageModels.animeDiffusionV45Full,
+      ImageModels.animeDiffusionV5Curated,
+      ImageModels.animeDiffusionV45Curated,
+      ImageModels.animeDiffusionV4Full,
+      ImageModels.animeDiffusionV4Curated,
+      ImageModels.animeDiffusionV3,
+      ImageModels.furryDiffusionV3,
+      ImageModels.furryDiffusion,
     ];
+
+    final models = <(String, String)>[
+      ('', '不绑定模型 (保持当前选择)'),
+      for (final id in orderedModelIds)
+        (id, ImageModels.modelDisplayNames[id] ?? id),
+      if (_boundModel != null &&
+          _boundModel!.isNotEmpty &&
+          !orderedModelIds.contains(_boundModel))
+        (_boundModel!, ImageModels.modelDisplayNames[_boundModel] ?? _boundModel!),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -839,7 +857,19 @@ class _FixedTagEditDialogState extends ConsumerState<FixedTagEditDialog> {
           ),
           items: [
             for (final m in models)
-              DropdownMenuItem(value: m.$1, child: Text(m.$2, style: const TextStyle(fontSize: 13))),
+              DropdownMenuItem(
+                value: m.$1,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (m.$1.isNotEmpty) ...[
+                      ModelFamilyIcon(modelId: m.$1, size: 16),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(m.$2, style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
           ],
           onChanged: (val) {
             setState(() {

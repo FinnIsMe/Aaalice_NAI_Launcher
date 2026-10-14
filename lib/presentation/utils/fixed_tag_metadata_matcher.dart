@@ -10,215 +10,195 @@ NaiImageMetadata matchMetadataFixedTags({
   required Iterable<FixedTagEntry> positiveEntries,
   required Iterable<FixedTagEntry> negativeEntries,
 }) {
-  if (metadata.hasExplicitFixedTagMetadata ||
-      metadata.fixedPrefixTags.isNotEmpty ||
-      metadata.fixedSuffixTags.isNotEmpty ||
-      metadata.fixedNegativePrefixTags.isNotEmpty ||
-      metadata.fixedNegativeSuffixTags.isNotEmpty) {
-    return projectFixedTagUsageSnapshot(metadata);
+  var base = metadata;
+  if (base.hasExplicitFixedTagMetadata ||
+      base.fixedPrefixTags.isNotEmpty ||
+      base.fixedSuffixTags.isNotEmpty ||
+      base.fixedNegativePrefixTags.isNotEmpty ||
+      base.fixedNegativeSuffixTags.isNotEmpty) {
+    base = projectFixedTagUsageSnapshot(base);
   }
-  final positiveMatches = _inferMatches(
-    metadata.prompt,
-    positiveEntries,
-    recordedPrefix: metadata.fixedPrefixTags,
-    recordedSuffix: metadata.fixedSuffixTags,
+
+  final posCandidates = [...positiveEntries];
+  for (final tag in [...base.fixedPrefixTags, ...base.fixedSuffixTags]) {
+    if (!posCandidates.any((c) => c.content == tag)) {
+      posCandidates.add(FixedTagEntry(
+        id: 'meta_pos_${posCandidates.length}',
+        content: tag,
+        position: FixedTagPosition.prefix,
+        promptType: FixedTagPromptType.positive,
+        sortOrder: posCandidates.length,
+      ));
+    }
+  }
+
+  final negCandidates = [...negativeEntries];
+  for (final tag in [
+    ...base.fixedNegativePrefixTags,
+    ...base.fixedNegativeSuffixTags,
+  ]) {
+    if (!negCandidates.any((c) => c.content == tag)) {
+      negCandidates.add(FixedTagEntry(
+        id: 'meta_neg_${negCandidates.length}',
+        content: tag,
+        position: FixedTagPosition.prefix,
+        promptType: FixedTagPromptType.negative,
+        sortOrder: negCandidates.length,
+      ));
+    }
+  }
+
+  final posMatch = _matchAndStripTags(
+    prompt: base.prompt,
+    candidates: posCandidates,
+    isNegative: false,
     trailingBlockers: [
-      metadata.qualityTags.expand(_extractTags).map(_normalizeTag).toList(),
-      if (metadata.hasRecordedTransparentBackgroundTag)
+      base.qualityTags.expand(_extractTags).map(_normalizeTag).toList(),
+      if (base.hasRecordedTransparentBackgroundTag)
         [_normalizeTag(QualityTags.transparentBackgroundTag)],
     ],
   );
-  final negativeMatches = _inferMatches(
-    metadata.negativePrompt,
-    negativeEntries,
-    recordedPrefix: metadata.fixedNegativePrefixTags,
-    recordedSuffix: metadata.fixedNegativeSuffixTags,
-    trailingBlockers: const [],
+
+  final negMatch = _matchAndStripTags(
+    prompt: base.negativePrompt,
+    candidates: negCandidates,
     isNegative: true,
+    trailingBlockers: const [],
   );
 
-  return metadata.copyWith(
+  return base.copyWith(
     fixedPrefixTags: _mergeMatches(
-      metadata.fixedPrefixTags,
-      positiveMatches.prefix,
+      base.fixedPrefixTags,
+      posMatch.prefix,
     ),
     fixedSuffixTags: _mergeMatches(
-      metadata.fixedSuffixTags,
-      positiveMatches.suffix,
+      base.fixedSuffixTags,
+      posMatch.suffix,
     ),
     fixedNegativePrefixTags: _mergeMatches(
-      metadata.fixedNegativePrefixTags,
-      negativeMatches.prefix,
+      base.fixedNegativePrefixTags,
+      negMatch.prefix,
     ),
     fixedNegativeSuffixTags: _mergeMatches(
-      metadata.fixedNegativeSuffixTags,
-      negativeMatches.suffix,
+      base.fixedNegativeSuffixTags,
+      negMatch.suffix,
     ),
+    prompt: posMatch.cleanedPrompt,
+    negativePrompt: negMatch.cleanedPrompt,
   );
 }
 
-List<String> _mergeMatches(List<String> recorded, List<String> inferred) {
-  final result = <String>[...recorded];
-  final normalized = recorded.map(normalizeFixedTagMetadataEntry).toSet();
-  for (final match in inferred) {
-    if (normalized.add(normalizeFixedTagMetadataEntry(match))) {
-      result.add(match);
-    }
-  }
-  return result;
-}
+class _MatchResult {
+  final List<String> prefix;
+  final List<String> suffix;
+  final String cleanedPrompt;
 
-String normalizeFixedTagMetadataEntry(String entry) =>
-    _extractTags(entry).map(_normalizeTag).join(',');
-
-/// 后缀匹配的起点：让开 prompt 尾部那些不属于固定词的区块。
-///
-/// [blockers] 按"从尾往前"的顺序给出（质量词在外、透明背景标记在内）。
-///
-/// 某项对不上就跳过继续试下一项：自定义质量词模式下质量词列表为空，
-/// 停在第一项会让透明背景标记也让不开。
-int _initialSuffixCursor(
-  List<String> normalizedPrompt,
-  List<List<String>> blockers,
-) {
-  var cursor = normalizedPrompt.length;
-  for (final blocker in blockers) {
-    if (blocker.isEmpty) continue;
-    final start = cursor - blocker.length;
-    if (_matchesAt(normalizedPrompt, blocker, start)) cursor = start;
-  }
-  return cursor;
-}
-
-({List<String> prefix, List<String> suffix}) _inferMatches(
-  String prompt,
-  Iterable<FixedTagEntry> entries, {
-  required List<String> recordedPrefix,
-  required List<String> recordedSuffix,
-  required List<List<String>> trailingBlockers,
-  bool isNegative = false,
-}) {
-  final promptTags = _extractTags(prompt);
-  final normalizedPrompt = promptTags.map(_normalizeTag).toList();
-  final candidates = entries
-      .map(
-        (entry) {
-          final content = (isNegative && entry.promptType == FixedTagPromptType.combo)
-              ? (entry.negativeContent ?? '')
-              : entry.content;
-          return (
-            entry: entry,
-            tags: _extractTags(content).map(_normalizeTag).toList(),
-          );
-        },
-      )
-      .where((candidate) => candidate.tags.isNotEmpty)
-      .toList();
-  final prefixBoundary = _matchedBoundaryLength(
-    normalizedPrompt,
-    recordedPrefix,
-    fromStart: true,
-  );
-  final tailStart = _initialSuffixCursor(normalizedPrompt, trailingBlockers);
-  final suffixBoundary = _matchedBoundaryLength(
-    normalizedPrompt.sublist(0, tailStart),
-    recordedSuffix,
-    fromStart: false,
-  );
-  var prefixCursor = prefixBoundary;
-  var suffixCursor = tailStart - suffixBoundary;
-  final usedEntryIds = <String>{};
-  final prefix = <String>[];
-  final suffix = <String>[];
-
-  while (prefixCursor < suffixCursor) {
-    final match = _bestBoundaryMatch(
-      normalizedPrompt,
-      candidates,
-      cursor: prefixCursor,
-      limit: suffixCursor,
-      prefix: true,
-      usedEntryIds: usedEntryIds,
-    );
-    if (match == null) break;
-    final end = prefixCursor + match.tags.length;
-    prefix.add(promptTags.sublist(prefixCursor, end).join(', '));
-    prefixCursor = end;
-    usedEntryIds.add(match.entry.id);
-  }
-
-  while (suffixCursor > prefixCursor) {
-    final match = _bestBoundaryMatch(
-      normalizedPrompt,
-      candidates,
-      cursor: suffixCursor,
-      limit: prefixCursor,
-      prefix: false,
-      usedEntryIds: usedEntryIds,
-    );
-    if (match == null) break;
-    final start = suffixCursor - match.tags.length;
-    suffix.insert(0, promptTags.sublist(start, suffixCursor).join(', '));
-    suffixCursor = start;
-    usedEntryIds.add(match.entry.id);
-  }
-
-  return (prefix: prefix, suffix: suffix);
-}
-
-int _matchedBoundaryLength(
-  List<String> promptTags,
-  List<String> entries, {
-  required bool fromStart,
-}) {
-  final expected = entries
-      .expand(_extractTags)
-      .map(_normalizeTag)
-      .where((tag) => tag.isNotEmpty)
-      .toList();
-  if (expected.isEmpty || expected.length > promptTags.length) return 0;
-  final start = fromStart ? 0 : promptTags.length - expected.length;
-  return _matchesAt(promptTags, expected, start) ? expected.length : 0;
-}
-
-({FixedTagEntry entry, List<String> tags})? _bestBoundaryMatch(
-  List<String> promptTags,
-  List<({FixedTagEntry entry, List<String> tags})> candidates, {
-  required int cursor,
-  required int limit,
-  required bool prefix,
-  required Set<String> usedEntryIds,
-}) {
-  final matches = candidates.where((candidate) {
-    if (candidate.entry.isPrefix != prefix ||
-        usedEntryIds.contains(candidate.entry.id)) {
-      return false;
-    }
-    final start = prefix ? cursor : cursor - candidate.tags.length;
-    final end = start + candidate.tags.length;
-    if (start < (prefix ? 0 : limit) ||
-        end > (prefix ? limit : promptTags.length)) {
-      return false;
-    }
-    return _matchesAt(promptTags, candidate.tags, start);
-  }).toList();
-  if (matches.isEmpty) return null;
-  matches.sort((a, b) {
-    final lengthOrder = b.tags.length.compareTo(a.tags.length);
-    if (lengthOrder != 0) return lengthOrder;
-    return prefix
-        ? a.entry.sortOrder.compareTo(b.entry.sortOrder)
-        : b.entry.sortOrder.compareTo(a.entry.sortOrder);
+  const _MatchResult({
+    required this.prefix,
+    required this.suffix,
+    required this.cleanedPrompt,
   });
-  return matches.first;
 }
 
-bool _matchesAt(List<String> source, List<String> expected, int start) {
-  if (start < 0 || start + expected.length > source.length) return false;
-  for (var offset = 0; offset < expected.length; offset++) {
-    if (source[start + offset] != expected[offset]) return false;
+_MatchResult _matchAndStripTags({
+  required String prompt,
+  required List<FixedTagEntry> candidates,
+  required bool isNegative,
+  required List<List<String>> trailingBlockers,
+}) {
+  final rawTags = _extractTags(prompt);
+  if (rawTags.isEmpty || candidates.isEmpty) {
+    return _MatchResult(
+      prefix: const [],
+      suffix: const [],
+      cleanedPrompt: prompt,
+    );
   }
-  return true;
+
+  final normTags = rawTags.map(_normalizeTag).toList();
+  final consumedIndices = <int>{};
+  final matchedPrefix = <String>[];
+  final matchedSuffix = <String>[];
+  final matchedEntryIds = <String>{};
+
+  // 候选按有效 tag 数量由多到少排序，避免长组合词被单个词碎片化抢占
+  final sortedCandidates = [...candidates]..sort((a, b) {
+      final aContent = (isNegative && a.promptType == FixedTagPromptType.combo)
+          ? (a.negativeContent ?? '')
+          : a.content;
+      final bContent = (isNegative && b.promptType == FixedTagPromptType.combo)
+          ? (b.negativeContent ?? '')
+          : b.content;
+      return _extractTags(bContent).length.compareTo(_extractTags(aContent).length);
+    });
+
+  for (final entry in sortedCandidates) {
+    if (matchedEntryIds.contains(entry.id)) continue;
+
+    final content = (isNegative && entry.promptType == FixedTagPromptType.combo)
+        ? (entry.negativeContent ?? '')
+        : entry.content;
+    final entryTags = _extractTags(content).map(_normalizeTag).where((t) => t.isNotEmpty).toList();
+    if (entryTags.isEmpty) continue;
+
+    // 在未被消费的 normTags 中查找所有匹配上的 tag 下标
+    final currentMatched = <int>[];
+    for (final eTag in entryTags) {
+      for (var i = 0; i < normTags.length; i++) {
+        if (!consumedIndices.contains(i) && !currentMatched.contains(i)) {
+          if (normTags[i] == eTag) {
+            currentMatched.add(i);
+            break;
+          }
+        }
+      }
+    }
+
+    // 严格完全重合判定：固定标签中的所有有效 tag 必须 100% 全部存在于提示词中
+    // 只要缺少任何一个 tag（或者词条不完全重合），就绝不激活选中该固定标签
+    final isMatch = currentMatched.length == entryTags.length;
+
+    if (isMatch) {
+      // 只要固定词被激活接管，该词条在原图中的所有出现（包括重复词，如 boy, boy）全部标记消费剥离
+      for (var i = 0; i < normTags.length; i++) {
+        if (entryTags.contains(normTags[i])) {
+          consumedIndices.add(i);
+        }
+      }
+      final sortedMatched = [...currentMatched]..sort();
+      final rendered = sortedMatched.map((idx) => rawTags[idx]).join(', ');
+      matchedEntryIds.add(entry.id);
+
+      if (entry.position == FixedTagPosition.suffix) {
+        matchedSuffix.add(rendered.trim());
+      } else {
+        matchedPrefix.add(rendered.trim());
+      }
+    }
+  }
+
+  // 同时将质量词、透明背景等系统项全量消费剔除
+  for (final blocker in trailingBlockers) {
+    for (var i = 0; i < normTags.length; i++) {
+      if (blocker.contains(normTags[i])) {
+        consumedIndices.add(i);
+      }
+    }
+  }
+
+  // 构建从原提示词中扣除固定词后的极简净文本
+  final remainingTags = <String>[];
+  for (var i = 0; i < rawTags.length; i++) {
+    if (!consumedIndices.contains(i)) {
+      remainingTags.add(rawTags[i]);
+    }
+  }
+
+  return _MatchResult(
+    prefix: matchedPrefix,
+    suffix: matchedSuffix,
+    cleanedPrompt: remainingTags.join(', '),
+  );
 }
 
 Set<int> fixedPromptTagIndexes({
@@ -248,16 +228,56 @@ Set<int> fixedPromptTagIndexes({
   };
 }
 
+int _matchedBoundaryLength(
+  List<String> promptTags,
+  List<String> entries, {
+  required bool fromStart,
+}) {
+  final expected = entries
+      .expand(_extractTags)
+      .map(_normalizeTag)
+      .where((tag) => tag.isNotEmpty)
+      .toList();
+  if (expected.isEmpty || expected.length > promptTags.length) return 0;
+  final start = fromStart ? 0 : promptTags.length - expected.length;
+  return _matchesAt(promptTags, expected, start) ? expected.length : 0;
+}
+
+bool _matchesAt(List<String> source, List<String> expected, int start) {
+  if (start < 0 || start + expected.length > source.length) return false;
+  for (var offset = 0; offset < expected.length; offset++) {
+    if (source[start + offset] != expected[offset]) return false;
+  }
+  return true;
+}
+
+List<String> _mergeMatches(List<String> recorded, List<String> inferred) {
+  final result = <String>[...recorded];
+  final normalized = recorded.map(normalizeFixedTagMetadataEntry).toSet();
+  for (final match in inferred) {
+    if (normalized.add(normalizeFixedTagMetadataEntry(match))) {
+      result.add(match);
+    }
+  }
+  return result;
+}
+
+String normalizeFixedTagMetadataEntry(String entry) =>
+    _extractTags(entry).map(_normalizeTag).join(',');
+
 List<String> _extractTags(String prompt) =>
     NaiPromptParser.splitSegments(prompt);
 
 String _normalizeTag(String tag) {
   var result = tag.trim().toLowerCase();
+  result = result.replaceAll('_', ' ');
   final numericWeight = RegExp(
     r'^-?\d+(?:\.\d+)?::(.+?)(?:::)?$',
   ).firstMatch(result);
   if (numericWeight != null) result = numericWeight.group(1)!.trim();
-  result = result.replaceFirst(RegExp(r'^[\{\[]+'), '');
-  result = result.replaceFirst(RegExp(r'[\}\]]+$'), '');
-  return result.trim();
+  result = result.replaceAll('::', '').trim();
+  result = result.replaceAll(RegExp(r'^[\{\[]+'), '');
+  result = result.replaceAll(RegExp(r'[\}\]]+$'), '');
+  result = result.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return result;
 }

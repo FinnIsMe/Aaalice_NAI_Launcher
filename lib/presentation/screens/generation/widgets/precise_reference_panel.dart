@@ -457,9 +457,7 @@ class _PreciseReferencePanelState extends ConsumerState<PreciseReferencePanel> {
   }
 
   Future<void> _addReference() async {
-    // 先选择类型
-    final selectedType = await PreciseReferenceTypeDialog.show(context);
-    if (selectedType == null) return; // 用户取消了类型选择
+    const selectedType = PreciseRefType.characterAndStyle;
 
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -520,20 +518,15 @@ class _PreciseReferencePanelState extends ConsumerState<PreciseReferencePanel> {
     final notifier = ref.read(generationParamsNotifierProvider.notifier);
     final library = ref.read(preciseRefLibraryNotifierProvider.notifier);
     try {
-      final needsType = resources.any(
-        (resource) => resource.preciseReference == null,
-      );
-      final type = needsType
-          ? await PreciseReferenceTypeDialog.show(context)
-          : null;
-      if (!mounted || needsType && type == null) return;
+      const type = PreciseRefType.characterAndStyle;
+      if (!mounted) return;
       final result = await ImageCardBatchResult.execute(resources, (
         resource,
       ) async {
         final entry = resource.preciseReference;
         await notifier.addPreciseReferenceFromImage(
           resource.image.bytes,
-          type: entry?.type ?? type!,
+          type: entry?.type ?? type,
           strength: entry?.strength ?? 1,
           fidelity: entry?.fidelity ?? 1,
         );
@@ -641,38 +634,50 @@ class _PreciseReferenceCard extends StatelessWidget {
   });
 
   void _toggleType(bool toggleCharacter) {
-    final hasChar = reference.type == PreciseRefType.character ||
-        reference.type == PreciseRefType.characterAndStyle;
-    final hasStyle = reference.type == PreciseRefType.style ||
-        reference.type == PreciseRefType.characterAndStyle;
+    final isCurrentlyActive = reference.enabled;
+    final hasChar = isCurrentlyActive &&
+        (reference.type == PreciseRefType.character ||
+            reference.type == PreciseRefType.characterAndStyle);
+    final hasStyle = isCurrentlyActive &&
+        (reference.type == PreciseRefType.style ||
+            reference.type == PreciseRefType.characterAndStyle);
 
     var newChar = hasChar;
     var newStyle = hasStyle;
 
     if (toggleCharacter) {
       newChar = !hasChar;
-      if (!newChar && !newStyle) newStyle = true;
     } else {
       newStyle = !hasStyle;
-      if (!newChar && !newStyle) newChar = true;
     }
 
-    if (newChar && newStyle) {
-      onTypeChanged(PreciseRefType.characterAndStyle);
-    } else if (newChar) {
-      onTypeChanged(PreciseRefType.character);
+    if (!newChar && !newStyle) {
+      if (reference.enabled) {
+        onEnabledChanged(false);
+      }
     } else {
-      onTypeChanged(PreciseRefType.style);
+      if (!reference.enabled) {
+        onEnabledChanged(true);
+      }
+      if (newChar && newStyle) {
+        onTypeChanged(PreciseRefType.characterAndStyle);
+      } else if (newChar) {
+        onTypeChanged(PreciseRefType.character);
+      } else {
+        onTypeChanged(PreciseRefType.style);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasChar = reference.type == PreciseRefType.character ||
-        reference.type == PreciseRefType.characterAndStyle;
-    final hasStyle = reference.type == PreciseRefType.style ||
-        reference.type == PreciseRefType.characterAndStyle;
+    final hasChar = reference.enabled &&
+        (reference.type == PreciseRefType.character ||
+            reference.type == PreciseRefType.characterAndStyle);
+    final hasStyle = reference.enabled &&
+        (reference.type == PreciseRefType.style ||
+            reference.type == PreciseRefType.characterAndStyle);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

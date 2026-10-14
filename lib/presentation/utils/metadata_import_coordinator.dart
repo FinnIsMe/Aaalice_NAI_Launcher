@@ -129,6 +129,15 @@ class MetadataImportCoordinator {
       }
     }
 
+    void addComboScopes() {
+      if (options.importFixedPrefix || options.importFixedNegativePrefix) {
+        scopes.add(const FixedTagScope(FixedTagPromptType.combo, FixedTagPosition.prefix));
+      }
+      if (options.importFixedSuffix || options.importFixedNegativeSuffix) {
+        scopes.add(const FixedTagScope(FixedTagPromptType.combo, FixedTagPosition.suffix));
+      }
+    }
+
     FixedTagUsageSnapshot snapshot;
     if (resolution.isUnknown) {
       if (options.unknownFixedTagPolicy == UnknownFixedTagPolicy.keepCurrent) {
@@ -140,10 +149,12 @@ class MetadataImportCoordinator {
       if (options.importNegativePrompt && metadata.negativePrompt.isNotEmpty) {
         addSelectedScopes(FixedTagPromptType.negative);
       }
+      addComboScopes();
       snapshot = const FixedTagUsageSnapshot();
     } else {
       addSelectedScopes(FixedTagPromptType.positive);
       addSelectedScopes(FixedTagPromptType.negative);
+      addComboScopes();
       snapshot = resolution.snapshot ?? const FixedTagUsageSnapshot();
     }
     if (scopes.isEmpty) return 0;

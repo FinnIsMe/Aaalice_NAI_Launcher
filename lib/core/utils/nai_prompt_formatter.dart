@@ -106,10 +106,14 @@ class NaiPromptFormatter {
     }
 
     var content = line.substring(leadingWhitespace.length, contentEnd);
-    content = _normalizeHorizontalWhitespace(content).replaceAll('，', ',');
+    content = _normalizeHorizontalWhitespace(content)
+        .replaceAll('，', ',')
+        .replaceAll('。', ',');
+    // 将非数字间的英文句号（如 'tag. tag'）视作分隔符转为逗号，保护 '1.2::tag::' 中的浮点数小数点
+    content = content.replaceAll(RegExp(r'(?<!\d)\.|\.(?!\d)'), ',');
     final keepsTrailingComma = content.endsWith(',');
 
-    final tags = content
+    final rawTags = content
         .split(',')
         .map((tag) {
           final trimmed = tag.trim();
@@ -118,6 +122,20 @@ class NaiPromptFormatter {
         })
         .where((tag) => tag.isNotEmpty)
         .toList();
+
+    // 标签去重逻辑：
+    // 权重与形态不同视为完全不同的词（boy, 1.2::boy::, [boy], {boy}, happy boy 互不相同）；
+    // 相同词仅保留最后出现的一个（例如 happy, happy, night, happy -> 仅保留最后一个 happy -> night, happy）
+    final seen = <String>{};
+    final reversedResult = <String>[];
+    for (var i = rawTags.length - 1; i >= 0; i--) {
+      final t = rawTags[i];
+      final key = t.toLowerCase();
+      if (seen.add(key)) {
+        reversedResult.add(t);
+      }
+    }
+    final tags = reversedResult.reversed.toList();
 
     var formatted = tags.join(', ');
     if (keepsTrailingComma && formatted.isNotEmpty) {
