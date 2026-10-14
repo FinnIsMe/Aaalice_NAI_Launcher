@@ -742,7 +742,7 @@ class _PreciseReferenceCard extends StatelessWidget {
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                         visualDensity: VisualDensity.compact,
-                        onPressed: () => onSaveToLibrary(context),
+                        onPressed: onSaveToLibrary,
                       ),
                       // 删除按钮
                       IconButton(

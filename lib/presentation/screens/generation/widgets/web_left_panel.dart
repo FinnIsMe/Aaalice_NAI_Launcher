@@ -152,9 +152,8 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
   bool _moduleHasData(WebLeftPanelModule module) {
     switch (module) {
       case WebLeftPanelModule.img2img:
-        final workflow = ref.read(imageWorkflowControllerProvider);
         final params = ref.read(generationParamsNotifierProvider);
-        return workflow.hasSourceImage || params.hasImage2Image;
+        return params.sourceImage != null;
       case WebLeftPanelModule.character:
         return ref.read(characterPromptNotifierProvider).characters.isNotEmpty;
       case WebLeftPanelModule.preciseReference:
@@ -164,8 +163,7 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
             .isNotEmpty;
       case WebLeftPanelModule.vibeTransfer:
         final params = ref.read(generationParamsNotifierProvider);
-        return params.referenceImages.isNotEmpty ||
-            params.vibeEncodings.isNotEmpty;
+        return params.vibeReferencesV4.isNotEmpty;
       case WebLeftPanelModule.reversePrompt:
         return ref.read(reversePromptProvider).images.isNotEmpty;
     }
