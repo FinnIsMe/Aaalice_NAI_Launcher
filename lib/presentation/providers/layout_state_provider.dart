@@ -215,9 +215,19 @@ class LayoutStateNotifier extends _$LayoutStateNotifier {
   /// 设置固定词侧边栏视图模式
   Future<void> setFixedTagsSidebarViewMode(String mode) async {
     final normalized = mode == 'grid' ? 'grid' : 'list';
-    state = state.copyWith(fixedTagsSidebarViewMode: normalized);
-
     final storage = ref.read(localStorageServiceProvider);
+
+    // 点击切换为列表模式时，自动把宽度展开到可以出现编辑和删除按钮的宽度 (>= 280.0)
+    if (normalized == 'list' && state.fixedTagsSidebarWidth < 280.0) {
+      state = state.copyWith(
+        fixedTagsSidebarViewMode: normalized,
+        fixedTagsSidebarWidth: 280.0,
+      );
+      await storage.setFixedTagsSidebarWidth(280.0);
+    } else {
+      state = state.copyWith(fixedTagsSidebarViewMode: normalized);
+    }
+
     await storage.setFixedTagsSidebarViewMode(normalized);
   }
 

@@ -239,10 +239,10 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
   ) {
     return Container(
       key: const ValueKey('fixed-tags-top-card'),
-      margin: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       decoration: BoxDecoration(
         color: sectionSurfaceColor(theme.colorScheme),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -270,30 +270,34 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
         final totalEntries = fixedState.entries.length;
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
+          padding: const EdgeInsets.fromLTRB(8, 5, 6, 3),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Tooltip(
                 message:
                     '${context.l10n.fixedTags_sidebarTitle} ($totalEnabled/$totalEntries)',
                 child: Icon(
                   Icons.push_pin_rounded,
-                  size: 18,
+                  size: 14,
                   color: theme.colorScheme.secondary,
                 ),
               ),
               if (!isNarrow) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         context.l10n.fixedTags_sidebarTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.15,
                         ),
                       ),
                       Text(
@@ -304,7 +308,9 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 10,
                           color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.15,
                         ),
                       ),
                     ],
@@ -312,57 +318,85 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                 ),
               ] else
                 const Spacer(),
-              IconButton(
-                tooltip: isListMode
-                    ? context.l10n.fixedTags_switchGridView
-                    : context.l10n.fixedTags_switchListView,
-                icon: Icon(
-                  isListMode
-                      ? Icons.grid_view_rounded
-                      : Icons.view_agenda_outlined,
-                  size: 18,
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: IconButton(
+                  tooltip: isListMode
+                      ? context.l10n.fixedTags_switchGridView
+                      : context.l10n.fixedTags_switchListView,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                  splashRadius: 12,
+                  icon: Icon(
+                    isListMode
+                        ? Icons.grid_view_rounded
+                        : Icons.view_agenda_outlined,
+                    size: 14,
+                  ),
+                  onPressed: () {
+                    final nextMode = isListMode ? 'grid' : 'list';
+                    ref
+                        .read(layoutStateNotifierProvider.notifier)
+                        .setFixedTagsSidebarViewMode(nextMode);
+                    if (nextMode == 'list') {
+                      final currentWidth = ref
+                          .read(layoutStateNotifierProvider)
+                          .fixedTagsSidebarWidth;
+                      if (currentWidth < 280.0) {
+                        ref
+                            .read(layoutStateNotifierProvider.notifier)
+                            .setFixedTagsSidebarWidth(280.0);
+                      }
+                    }
+                  },
                 ),
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  ref
-                      .read(layoutStateNotifierProvider.notifier)
-                      .setFixedTagsSidebarViewMode(
-                        isListMode ? 'grid' : 'list',
-                      );
-                },
               ),
-              PopupMenuButton<_AddAction>(
-                tooltip: context.l10n.fixedTags_add,
-                icon: const Icon(Icons.add_rounded, size: 20),
-                padding: EdgeInsets.zero,
-                onSelected: (action) {
-                  if (action == _AddAction.manual) {
-                    _addEntry();
-                  } else {
-                    _addFromLibrary();
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: _AddAction.manual,
-                    child: Text(context.l10n.fixedTags_add),
-                  ),
-                  PopupMenuItem(
-                    value: _AddAction.library,
-                    child: Text(context.l10n.fixedTags_addFromLibrary),
-                  ),
-                ],
+              const SizedBox(width: 2),
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: PopupMenuButton<_AddAction>(
+                  tooltip: context.l10n.fixedTags_add,
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 100),
+                  onSelected: (action) {
+                    if (action == _AddAction.manual) {
+                      _addEntry();
+                    } else {
+                      _addFromLibrary();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _AddAction.manual,
+                      child: Text(context.l10n.fixedTags_add),
+                    ),
+                    PopupMenuItem(
+                      value: _AddAction.library,
+                      child: Text(context.l10n.fixedTags_addFromLibrary),
+                    ),
+                  ],
+                ),
               ),
-              IconButton(
-                key: const ValueKey('fixed-tags-collapse-sidebar'),
-                tooltip: context.l10n.nav_collapseSidebar,
-                icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  ref
-                      .read(layoutStateNotifierProvider.notifier)
-                      .setFixedTagsSidebarExpanded(false);
-                },
+              const SizedBox(width: 2),
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: IconButton(
+                  key: const ValueKey('fixed-tags-collapse-sidebar'),
+                  tooltip: context.l10n.nav_collapseSidebar,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                  splashRadius: 12,
+                  icon: const Icon(Icons.chevron_left_rounded, size: 16),
+                  onPressed: () {
+                    ref
+                        .read(layoutStateNotifierProvider.notifier)
+                        .setFixedTagsSidebarExpanded(false);
+                  },
+                ),
               ),
             ],
           ),
@@ -373,30 +407,56 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
 
   Widget _buildSearchBar(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-      child: TextField(
-        controller: _searchController,
-        textAlignVertical: TextAlignVertical.center,
-        decoration: InputDecoration(
-          hintText: context.l10n.fixedTags_searchNameOrContent,
-          prefixIcon: const Icon(Icons.search_rounded, size: 18),
-          suffixIcon: _searchQuery.isEmpty
-              ? null
-              : IconButton(
-                  tooltip: context.l10n.fixedTags_clearSearch,
-                  icon: const Icon(Icons.close_rounded, size: 16),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                ),
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 8,
+      padding: const EdgeInsets.fromLTRB(8, 1, 8, 5),
+      child: SizedBox(
+        height: 26,
+        child: TextField(
+          controller: _searchController,
+          textAlignVertical: TextAlignVertical.center,
+          style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+          decoration: InputDecoration(
+            hintText: context.l10n.fixedTags_searchNameOrContent,
+            hintStyle: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+            ),
+            prefixIcon: const Icon(Icons.search_rounded, size: 13),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 24,
+              minHeight: 24,
+            ),
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: IconButton(
+                      tooltip: context.l10n.fixedTags_clearSearch,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      splashRadius: 10,
+                      icon: const Icon(Icons.close_rounded, size: 12),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    ),
+                  ),
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 22,
+              minHeight: 22,
+            ),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 6,
+              vertical: 2,
+            ),
           ),
+          onChanged: (value) => setState(() => _searchQuery = value.trim()),
         ),
-        onChanged: (value) => setState(() => _searchQuery = value.trim()),
       ),
     );
   }
@@ -432,12 +492,12 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
 
     return [
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
         sliver: SliverToBoxAdapter(
           child: Container(
             decoration: BoxDecoration(
               color: cardBgColor,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor, width: 1.0),
             ),
             clipBehavior: Clip.antiAlias,
@@ -453,11 +513,12 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
-                        vertical: 4,
+                        vertical: 3,
                       ),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Icon(icon, size: 14, color: accentColor),
+                          Icon(icon, size: 13, color: accentColor),
                           const SizedBox(width: 5),
                           Flexible(
                             fit: FlexFit.loose,
@@ -469,13 +530,14 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: accentColor,
+                                height: 1.2,
                               ),
                             ),
                           ),
                           const SizedBox(width: 5),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
+                              horizontal: 4.5,
                               vertical: 0.5,
                             ),
                             decoration: BoxDecoration(
@@ -488,6 +550,7 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                                 color: accentColor,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 9.5,
+                                height: 1.1,
                               ),
                             ),
                           ),
@@ -499,11 +562,12 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                             label: context.l10n.fixedTags_enabledOnly,
                             onPressed: onToggleEnabledOnly,
                           ),
+                          const SizedBox(width: 2),
                           Icon(
                             isExpanded
                                 ? Icons.keyboard_arrow_down_rounded
                                 : Icons.keyboard_arrow_right_rounded,
-                            size: 16,
+                            size: 15,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ],
@@ -1261,17 +1325,23 @@ class _EnabledOnlyAction extends StatelessWidget {
     final foregroundColor = selected
         ? color
         : Theme.of(context).colorScheme.onSurfaceVariant;
-    return IconButton(
-      tooltip: label,
-      onPressed: onPressed,
-      isSelected: selected,
-      selectedIcon: Icon(
-        Icons.filter_alt_rounded,
-        size: 16,
-        color: color,
+    return SizedBox(
+      width: 20,
+      height: 20,
+      child: IconButton(
+        tooltip: label,
+        onPressed: onPressed,
+        isSelected: selected,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+        splashRadius: 12,
+        selectedIcon: Icon(
+          Icons.filter_alt_rounded,
+          size: 13,
+          color: color,
+        ),
+        icon: Icon(icon, size: 13, color: foregroundColor),
       ),
-      icon: Icon(icon, size: 16, color: foregroundColor),
-      visualDensity: VisualDensity.compact,
     );
   }
 }

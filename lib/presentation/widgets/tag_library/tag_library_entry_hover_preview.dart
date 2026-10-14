@@ -20,7 +20,7 @@ class TagLibraryEntryHoverPreview extends StatefulWidget {
     required this.entry,
     required this.child,
     this.enabled = true,
-    this.hoverDelay = const Duration(milliseconds: 280),
+    this.hoverDelay = const Duration(milliseconds: 800),
   });
 
   final TagLibraryEntry entry;
@@ -35,12 +35,9 @@ class TagLibraryEntryHoverPreview extends StatefulWidget {
 
 class _TagLibraryEntryHoverPreviewState
     extends State<TagLibraryEntryHoverPreview> {
-  static const _dismissDelay = Duration(milliseconds: 350);
-
   final _layerLink = LayerLink();
   late final ImageHoverPreviewController _hoverController;
   ScrollPosition? _scrollPosition;
-  Timer? _dismissTimer;
   bool _isHovering = false;
 
   @override
@@ -54,9 +51,9 @@ class _TagLibraryEntryHoverPreviewState
     super.didChangeDependencies();
     final nextScrollPosition = Scrollable.maybeOf(context)?.position;
     if (nextScrollPosition == _scrollPosition) return;
-    _scrollPosition?.removeListener(_dismissForScroll);
+    _scrollPosition?.removeListener(_dismissImmediately);
     _scrollPosition = nextScrollPosition;
-    _scrollPosition?.addListener(_dismissForScroll);
+    _scrollPosition?.addListener(_dismissImmediately);
   }
 
   @override
@@ -76,27 +73,13 @@ class _TagLibraryEntryHoverPreviewState
 
   @override
   void dispose() {
-    _dismissTimer?.cancel();
-    _scrollPosition?.removeListener(_dismissForScroll);
+    _scrollPosition?.removeListener(_dismissImmediately);
     _hoverController.dispose();
     super.dispose();
   }
 
-  void _dismissForScroll() {
-    _dismissTimer?.cancel();
+  void _dismissImmediately() {
     _hoverController.dismissFor(widget.entry.id);
-  }
-
-  void _cancelDismiss() {
-    _dismissTimer?.cancel();
-    _dismissTimer = null;
-  }
-
-  void _scheduleDismiss() {
-    _cancelDismiss();
-    _dismissTimer = Timer(_dismissDelay, () {
-      _hoverController.dismissFor(widget.entry.id);
-    });
   }
 
   void _schedulePreviewOverlay() {
@@ -111,12 +94,8 @@ class _TagLibraryEntryHoverPreviewState
       targetRect: renderObject.localToGlobal(Offset.zero) & renderObject.size,
       previewSize: _tagLibraryEntryPreviewSize,
       delay: widget.hoverDelay,
-      allowPointerInteraction: true,
-      builder: (_) => MouseRegion(
-        onEnter: (_) => _cancelDismiss(),
-        onExit: (_) => _scheduleDismiss(),
-        child: TagLibraryEntryPreviewOverlay(entry: widget.entry),
-      ),
+      allowPointerInteraction: false,
+      builder: (_) => TagLibraryEntryPreviewOverlay(entry: widget.entry),
     );
   }
 
@@ -126,13 +105,12 @@ class _TagLibraryEntryHoverPreviewState
       link: _layerLink,
       child: MouseRegion(
         onEnter: (_) {
-          _cancelDismiss();
           _isHovering = true;
           _schedulePreviewOverlay();
         },
         onExit: (_) {
           _isHovering = false;
-          _scheduleDismiss();
+          _dismissImmediately();
         },
         child: widget.child,
       ),
