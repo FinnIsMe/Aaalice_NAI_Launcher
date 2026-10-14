@@ -44,6 +44,8 @@ class PromptTokenCountBar extends StatelessWidget {
     final label = Text(
       tokenText,
       style: theme.textTheme.bodySmall?.copyWith(
+        fontSize: 10.5,
+        height: 1.1,
         color: color,
         fontWeight: usage.isOverLimit ? FontWeight.w600 : FontWeight.w500,
       ),

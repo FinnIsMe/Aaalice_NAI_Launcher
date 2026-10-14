@@ -44,12 +44,12 @@ class _ReversePromptPanelState extends ConsumerState<ReversePromptPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = ref.watch(reversePromptProvider);
+    final hasImages = state.images.isNotEmpty;
     final isExpanded = ref.watch(
       generationPanelExpansionProvider.select(
-        (value) => value.isExpanded(_panel),
+        (value) => value.isExpanded(_panel, hasData: hasImages),
       ),
     );
-    final hasImages = state.images.isNotEmpty;
     final showBackground = hasImages && !isExpanded;
 
     return CollapsibleImagePanel(

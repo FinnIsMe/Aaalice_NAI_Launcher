@@ -62,6 +62,8 @@ class MetadataImportOptions with _$MetadataImportOptions {
 
   /// 快速预设：全部选中
   factory MetadataImportOptions.all() => const MetadataImportOptions(
+    importVibeReferences: true,
+    importPreciseReferences: true,
     importSeed: true,
     importSteps: true,
     importScale: true,

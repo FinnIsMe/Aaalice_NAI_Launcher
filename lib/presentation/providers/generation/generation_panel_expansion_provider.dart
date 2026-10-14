@@ -32,19 +32,37 @@ extension GenerationWorkbenchPanelStorage on GenerationWorkbenchPanel {
 }
 
 class GenerationPanelExpansionState {
-  const GenerationPanelExpansionState(this._values);
+  const GenerationPanelExpansionState(
+    this._values, {
+    this.manuallyClosed = const {},
+  });
 
   final Map<GenerationWorkbenchPanel, bool> _values;
+  final Set<GenerationWorkbenchPanel> manuallyClosed;
 
-  bool isExpanded(GenerationWorkbenchPanel panel) =>
-      _values[panel] ?? panel.defaultExpanded;
+  bool isExpanded(GenerationWorkbenchPanel panel, {bool hasData = false}) {
+    if (manuallyClosed.contains(panel)) {
+      return false;
+    }
+    if (hasData) {
+      return true;
+    }
+    return _values[panel] ?? panel.defaultExpanded;
+  }
 
   GenerationPanelExpansionState copyWith(
     GenerationWorkbenchPanel panel,
     bool expanded,
   ) {
+    final nextClosed = Set<GenerationWorkbenchPanel>.from(manuallyClosed);
+    if (!expanded) {
+      nextClosed.add(panel);
+    } else {
+      nextClosed.remove(panel);
+    }
     return GenerationPanelExpansionState(
       Map.unmodifiable({..._values, panel: expanded}),
+      manuallyClosed: Set.unmodifiable(nextClosed),
     );
   }
 }

@@ -567,6 +567,7 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                         )
                       : _buildEntryGridSliver(
                           section: section,
+                          promptType: promptType,
                           libraryEntries: libraryEntries,
                         ),
                 ),
@@ -720,43 +721,113 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
     required FixedTagPromptType promptType,
     required List<TagLibraryEntry> libraryEntries,
   }) {
-    return SliverReorderableList(
+    final theme = Theme.of(context);
+    return SliverList.builder(
       itemCount: section.entries.length,
-      proxyDecorator: (child, index, animation) => Material(
-        elevation: 6,
-        color: Colors.transparent,
-        child: child,
-      ),
-      onReorderItem: (oldIndex, newIndex) {
-        ref.read(fixedTagsNotifierProvider.notifier).reorderWithinVisibleIds(
-          promptType: promptType,
-          visibleIds: section.entries.map((e) => e.id).toList(),
-          oldIndex: oldIndex,
-          newIndex: newIndex,
-        );
-      },
       itemBuilder: (context, index) {
         final entry = section.entries[index];
-        return Padding(
-          key: ValueKey('entry_${entry.id}'),
-          padding: const EdgeInsets.only(bottom: 3),
-          child: SidebarEntryTile(
-            entry: entry,
-            categoryColor: section.color,
-            isListMode: true,
-            libraryEntry: resolveFixedTagLibraryEntry(entry, libraryEntries),
-            dragHandleBuilder: section.entries.length > 1
-                ? (child) => ReorderableDragStartListener(
-                      index: index,
-                      child: child,
-                    )
-                : null,
-            onToggle: () => ref
-                .read(fixedTagsNotifierProvider.notifier)
-                .toggleEnabled(entry.id),
-            onEdit: () => _editEntry(entry),
-            onDelete: () => _deleteEntry(entry),
-          ),
+        return DragTarget<FixedTagEntry>(
+          key: ValueKey('entry_target_${entry.id}'),
+          onWillAcceptWithDetails: (details) =>
+              details.data.id != entry.id &&
+              details.data.promptType == promptType,
+          onAcceptWithDetails: (details) async {
+            final dragged = details.data;
+            final targetCatId = section.id == _uncategorizedSectionId
+                ? null
+                : section.id;
+            if (dragged.categoryId != targetCatId) {
+              await ref
+                  .read(fixedTagsNotifierProvider.notifier)
+                  .updateEntry(dragged.copyWith(categoryId: targetCatId));
+            }
+            final currentVisibleIds =
+                section.entries.map((e) => e.id).toList();
+            final oldIdx = currentVisibleIds.indexOf(dragged.id);
+            if (oldIdx != -1) {
+              await ref
+                  .read(fixedTagsNotifierProvider.notifier)
+                  .reorderWithinVisibleIds(
+                    promptType: promptType,
+                    visibleIds: currentVisibleIds,
+                    oldIndex: oldIdx,
+                    newIndex: index,
+                  );
+            }
+          },
+          builder: (context, candidateData, rejectedData) {
+            final isHovered = candidateData.isNotEmpty;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: isHovered
+                      ? Border.all(color: section.color, width: 1.5)
+                      : null,
+                ),
+                child: SidebarEntryTile(
+                  key: ValueKey('entry_${entry.id}'),
+                  entry: entry,
+                  categoryColor: section.color,
+                  isListMode: true,
+                  libraryEntry:
+                      resolveFixedTagLibraryEntry(entry, libraryEntries),
+                  dragHandleBuilder: (child) => Draggable<FixedTagEntry>(
+                    data: entry,
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
+                    feedback: Material(
+                      elevation: 8,
+                      borderRadius: BorderRadius.circular(6),
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      shadowColor: Colors.black.withValues(alpha: 0.45),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: 220,
+                          maxHeight: 34,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.drag_indicator,
+                                size: 14,
+                                color: section.color,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  entry.displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    childWhenDragging: Opacity(opacity: 0.25, child: child),
+                    child: child,
+                  ),
+                  onToggle: () => ref
+                      .read(fixedTagsNotifierProvider.notifier)
+                      .toggleEnabled(entry.id),
+                  onEdit: () => _editEntry(entry),
+                  onDelete: () => _deleteEntry(entry),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -764,8 +835,10 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
 
   Widget _buildEntryGridSliver({
     required _TagSection section,
+    required FixedTagPromptType promptType,
     required List<TagLibraryEntry> libraryEntries,
   }) {
+    final theme = Theme.of(context);
     return SliverLayoutBuilder(
       builder: (context, constraints) {
         const spacing = 4.0;
@@ -790,17 +863,105 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
           itemCount: section.entries.length,
           itemBuilder: (context, index) {
             final entry = section.entries[index];
-            return SidebarEntryTile(
-              key: ValueKey('grid_entry_${entry.id}'),
-              entry: entry,
-              categoryColor: section.color,
-              isListMode: false,
-              libraryEntry: resolveFixedTagLibraryEntry(entry, libraryEntries),
-              onToggle: () => ref
-                  .read(fixedTagsNotifierProvider.notifier)
-                  .toggleEnabled(entry.id),
-              onEdit: () => _editEntry(entry),
-              onDelete: () => _deleteEntry(entry),
+            return DragTarget<FixedTagEntry>(
+              key: ValueKey('grid_target_${entry.id}'),
+              onWillAcceptWithDetails: (details) =>
+                  details.data.id != entry.id &&
+                  details.data.promptType == promptType,
+              onAcceptWithDetails: (details) async {
+                final dragged = details.data;
+                final targetCatId = section.id == _uncategorizedSectionId
+                    ? null
+                    : section.id;
+                if (dragged.categoryId != targetCatId) {
+                  await ref
+                      .read(fixedTagsNotifierProvider.notifier)
+                      .updateEntry(dragged.copyWith(categoryId: targetCatId));
+                }
+                final currentVisibleIds =
+                    section.entries.map((e) => e.id).toList();
+                final oldIdx = currentVisibleIds.indexOf(dragged.id);
+                if (oldIdx != -1) {
+                  await ref
+                      .read(fixedTagsNotifierProvider.notifier)
+                      .reorderWithinVisibleIds(
+                        promptType: promptType,
+                        visibleIds: currentVisibleIds,
+                        oldIndex: oldIdx,
+                        newIndex: index,
+                      );
+                }
+              },
+              builder: (context, candidateData, rejectedData) {
+                final isHovered = candidateData.isNotEmpty;
+                return Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    border: isHovered
+                        ? Border.all(color: section.color, width: 1.5)
+                        : null,
+                  ),
+                  child: SidebarEntryTile(
+                    key: ValueKey('grid_entry_${entry.id}'),
+                    entry: entry,
+                    categoryColor: section.color,
+                    isListMode: false,
+                    libraryEntry:
+                        resolveFixedTagLibraryEntry(entry, libraryEntries),
+                    dragHandleBuilder: (child) => Draggable<FixedTagEntry>(
+                      data: entry,
+                      dragAnchorStrategy: pointerDragAnchorStrategy,
+                      feedback: Material(
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(6),
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        shadowColor: Colors.black.withValues(alpha: 0.45),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: 160,
+                            maxHeight: 34,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.drag_indicator,
+                                  size: 14,
+                                  color: section.color,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    entry.displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      childWhenDragging: Opacity(opacity: 0.25, child: child),
+                      child: child,
+                    ),
+                    onToggle: () => ref
+                        .read(fixedTagsNotifierProvider.notifier)
+                        .toggleEnabled(entry.id),
+                    onEdit: () => _editEntry(entry),
+                    onDelete: () => _deleteEntry(entry),
+                  ),
+                );
+              },
             );
           },
         );

@@ -334,12 +334,12 @@ class _UnifiedReferencePanelState extends ConsumerState<UnifiedReferencePanel> {
       generationParamsNotifierProvider.select(selectVibePanelViewData),
     );
     final vibes = panelData.vibes;
+    final hasVibes = vibes.isNotEmpty;
     final isExpanded = ref.watch(
       generationPanelExpansionProvider.select(
-        (value) => value.isExpanded(_panel),
+        (value) => value.isExpanded(_panel, hasData: hasVibes),
       ),
     );
-    final hasVibes = vibes.isNotEmpty;
     final showBackground = hasVibes && !isExpanded;
 
     return CollapsibleImagePanel(

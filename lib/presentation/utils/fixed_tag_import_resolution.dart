@@ -43,10 +43,19 @@ FixedTagImportResolution resolveFixedTagImport({
   }
 
   final positive = entries
-      .where((entry) => entry.promptType == FixedTagPromptType.positive)
+      .where(
+        (entry) =>
+            entry.promptType == FixedTagPromptType.positive ||
+            entry.promptType == FixedTagPromptType.combo,
+      )
       .toList(growable: false);
   final negative = entries
-      .where((entry) => entry.promptType == FixedTagPromptType.negative)
+      .where(
+        (entry) =>
+            entry.promptType == FixedTagPromptType.negative ||
+            (entry.promptType == FixedTagPromptType.combo &&
+                (entry.negativeContent?.isNotEmpty ?? false)),
+      )
       .toList(growable: false);
   final inferred = matchMetadataFixedTags(
     metadata: metadata,
@@ -129,11 +138,17 @@ FixedTagUsageSnapshot _snapshotFromMatches(
     for (final value in values) {
       final normalized = normalizeFixedTagMetadataEntry(value);
       final entry = entries.cast<FixedTagEntry?>().firstWhere(
-        (candidate) =>
-            candidate!.promptType == promptType &&
-            candidate.position == position &&
-            normalizeFixedTagMetadataEntry(candidate.weightedContent) ==
-                normalized,
+        (candidate) {
+          if (candidate == null) return false;
+          final matchesType = candidate.promptType == promptType ||
+              candidate.promptType == FixedTagPromptType.combo;
+          if (!matchesType || candidate.position != position) return false;
+          final targetContent = (candidate.promptType == FixedTagPromptType.combo &&
+                  promptType == FixedTagPromptType.negative)
+              ? candidate.negativeWeightedContent
+              : candidate.weightedContent;
+          return normalizeFixedTagMetadataEntry(targetContent) == normalized;
+        },
         orElse: () => null,
       );
       matched.add(

@@ -9,6 +9,10 @@ import '../providers/character_prompt_provider.dart';
 import '../providers/fixed_tags_provider.dart';
 import '../providers/image_generation_provider.dart';
 import '../providers/quality_preset_provider.dart';
+import '../../data/models/vibe/vibe_reference.dart';
+import '../../data/services/vibe_library_storage_service.dart';
+import '../providers/generation/image_workflow_controller.dart';
+import '../providers/reverse_prompt_provider.dart';
 import 'metadata_import_applier.dart';
 import 'fixed_tag_import_resolution.dart';
 import 'prompt_preset_import_utils.dart';
@@ -33,9 +37,18 @@ class MetadataImportCoordinator {
     final notifier = read(generationParamsNotifierProvider.notifier);
     final characterPrompts = resolvedMetadata.characterPrompts;
 
-    if (options.importCharacterPrompts && characterPrompts.isNotEmpty) {
+    // 1. 角色提示词：若开启导入，先彻底清空当前工作区角色；若复刻图含角色则追加，若无则保持清空
+    if (options.importCharacterPrompts) {
       read(characterPromptNotifierProvider.notifier).clearAllCharacters();
     }
+
+    // 2. 图生图：若复刻图不是图生图，彻底清空工作区底图与蒙版
+    if (!resolvedMetadata.isImg2Img) {
+      read(imageWorkflowControllerProvider.notifier).clearSourceImage();
+    }
+
+    // 3. 反推：清空历史反推临时缓存
+    read(reversePromptProvider.notifier).clearImages();
 
     final currentModel = read(generationParamsNotifierProvider).model;
     var appliedCount = MetadataImportApplier.applyPromptAndGenerationParams(
@@ -78,7 +91,7 @@ class MetadataImportCoordinator {
       appliedCount++;
     }
 
-    appliedCount += _applyReferenceParams(read, resolvedMetadata, options);
+    appliedCount += await _applyReferenceParams(read, resolvedMetadata, options);
     appliedCount += await _applyFixedTags(
       read,
       resolvedMetadata,
@@ -208,50 +221,81 @@ class MetadataImportCoordinator {
     return char.CharacterGender.other;
   }
 
-  static int _applyReferenceParams(
+  static Future<int> _applyReferenceParams(
     ProviderReader read,
     NaiImageMetadata metadata,
     MetadataImportOptions options,
-  ) {
+  ) async {
     final notifier = read(generationParamsNotifierProvider.notifier);
     var count = 0;
 
-    if (options.importVibeReferences && metadata.vibeReferences.isNotEmpty) {
-      final selectedVibes = metadata.vibeReferences
-          .asMap()
-          .entries
-          .where((entry) => options.selectedVibeIndices.contains(entry.key))
-          .map((entry) => entry.value)
-          .toList();
-      if (selectedVibes.isNotEmpty) {
-        notifier.clearVibeReferences();
-        notifier.addVibeReferences(selectedVibes, recordUsage: false);
-        count++;
+    if (options.importVibeReferences) {
+      notifier.clearVibeReferences();
+      if (metadata.vibeReferences.isNotEmpty) {
+        final selectedVibes = metadata.vibeReferences
+            .asMap()
+            .entries
+            .where(
+              (entry) =>
+                  options.selectedVibeIndices.isEmpty ||
+                  options.selectedVibeIndices.contains(entry.key),
+            )
+            .map((entry) => entry.value)
+            .toList();
+        if (selectedVibes.isNotEmpty) {
+          final storage = read(vibeLibraryStorageServiceProvider);
+          final enrichedVibes = <VibeReference>[];
+          for (final vibe in selectedVibes) {
+            var current = vibe;
+            if (current.thumbnail == null || current.thumbnail!.isEmpty) {
+              final matching = await storage.findMatchingEntry(current);
+              if (matching != null) {
+                final thumb = matching.vibeThumbnail ??
+                    matching.thumbnail ??
+                    await storage.getDisplayThumbnail(matching.id);
+                if (thumb != null && thumb.isNotEmpty) {
+                  current = current.copyWith(
+                    thumbnail: thumb,
+                    displayName: current.displayName.isNotEmpty
+                        ? current.displayName
+                        : matching.displayName,
+                  );
+                }
+              }
+            }
+            enrichedVibes.add(current);
+          }
+          notifier.addVibeReferences(enrichedVibes, recordUsage: true);
+          count++;
+        }
       }
     }
 
     final preciseReferences = metadata.preciseReferences;
-    if (options.importPreciseReferences && preciseReferences.isNotEmpty) {
-      final selectedReferences = preciseReferences
-          .asMap()
-          .entries
-          .where(
-            (entry) =>
-                options.selectedPreciseReferenceIndices.contains(entry.key),
-          )
-          .map((entry) => entry.value)
-          .toList();
-      if (selectedReferences.isNotEmpty) {
-        notifier.clearPreciseReferences();
-        for (final reference in selectedReferences) {
-          notifier.addPreciseReference(
-            reference.image,
-            type: reference.type,
-            strength: reference.strength,
-            fidelity: reference.fidelity,
-          );
+    if (options.importPreciseReferences) {
+      notifier.clearPreciseReferences();
+      if (preciseReferences.isNotEmpty) {
+        final selectedReferences = preciseReferences
+            .asMap()
+            .entries
+            .where(
+              (entry) =>
+                  options.selectedPreciseReferenceIndices.isEmpty ||
+                  options.selectedPreciseReferenceIndices.contains(entry.key),
+            )
+            .map((entry) => entry.value)
+            .toList();
+        if (selectedReferences.isNotEmpty) {
+          for (final reference in selectedReferences) {
+            notifier.addPreciseReference(
+              reference.image,
+              type: reference.type,
+              strength: reference.strength,
+              fidelity: reference.fidelity,
+            );
+          }
+          count++;
         }
-        count++;
       }
     }
 

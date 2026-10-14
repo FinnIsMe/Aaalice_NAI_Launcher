@@ -63,12 +63,12 @@ class _PreciseReferencePanelState extends ConsumerState<PreciseReferencePanel> {
         (params) => params.preciseReferences,
       ),
     );
+    final hasReferences = references.isNotEmpty;
     final isExpanded = ref.watch(
       generationPanelExpansionProvider.select(
-        (value) => value.isExpanded(_panel),
+        (value) => value.isExpanded(_panel, hasData: hasReferences),
       ),
     );
-    final hasReferences = references.isNotEmpty;
     final activeReferenceCount = references
         .where((reference) => reference.enabled)
         .length;
@@ -615,7 +615,7 @@ class _PreciseReferencePanelState extends ConsumerState<PreciseReferencePanel> {
   }
 }
 
-/// Precise Reference 卡片组件
+/// Precise Reference 卡片组件（极致扁平化，青草绿高亮，首行功能全集成）
 class _PreciseReferenceCard extends StatelessWidget {
   final int index;
   final PreciseReference reference;
@@ -625,6 +625,9 @@ class _PreciseReferenceCard extends StatelessWidget {
   final ValueChanged<PreciseRefType> onTypeChanged;
   final ValueChanged<double> onStrengthChanged;
   final ValueChanged<double> onFidelityChanged;
+
+  static const Color grassGreen = Color(0xFF4CAF50);
+  static const Color grassGreenBorder = Color(0xFF81C784);
 
   const _PreciseReferenceCard({
     required this.index,
@@ -637,16 +640,49 @@ class _PreciseReferenceCard extends StatelessWidget {
     required this.onFidelityChanged,
   });
 
+  void _toggleType(bool toggleCharacter) {
+    final hasChar = reference.type == PreciseRefType.character ||
+        reference.type == PreciseRefType.characterAndStyle;
+    final hasStyle = reference.type == PreciseRefType.style ||
+        reference.type == PreciseRefType.characterAndStyle;
+
+    var newChar = hasChar;
+    var newStyle = hasStyle;
+
+    if (toggleCharacter) {
+      newChar = !hasChar;
+      if (!newChar && !newStyle) newStyle = true;
+    } else {
+      newStyle = !hasStyle;
+      if (!newChar && !newStyle) newChar = true;
+    }
+
+    if (newChar && newStyle) {
+      onTypeChanged(PreciseRefType.characterAndStyle);
+    } else if (newChar) {
+      onTypeChanged(PreciseRefType.character);
+    } else {
+      onTypeChanged(PreciseRefType.style);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasChar = reference.type == PreciseRefType.character ||
+        reference.type == PreciseRefType.characterAndStyle;
+    final hasStyle = reference.type == PreciseRefType.style ||
+        reference.type == PreciseRefType.characterAndStyle;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
       ),
       child: AnimatedOpacity(
         key: ValueKey('precise-reference-enabled-opacity-$index'),
@@ -657,56 +693,77 @@ class _PreciseReferenceCard extends StatelessWidget {
         curve: Curves.easeOut,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // 顶部行：缩略图、类型选择、删除按钮
+            // 首行：缩略图 + 【角色】【风格】双卡片 + 启用 + 收藏 + 删除 (全在一排！)
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 左侧：缩略图
                 _buildThumbnail(theme),
-                const SizedBox(width: 12),
-
-                // 中间：类型选择
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      _buildEnabledToggle(context, theme),
-                      const SizedBox(height: 8),
-                      _buildTypeDropdown(context, theme),
+                      // 【角色】小卡片
+                      _buildChip(
+                        label: context.l10n.preciseRef_typeCharacter,
+                        selected: hasChar,
+                        onTap: () => _toggleType(true),
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 4),
+                      // 【风格】小卡片
+                      _buildChip(
+                        label: context.l10n.preciseRef_typeStyle,
+                        selected: hasStyle,
+                        onTap: () => _toggleType(false),
+                        theme: theme,
+                      ),
+                      const Spacer(),
+                      // 启用小 Switch
+                      Tooltip(
+                        message: reference.enabled
+                            ? context.l10n.reference_disable
+                            : context.l10n.reference_enable,
+                        child: Transform.scale(
+                          scale: 0.72,
+                          child: Switch(
+                            key: ValueKey('precise-reference-enabled-switch-$index'),
+                            value: reference.enabled,
+                            onChanged: onEnabledChanged,
+                            activeColor: grassGreen,
+                          ),
+                        ),
+                      ),
+                      // 收藏按钮
+                      IconButton(
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 16),
+                        tooltip: context.l10n.preciseRefLib_saveCurrentToLibrary,
+                        color: theme.colorScheme.primary,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => onSaveToLibrary(context),
+                      ),
+                      // 删除按钮
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        tooltip: context.l10n.preciseRef_remove,
+                        color: theme.colorScheme.error,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onRemove,
+                      ),
                     ],
                   ),
-                ),
-
-                // 纵向排列保留 48dp 触控范围，同时避免压缩窄屏参数区。
-                ImageCardInlineActions(
-                  direction: Axis.vertical,
-                  actions: [
-                    ImageCardAction(
-                      id: ImageCardActionId.saveToLibrary,
-                      key: Key('precise-reference-save-to-library-$index'),
-                      icon: Icons.bookmark_add_outlined,
-                      iconColor: theme.colorScheme.primary,
-                      label: context.l10n.preciseRefLib_saveCurrentToLibrary,
-                      invoke: onSaveToLibrary,
-                    ),
-                    ImageCardAction(
-                      id: ImageCardActionId.delete,
-                      icon: Icons.delete_outline,
-                      iconColor: theme.colorScheme.error,
-                      label: context.l10n.preciseRef_remove,
-                      invoke: onRemove,
-                      isDanger: true,
-                    ),
-                  ],
                 ),
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
 
-            // 强度滑条
-            _buildSliderRow(
+            // 单行参考强度滑块
+            _buildSingleLineSliderRow(
               context,
               theme,
               label: context.l10n.preciseRef_strength,
@@ -714,8 +771,10 @@ class _PreciseReferenceCard extends StatelessWidget {
               onChanged: onStrengthChanged,
             ),
 
-            // 保真度滑条
-            _buildSliderRow(
+            const SizedBox(height: 2),
+
+            // 单行保真度滑块
+            _buildSingleLineSliderRow(
               context,
               theme,
               label: context.l10n.preciseRef_fidelity,
@@ -728,18 +787,63 @@ class _PreciseReferenceCard extends StatelessWidget {
     );
   }
 
+  Widget _buildChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    required ThemeData theme,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: selected
+              ? grassGreen
+              : theme.colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: selected
+                ? grassGreenBorder
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: grassGreen.withValues(alpha: 0.35),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected ? Colors.white : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildThumbnail(ThemeData theme) {
     final thumbnail = ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(5),
       child: Container(
-        width: 64,
-        height: 64,
+        width: 48,
+        height: 48,
         color: ImageViewportSurface.background,
         child: DecodedMemoryImage(
           bytes: reference.image,
           fit: BoxFit.cover,
-          maxLogicalWidth: 64,
-          maxLogicalHeight: 64,
+          maxLogicalWidth: 48,
+          maxLogicalHeight: 48,
           errorBuilder: (context, error, stackTrace) {
             return _buildPlaceholder(theme);
           },
@@ -754,118 +858,62 @@ class _PreciseReferenceCard extends StatelessWidget {
     return const Center(
       child: Icon(
         Icons.person,
-        size: 24,
+        size: 20,
         color: ImageViewportSurface.mutedForeground,
       ),
     );
   }
 
-  Widget _buildEnabledToggle(BuildContext context, ThemeData theme) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            context.l10n.reference_enabled,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-            ),
-          ),
-        ),
-        Tooltip(
-          message: reference.enabled
-              ? context.l10n.reference_disable
-              : context.l10n.reference_enable,
-          child: Switch(
-            key: ValueKey('precise-reference-enabled-switch-$index'),
-            value: reference.enabled,
-            onChanged: onEnabledChanged,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTypeDropdown(BuildContext context, ThemeData theme) {
-    return DropdownButtonFormField<PreciseRefType>(
-      initialValue: reference.type,
-      isDense: true,
-      decoration: InputDecoration(
-        labelText: context.l10n.preciseRef_referenceType,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      ),
-      items: PreciseRefType.values.map((type) {
-        return DropdownMenuItem<PreciseRefType>(
-          value: type,
-          child: Text(
-            type.getDisplayName(
-              character: context.l10n.preciseRef_typeCharacter,
-              style: context.l10n.preciseRef_typeStyle,
-              characterAndStyle: context.l10n.preciseRef_typeCharacterAndStyle,
-            ),
-            style: theme.textTheme.bodySmall,
-          ),
-        );
-      }).toList(),
-      onChanged: (value) {
-        if (value != null) {
-          onTypeChanged(value);
-        }
-      },
-    );
-  }
-
-  Widget _buildSliderRow(
+  Widget _buildSingleLineSliderRow(
     BuildContext context,
     ThemeData theme, {
     required String label,
     required double value,
     required ValueChanged<double> onChanged,
   }) {
-    const decimals = 2;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        // 标签 + 数值
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                ),
-              ),
+        SizedBox(
+          width: 52,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
             ),
-            EditableDoubleField(
-              value: value,
-              semanticLabel: label,
-              decimals: decimals,
-              width: 64,
-              onChanged: onChanged,
-              textStyle: theme.textTheme.bodySmall?.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
-        ),
-        // 滑条
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 4,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          child: NamedSlider(
-            label: label,
-            valueText: (v) => EditableDoubleField.format(v, decimals: decimals),
-            value: value,
-            min: 0.0,
-            max: 1.0,
-            divisions: 20,
-            onChanged: onChanged,
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2.0,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4.5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              activeTrackColor: grassGreen,
+              thumbColor: grassGreen,
+              inactiveTrackColor:
+                  theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+            ),
+            child: Slider(
+              value: value,
+              min: 0.0,
+              max: 1.0,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        EditableDoubleField(
+          value: value,
+          semanticLabel: label,
+          decimals: 2,
+          width: 48,
+          onChanged: onChanged,
+          textStyle: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 10.5,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ],

@@ -228,7 +228,7 @@ class _FullPromptInput extends ConsumerWidget {
           target: negative
               ? PromptTokenCountTarget.negative
               : PromptTokenCountTarget.positive,
-          topPadding: 6,
+          topPadding: 3,
           leading: includeBottomActions
               ? PromptInputBottomActions(
                   controller: controller,

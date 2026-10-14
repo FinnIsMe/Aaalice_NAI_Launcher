@@ -58,6 +58,8 @@ class _WebStyleGenerationLayoutState
 
   bool _isResizingLeft = false;
   bool _isResizingRight = false;
+  final GlobalKey<WebLeftPanelState> _leftPanelKey =
+      GlobalKey<WebLeftPanelState>();
 
   // 回调只在触发时取当前状态，快捷键表因此可以建一次复用，不随生成帧重建。
   late final Map<String, VoidCallback> _shortcuts = _buildShortcuts();
@@ -141,21 +143,35 @@ class _WebStyleGenerationLayoutState
       agentChatDockProvider.select((dock) => dock.sideBySideChatWidthDemand),
     );
 
-    return ShortcutAwareWidget(
-      contextType: ShortcutContext.generation,
-      shortcuts: _shortcuts,
-      autofocus: true,
-      child: GenerationWorkspaceRow(
-        occupiedLeadingWidth: occupiedLeadingWidth,
-        overlayableLeading: const FixedTagsSidebarSlot(),
-        overlayableLeadingWidth: fixedTagsWidth,
-        leading: [
-          WebLeftPanel(
-            negativeModeNotifier: widget.negativeModeNotifier,
-            promptInputController: widget.promptInputController,
-            promptInputKey: widget.promptInputKey,
-            isResizing: _isResizingLeft,
-          ),
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        final renderBox =
+            _leftPanelKey.currentContext?.findRenderObject() as RenderBox?;
+        if (renderBox != null && renderBox.hasSize) {
+          final localPos = renderBox.globalToLocal(event.position);
+          final isInsideLeftPanel = renderBox.paintBounds.contains(localPos);
+          if (!isInsideLeftPanel) {
+            _leftPanelKey.currentState?.triggerAutoSortIfChanged();
+          }
+        }
+      },
+      child: ShortcutAwareWidget(
+        contextType: ShortcutContext.generation,
+        shortcuts: _shortcuts,
+        autofocus: true,
+        child: GenerationWorkspaceRow(
+          occupiedLeadingWidth: occupiedLeadingWidth,
+          overlayableLeading: const FixedTagsSidebarSlot(),
+          overlayableLeadingWidth: fixedTagsWidth,
+          leading: [
+            WebLeftPanel(
+              key: _leftPanelKey,
+              negativeModeNotifier: widget.negativeModeNotifier,
+              promptInputController: widget.promptInputController,
+              promptInputKey: widget.promptInputKey,
+              isResizing: _isResizingLeft,
+            ),
           if (layoutState.webLeftPanelExpanded)
             ResizeHandle(
               onDragStart: () => setState(() => _isResizingLeft = true),
@@ -200,6 +216,7 @@ class _WebStyleGenerationLayoutState
           historyViewport: widget.historyViewport,
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

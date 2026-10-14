@@ -22,7 +22,19 @@ import 'prompt_input.dart';
 import 'prompt_input_controller.dart';
 import 'reverse_prompt_panel.dart';
 import 'unified_reference_panel.dart';
+import '../../../providers/character_prompt_provider.dart';
+import '../../../providers/generation/image_workflow_controller.dart';
+import '../../../providers/reverse_prompt_provider.dart';
 import '../../../providers/generation/web_panel_modules_provider.dart';
+
+/// 官网式左侧功能模块类型
+enum WebLeftPanelModule {
+  img2img,
+  character,
+  preciseReference,
+  vibeTransfer,
+  reversePrompt,
+}
 
 /// 官网式布局左栏
 ///
@@ -46,13 +58,36 @@ class WebLeftPanel extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<WebLeftPanel> createState() => _WebLeftPanelState();
+  ConsumerState<WebLeftPanel> createState() => WebLeftPanelState();
 }
 
-class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
-    with SingleTickerProviderStateMixin {
+class WebLeftPanelState extends ConsumerState<WebLeftPanel>
+    with TickerProviderStateMixin {
   // 320px 的面板最小宽度包含右侧 1px 分隔线。
   static const double _expandedContentMinWidth = 319;
+
+  static const _baseModuleOrder = [
+    WebLeftPanelModule.img2img,
+    WebLeftPanelModule.character,
+    WebLeftPanelModule.preciseReference,
+    WebLeftPanelModule.vibeTransfer,
+    WebLeftPanelModule.reversePrompt,
+  ];
+
+  late List<WebLeftPanelModule> _displayOrder;
+  final Map<WebLeftPanelModule, GlobalKey> _moduleKeys = {
+    for (final m in WebLeftPanelModule.values) m: GlobalKey(),
+  };
+  Map<WebLeftPanelModule, double> _animatedOffsets = {};
+
+  late final AnimationController _sortController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 380),
+  );
+  late final CurvedAnimation _sortAnimation = CurvedAnimation(
+    parent: _sortController,
+    curve: Curves.easeInOutCubic,
+  );
 
   /// 参数二级菜单是否挂载（动画收起完毕后卸载）。
   bool _paramsMenuMounted = false;
@@ -74,6 +109,14 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
   @override
   void initState() {
     super.initState();
+    _displayOrder = _computeDesiredOrder();
+    _sortController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() {
+          _animatedOffsets = {};
+        });
+      }
+    });
     final restored = ref
         .read(generationPanelExpansionProvider)
         .isExpanded(GenerationWorkbenchPanel.generationParameters);
@@ -99,9 +142,138 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
 
   @override
   void dispose() {
+    _sortAnimation.dispose();
+    _sortController.dispose();
     _menuAnimation.dispose();
     _menuController.dispose();
     super.dispose();
+  }
+
+  bool _moduleHasData(WebLeftPanelModule module) {
+    switch (module) {
+      case WebLeftPanelModule.img2img:
+        final workflow = ref.read(imageWorkflowControllerProvider);
+        final params = ref.read(generationParamsNotifierProvider);
+        return workflow.hasSourceImage || params.hasImage2Image;
+      case WebLeftPanelModule.character:
+        return ref.read(characterPromptNotifierProvider).characters.isNotEmpty;
+      case WebLeftPanelModule.preciseReference:
+        return ref
+            .read(generationParamsNotifierProvider)
+            .preciseReferences
+            .isNotEmpty;
+      case WebLeftPanelModule.vibeTransfer:
+        final params = ref.read(generationParamsNotifierProvider);
+        return params.referenceImages.isNotEmpty ||
+            params.vibeEncodings.isNotEmpty;
+      case WebLeftPanelModule.reversePrompt:
+        return ref.read(reversePromptProvider).images.isNotEmpty;
+    }
+  }
+
+  List<WebLeftPanelModule> _computeDesiredOrder() {
+    final withData = <WebLeftPanelModule>[];
+    final empty = <WebLeftPanelModule>[];
+    for (final m in _baseModuleOrder) {
+      if (_moduleHasData(m)) {
+        withData.add(m);
+      } else {
+        empty.add(m);
+      }
+    }
+    return [...withData, ...empty];
+  }
+
+  bool _ordersMatch(List<WebLeftPanelModule> a, List<WebLeftPanelModule> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// 外部失焦/点击空闲区时触发模块重排判断与平滑过渡动画
+  void triggerAutoSortIfChanged() {
+    if (!mounted) return;
+    final targetOrder = _computeDesiredOrder();
+    if (_ordersMatch(_displayOrder, targetOrder)) return;
+
+    final oldPositions = <WebLeftPanelModule, double>{};
+    for (final id in _displayOrder) {
+      final key = _moduleKeys[id];
+      final box = key?.currentContext?.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        oldPositions[id] = box.localToGlobal(Offset.zero).dy;
+      }
+    }
+
+    setState(() {
+      _displayOrder = targetOrder;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final offsets = <WebLeftPanelModule, double>{};
+      for (final id in targetOrder) {
+        final key = _moduleKeys[id];
+        final box = key?.currentContext?.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize && oldPositions.containsKey(id)) {
+          final newDy = box.localToGlobal(Offset.zero).dy;
+          final deltaY = oldPositions[id]! - newDy;
+          if (deltaY.abs() > 0.5) {
+            offsets[id] = deltaY;
+          }
+        }
+      }
+      if (offsets.isNotEmpty) {
+        setState(() {
+          _animatedOffsets = offsets;
+        });
+        _sortController.forward(from: 0.0);
+      }
+    });
+  }
+
+  bool _isModuleEnabled(
+    WebLeftPanelModule module,
+    WebPanelModulesState panelModules,
+  ) {
+    return switch (module) {
+      WebLeftPanelModule.img2img => true,
+      WebLeftPanelModule.character => panelModules.showCharacter,
+      WebLeftPanelModule.preciseReference => panelModules.showPreciseReference,
+      WebLeftPanelModule.vibeTransfer => panelModules.showVibeTransfer,
+      WebLeftPanelModule.reversePrompt => panelModules.showTagExtraction,
+    };
+  }
+
+  Widget _buildModule(
+    WebLeftPanelModule module,
+    WebPanelModulesState panelModules,
+  ) {
+    final Widget child = switch (module) {
+      WebLeftPanelModule.img2img => const Img2ImgPanel(),
+      WebLeftPanelModule.character => const InlineCharacterSection(),
+      WebLeftPanelModule.preciseReference => const PreciseReferencePanel(),
+      WebLeftPanelModule.vibeTransfer => const UnifiedReferencePanel(),
+      WebLeftPanelModule.reversePrompt => const ReversePromptPanel(),
+    };
+
+    return AnimatedBuilder(
+      animation: _sortAnimation,
+      builder: (context, c) {
+        final delta = _animatedOffsets[module] ?? 0.0;
+        final currentOffset = delta * (1.0 - _sortAnimation.value);
+        return Transform.translate(
+          offset: Offset(0, currentOffset),
+          child: c,
+        );
+      },
+      child: KeyedSubtree(
+        key: _moduleKeys[module]!,
+        child: child,
+      ),
+    );
   }
 
   void _toggleParamsMenu() {
@@ -240,23 +412,12 @@ class _WebLeftPanelState extends ConsumerState<WebLeftPanel>
                         ),
                         const SizedBox(height: 10),
 
-                        // 功能面板顺序：图生图、角色、精准参考、风格迁移、反推
-                        const Img2ImgPanel(),
-                        if (panelModules.showCharacter) ...[
-                          const SizedBox(height: 8),
-                          const InlineCharacterSection(),
-                        ],
-                        if (panelModules.showPreciseReference) ...[
-                          const SizedBox(height: 8),
-                          const PreciseReferencePanel(),
-                        ],
-                        if (panelModules.showVibeTransfer) ...[
-                          const SizedBox(height: 8),
-                          const UnifiedReferencePanel(),
-                        ],
-                        if (panelModules.showTagExtraction) ...[
-                          const SizedBox(height: 8),
-                          const ReversePromptPanel(),
+                        // 功能面板（支持空闲区失焦自动排序动画）：图生图、角色、精准参考、风格迁移、反推
+                        for (final module in _displayOrder) ...[
+                          if (_isModuleEnabled(module, panelModules)) ...[
+                            _buildModule(module, panelModules),
+                            const SizedBox(height: 8),
+                          ],
                         ],
                       ],
                     ),

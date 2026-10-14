@@ -51,7 +51,10 @@ class _Img2ImgPanelState extends ConsumerState<Img2ImgPanel> {
     final data = Img2ImgPanelData(params: params, workflow: workflow);
     final isExpanded = ref.watch(
       generationPanelExpansionProvider.select(
-        (value) => value.isExpanded(GenerationWorkbenchPanel.img2img),
+        (value) => value.isExpanded(
+          GenerationWorkbenchPanel.img2img,
+          hasData: data.hasSourceImage,
+        ),
       ),
     );
     final theme = Theme.of(context);

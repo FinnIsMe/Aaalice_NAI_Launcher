@@ -65,7 +65,7 @@ class InlineCharacterSection extends ConsumerWidget {
     final characters = config.characters;
     final isExpanded = ref.watch(
       generationPanelExpansionProvider.select(
-        (state) => state.isExpanded(panel),
+        (state) => state.isExpanded(panel, hasData: characters.isNotEmpty),
       ),
     );
 

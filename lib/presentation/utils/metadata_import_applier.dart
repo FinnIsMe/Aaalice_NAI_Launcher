@@ -60,19 +60,19 @@ class MetadataImportApplier {
   }) {
     var count = 0;
 
-    if (options.importPrompt && metadata.prompt.isNotEmpty) {
-      target.updatePrompt(
-        metadata.hasSeparatedFields ? metadata.mainPrompt : metadata.prompt,
-      );
+    if (options.importPrompt) {
+      final promptToUse =
+          (options.importFixedTags || metadata.hasSeparatedFields)
+              ? metadata.mainPrompt
+              : metadata.prompt;
+      target.updatePrompt(promptToUse);
       // 数据集前缀已从提示词剥离，模式随提示词一起恢复才能复现原图。
       final modelMode = metadata.modelMode;
       if (modelMode != null) target.updateModelMode(modelMode);
-      count++;
+      if (metadata.prompt.isNotEmpty) count++;
     }
 
-    if (options.importNegativePrompt &&
-        (metadata.negativePrompt.isNotEmpty ||
-            (options.importUcPreset && metadata.ucPreset != null))) {
+    if (options.importNegativePrompt) {
       target.updateNegativePrompt(
         resolveImportedNegativePrompt(
           metadata,
@@ -80,7 +80,10 @@ class MetadataImportApplier {
           currentModel: currentModel,
         ),
       );
-      count++;
+      if (metadata.negativePrompt.isNotEmpty ||
+          (options.importUcPreset && metadata.ucPreset != null)) {
+        count++;
+      }
     }
 
     count += _applyValue<int>(

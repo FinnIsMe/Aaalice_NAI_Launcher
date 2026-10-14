@@ -39,16 +39,16 @@ class PromptTagModeToggle extends ConsumerWidget {
                       .setEnabled(!enabled);
                 }
               : null,
-          style: PromptFooterStyle.button(context, width: 88).copyWith(
-            padding: const WidgetStatePropertyAll(EdgeInsets.all(3)),
+          style: PromptFooterStyle.button(context, width: 54).copyWith(
+            padding: const WidgetStatePropertyAll(EdgeInsets.all(1.5)),
             backgroundColor: WidgetStatePropertyAll(
               colors.surfaceContainerHigh,
             ),
           ),
           child: ExcludeSemantics(
             child: SizedBox(
-              width: 82,
-              height: PromptFooterStyle.height(context) - 6,
+              width: 48,
+              height: PromptFooterStyle.height(context) - 4,
               child: Stack(
                 children: [
                   AnimatedAlign(
@@ -68,7 +68,7 @@ class PromptTagModeToggle extends ConsumerWidget {
                           color: enabled
                               ? colors.tertiaryContainer
                               : colors.primaryContainer,
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                     ),

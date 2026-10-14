@@ -1,6 +1,7 @@
 import '../../core/constants/api_constants.dart';
 import '../../core/utils/nai_prompt_parser.dart';
 import '../../data/models/fixed_tag/fixed_tag_entry.dart';
+import '../../data/models/fixed_tag/fixed_tag_prompt_type.dart';
 import '../../data/models/gallery/fixed_tag_usage_projection.dart';
 import '../../data/models/gallery/nai_image_metadata.dart';
 
@@ -33,6 +34,7 @@ NaiImageMetadata matchMetadataFixedTags({
     recordedPrefix: metadata.fixedNegativePrefixTags,
     recordedSuffix: metadata.fixedNegativeSuffixTags,
     trailingBlockers: const [],
+    isNegative: true,
   );
 
   return metadata.copyWith(
@@ -94,15 +96,21 @@ int _initialSuffixCursor(
   required List<String> recordedPrefix,
   required List<String> recordedSuffix,
   required List<List<String>> trailingBlockers,
+  bool isNegative = false,
 }) {
   final promptTags = _extractTags(prompt);
   final normalizedPrompt = promptTags.map(_normalizeTag).toList();
   final candidates = entries
       .map(
-        (entry) => (
-          entry: entry,
-          tags: _extractTags(entry.content).map(_normalizeTag).toList(),
-        ),
+        (entry) {
+          final content = (isNegative && entry.promptType == FixedTagPromptType.combo)
+              ? (entry.negativeContent ?? '')
+              : entry.content;
+          return (
+            entry: entry,
+            tags: _extractTags(content).map(_normalizeTag).toList(),
+          );
+        },
       )
       .where((candidate) => candidate.tags.isNotEmpty)
       .toList();
