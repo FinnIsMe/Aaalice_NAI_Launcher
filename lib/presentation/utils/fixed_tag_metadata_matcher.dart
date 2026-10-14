@@ -22,13 +22,11 @@ NaiImageMetadata matchMetadataFixedTags({
   final posCandidates = [...positiveEntries];
   for (final tag in [...base.fixedPrefixTags, ...base.fixedSuffixTags]) {
     if (!posCandidates.any((c) => c.content == tag)) {
-      posCandidates.add(FixedTagEntry(
-        id: 'meta_pos_${posCandidates.length}',
+      posCandidates.add(FixedTagEntry.create(
         name: tag,
         content: tag,
         position: FixedTagPosition.prefix,
         promptType: FixedTagPromptType.positive,
-        sortOrder: posCandidates.length,
       ));
     }
   }
@@ -39,13 +37,11 @@ NaiImageMetadata matchMetadataFixedTags({
     ...base.fixedNegativeSuffixTags,
   ]) {
     if (!negCandidates.any((c) => c.content == tag)) {
-      negCandidates.add(FixedTagEntry(
-        id: 'meta_neg_${negCandidates.length}',
+      negCandidates.add(FixedTagEntry.create(
         name: tag,
         content: tag,
         position: FixedTagPosition.prefix,
         promptType: FixedTagPromptType.negative,
-        sortOrder: negCandidates.length,
       ));
     }
   }
