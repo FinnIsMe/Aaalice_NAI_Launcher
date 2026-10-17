@@ -41,7 +41,7 @@ class ActivePresetDeduplicator {
           ? (entry.negativeContent ?? '')
           : entry.content;
       final tags = NaiPromptParser.splitSegments(content);
-      final label = entry.name?.trim().isNotEmpty == true
+      final label = entry.name.trim().isNotEmpty
           ? '固定词 [${entry.name}]'
           : '固定词';
       for (final tag in tags) {
@@ -147,6 +147,20 @@ class ActivePresetDeduplicator {
 
   static String _normalizeTag(String tag) {
     var result = tag.trim().toLowerCase();
+    result = result
+        .replaceAll('，', ',')
+        .replaceAll('。', '.')
+        .replaceAll('：', ':')
+        .replaceAll('；', ';')
+        .replaceAll('！', '!')
+        .replaceAll('？', '?')
+        .replaceAll('（', '(')
+        .replaceAll('）', ')')
+        .replaceAll('【', '[')
+        .replaceAll('】', ']')
+        .replaceAll('｛', '{')
+        .replaceAll('｝', '}')
+        .replaceAll('、', ',');
     result = result.replaceAll('_', ' ');
     final numericWeight = RegExp(
       r'^-?\d+(?:\.\d+)?::(.+?)(?:::)?$',

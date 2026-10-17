@@ -106,7 +106,7 @@ _MatchResult _matchAndStripTags({
   required bool isNegative,
   required List<List<String>> trailingBlockers,
 }) {
-  final rawTags = _extractTags(prompt);
+  final rawTags = _extractTagsForAnalysis(prompt);
   if (rawTags.isEmpty || candidates.isEmpty) {
     return _MatchResult(
       prefix: const [],
@@ -129,7 +129,7 @@ _MatchResult _matchAndStripTags({
       final bContent = (isNegative && b.promptType == FixedTagPromptType.combo)
           ? (b.negativeContent ?? '')
           : b.content;
-      return _extractTags(bContent).length.compareTo(_extractTags(aContent).length);
+      return _extractTagsForAnalysis(bContent).length.compareTo(_extractTagsForAnalysis(aContent).length);
     });
 
   for (final entry in sortedCandidates) {
@@ -138,7 +138,7 @@ _MatchResult _matchAndStripTags({
     final content = (isNegative && entry.promptType == FixedTagPromptType.combo)
         ? (entry.negativeContent ?? '')
         : entry.content;
-    final entryTags = _extractTags(content).map(_normalizeTag).where((t) => t.isNotEmpty).toList();
+    final entryTags = _extractTagsForAnalysis(content).map(_normalizeTag).where((t) => t.isNotEmpty).toList();
     if (entryTags.isEmpty) continue;
 
     // 在未被消费的 normTags 中查找所有匹配上的 tag 下标
@@ -264,9 +264,9 @@ _MatchResult _matchAndStripTags({
 }
 
 bool _isTagsFullyContained(String prompt, String content) {
-  final rawTags = _extractTags(prompt);
+  final rawTags = _extractTagsForAnalysis(prompt);
   final normTags = rawTags.map(_normalizeTag).toList();
-  final entryTags = _extractTags(content).map(_normalizeTag).where((t) => t.isNotEmpty).toList();
+  final entryTags = _extractTagsForAnalysis(content).map(_normalizeTag).where((t) => t.isNotEmpty).toList();
   if (entryTags.isEmpty) return false;
   final matched = <int>[];
   for (final eTag in entryTags) {
@@ -342,10 +342,77 @@ List<String> _mergeMatches(List<String> recorded, List<String> inferred) {
 }
 
 String normalizeFixedTagMetadataEntry(String entry) =>
-    _extractTags(entry).map(_normalizeTag).join(',');
+    _extractTagsForAnalysis(entry).map(_normalizeTag).join(',');
 
 List<String> _extractTags(String prompt) =>
     NaiPromptParser.splitSegments(prompt);
+
+/// 专用于固定词语义数据分析与比对的切分器：
+/// 在数据分析层将换行与逗号等同看待，与呈现层排版彻底解耦。
+List<String> _extractTagsForAnalysis(String prompt) {
+  final segments = <String>[];
+  final buffer = StringBuffer();
+  var braceDepth = 0;
+  var bracketDepth = 0;
+  var parenDepth = 0;
+  var inPipe = false;
+
+  for (var i = 0; i < prompt.length; i++) {
+    final char = prompt[i];
+
+    if (char == '\\' && i + 1 < prompt.length) {
+      buffer
+        ..write(char)
+        ..write(prompt[i + 1]);
+      i++;
+      continue;
+    }
+
+    if (char == '{') {
+      braceDepth++;
+    } else if (char == '}' && braceDepth > 0) {
+      braceDepth--;
+    } else if (char == '[') {
+      bracketDepth++;
+    } else if (char == ']' && bracketDepth > 0) {
+      bracketDepth--;
+    } else if (char == '(') {
+      parenDepth++;
+    } else if (char == ')' && parenDepth > 0) {
+      parenDepth--;
+    }
+
+    if (char == '|' && i + 1 < prompt.length && prompt[i + 1] == '|') {
+      inPipe = !inPipe;
+      buffer.write('||');
+      i++;
+      continue;
+    }
+
+    // 在数据分析层，顶层的逗号或换行均为语义标签分隔符
+    final isDelimiter = (char == ',' || char == '\n' || char == '\r');
+    if (isDelimiter &&
+        braceDepth == 0 &&
+        bracketDepth == 0 &&
+        parenDepth == 0 &&
+        !inPipe) {
+      final segment = buffer.toString().trim();
+      if (segment.isNotEmpty) {
+        segments.add(segment);
+      }
+      buffer.clear();
+    } else {
+      buffer.write(char);
+    }
+  }
+
+  final lastSegment = buffer.toString().trim();
+  if (lastSegment.isNotEmpty) {
+    segments.add(lastSegment);
+  }
+
+  return segments;
+}
 
 String _normalizeTag(String tag) {
   var result = tag.trim().toLowerCase();

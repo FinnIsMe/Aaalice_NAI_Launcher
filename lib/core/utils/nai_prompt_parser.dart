@@ -116,9 +116,8 @@ class NaiPromptParser {
         continue;
       }
 
-      // 在顶层遇到逗号或换行时分割
-      final isTopLevelDelimiter = (char == ',' || char == '\n' || char == '\r');
-      if (isTopLevelDelimiter &&
+      // 在顶层遇到逗号时分割
+      if (char == ',' &&
           braceDepth == 0 &&
           bracketDepth == 0 &&
           parenDepth == 0 &&
