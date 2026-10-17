@@ -120,9 +120,8 @@ class _PromptTranslationCaptionState
       return Tooltip(
         message: _translatedText!,
         waitDuration: const Duration(milliseconds: 300),
-        child: Container(
+        child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 160),
-          alignment: Alignment.center,
           child: Text(
             _translatedText!,
             maxLines: 1,
@@ -139,9 +138,8 @@ class _PromptTranslationCaptionState
     }
 
     if (_loading) {
-      return Container(
+      return ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 120),
-        alignment: Alignment.center,
         child: Text(
           l10n.tagMode_loadingTranslation,
           maxLines: 1,
