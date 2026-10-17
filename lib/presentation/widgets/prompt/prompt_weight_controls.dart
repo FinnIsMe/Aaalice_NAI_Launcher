@@ -74,46 +74,36 @@ class _PromptWeightControlsState extends State<PromptWeightControls> {
       44.0,
       double.infinity,
     );
-    return Column(
+    return Row(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            _buildStepper(context, extent),
-            if (widget.showEdit)
-              TextButton.icon(
-                key: const ValueKey('tag-edit-button'),
-                onPressed: widget.onEdit,
-                style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: Text(l10n.common_edit),
-              ),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (widget.caption != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: widget.caption!,
-                  ),
-                IconButton(
-                  tooltip: l10n.tooltip_resetWeight,
-                  onPressed: widget.enabled ? () => widget.onWeight(1) : null,
-                  constraints: BoxConstraints.tightFor(
-                    width: extent,
-                    height: extent,
-                  ),
-                  icon: const Icon(Icons.refresh, size: 18),
-                ),
-                ...widget.trailing,
-              ],
-            ),
-          ],
+        _buildStepper(context, extent),
+        if (widget.showEdit) ...[
+          const SizedBox(width: 6),
+          TextButton.icon(
+            key: const ValueKey('tag-edit-button'),
+            onPressed: widget.onEdit,
+            style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: Text(l10n.common_edit),
+          ),
+        ],
+        if (widget.caption != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: widget.caption!,
+          ),
+        IconButton(
+          tooltip: l10n.tooltip_resetWeight,
+          onPressed: widget.enabled ? () => widget.onWeight(1) : null,
+          constraints: BoxConstraints.tightFor(
+            width: extent,
+            height: extent,
+          ),
+          icon: const Icon(Icons.refresh, size: 18),
         ),
+        ...widget.trailing,
       ],
     );
   }
@@ -124,8 +114,9 @@ class _PromptWeightControlsState extends State<PromptWeightControls> {
     return Material(
       color: controlSurfaceColor(theme.colorScheme),
       borderRadius: BorderRadius.circular(8),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           IconButton(
             tooltip: l10n.tooltip_decreaseWeight,
@@ -133,20 +124,7 @@ class _PromptWeightControlsState extends State<PromptWeightControls> {
             constraints: BoxConstraints.tightFor(width: extent, height: extent),
             icon: const Icon(Icons.remove, size: 18),
           ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 160),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.caption != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                    child: widget.caption,
-                  ),
-                _buildValueInput(context),
-              ],
-            ),
-          ),
+          _buildValueInput(context),
           IconButton(
             tooltip: l10n.tooltip_increaseWeight,
             onPressed: widget.enabled ? () => widget.onStep(0.05) : null,
