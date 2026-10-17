@@ -106,9 +106,9 @@ class NaiPromptFormatter {
     }
 
     var content = line.substring(leadingWhitespace.length, contentEnd);
-    content = _normalizeHorizontalWhitespace(content)
-        .replaceAll('，', ',')
-        .replaceAll('。', ',');
+    content = _normalizePunctuation(content);
+    content = _cleanUnboundedColons(content);
+    content = _normalizeHorizontalWhitespace(content);
     // 将非数字间的英文句号（如 'tag. tag'）视作分隔符转为逗号，保护 '1.2::tag::' 中的浮点数小数点
     content = content.replaceAll(RegExp(r'(?<!\d)\.|\.(?!\d)'), ',');
     final keepsTrailingComma = content.endsWith(',');
@@ -143,6 +143,74 @@ class NaiPromptFormatter {
     }
 
     return '$leadingWhitespace$formatted$trailingWhitespace';
+  }
+
+  /// 转换中文全角标点符号为标准英文 ASCII 标点
+  static String _normalizePunctuation(String text) {
+    return text
+        .replaceAll('，', ',')
+        .replaceAll('。', '.')
+        .replaceAll('：', ':')
+        .replaceAll('；', ';')
+        .replaceAll('！', '!')
+        .replaceAll('？', '?')
+        .replaceAll('（', '(')
+        .replaceAll('）', ')')
+        .replaceAll('【', '[')
+        .replaceAll('】', ']')
+        .replaceAll('｛', '{')
+        .replaceAll('｝', '}')
+        .replaceAll('“', '"')
+        .replaceAll('”', '"')
+        .replaceAll('‘', "'")
+        .replaceAll('’', "'")
+        .replaceAll('、', ',');
+  }
+
+  /// 自动剔除没有边界/未配对闭合的孤立 ::
+  static String _cleanUnboundedColons(String text) {
+    if (!text.contains('::')) return text;
+    // 连续3个或以上冒号先折叠为标准双冒号
+    final sanitized = text.replaceAll(RegExp(r':{3,}'), '::');
+
+    final removals = <(int, int)>[];
+    final openStacks = <(int, int)>[];
+    var pos = 0;
+
+    while (pos < sanitized.length) {
+      final idx = sanitized.indexOf('::', pos);
+      if (idx == -1) break;
+      final cStart = idx;
+      final cEnd = idx + 2;
+
+      final prefix = sanitized.substring(0, cStart);
+      final numMatch = RegExp(r'(?:^|[\s,;\[\{\(\r\n])(-?\d+(?:\.\d+)?)$').firstMatch(prefix);
+
+      if (numMatch != null) {
+        final numStart = cStart - numMatch.group(1)!.length;
+        final after = sanitized.substring(cEnd).trimLeft();
+        if (after.startsWith('::') || after.isEmpty || after.startsWith(',') || after.startsWith(';') || after.startsWith('\n') || after.startsWith('\r')) {
+          removals.add((numStart, cEnd));
+        } else {
+          openStacks.add((numStart, cStart));
+        }
+      } else {
+        if (openStacks.isNotEmpty) {
+          openStacks.removeLast();
+        } else {
+          removals.add((cStart, cEnd));
+        }
+      }
+      pos = cEnd;
+    }
+
+    if (removals.isEmpty) return sanitized;
+    removals.sort((a, b) => b.$1.compareTo(a.$1));
+    var result = sanitized;
+    for (final removal in removals) {
+      result = result.replaceRange(removal.$1, removal.$2, '');
+    }
+    return result;
   }
 
   /// 统一行内空白字符，不跨越或删除换行。

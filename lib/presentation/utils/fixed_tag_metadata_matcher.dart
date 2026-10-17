@@ -349,6 +349,20 @@ List<String> _extractTags(String prompt) =>
 
 String _normalizeTag(String tag) {
   var result = tag.trim().toLowerCase();
+  result = result
+      .replaceAll('，', ',')
+      .replaceAll('。', '.')
+      .replaceAll('：', ':')
+      .replaceAll('；', ';')
+      .replaceAll('！', '!')
+      .replaceAll('？', '?')
+      .replaceAll('（', '(')
+      .replaceAll('）', ')')
+      .replaceAll('【', '[')
+      .replaceAll('】', ']')
+      .replaceAll('｛', '{')
+      .replaceAll('｝', '}')
+      .replaceAll('、', ',');
   result = result.replaceAll('_', ' ');
   final numericWeight = RegExp(
     r'^-?\d+(?:\.\d+)?::(.+?)(?:::)?$',
