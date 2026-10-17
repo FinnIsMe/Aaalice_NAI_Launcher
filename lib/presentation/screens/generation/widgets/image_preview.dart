@@ -756,6 +756,7 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
     bool comparisonEnabled = false,
     VoidCallback? onTapOverride,
   }) {
+    final isMultiSelectEnabled = ref.watch(generationImageMultiSelectProvider);
     final imageBytes = image.bytes;
     final canUseAsInput = image.canUseAsGenerationInput;
     final isFailedSnapshot = image.isFailedStreamSnapshot;

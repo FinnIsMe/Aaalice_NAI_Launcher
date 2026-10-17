@@ -677,6 +677,7 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
     required HistoryClickBehavior clickBehavior,
     required String? selectedPreviewId,
   }) {
+    final isMultiSelectEnabled = ref.watch(generationImageMultiSelectProvider);
     final previewDimensions = ref.watch(
       generationParamsNotifierProvider.select(selectPreviewDimensionsViewData),
     );
@@ -1079,6 +1080,7 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
     required HistoryClickBehavior clickBehavior,
     required String? selectedPreviewId,
   }) {
+    final isMultiSelectEnabled = ref.watch(generationImageMultiSelectProvider);
     final completedImages = state.currentImages;
 
     // 已完成的当前图像（支持选择）
