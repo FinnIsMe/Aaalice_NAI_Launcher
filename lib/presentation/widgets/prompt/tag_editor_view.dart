@@ -648,8 +648,7 @@ class _TagEditorViewState extends ConsumerState<TagEditorView> {
                       ? () => _action(TagEditorAction.edit)
                       : null,
                   onClose: session.clearSelection,
-                  caption: session.selectedTags.length == 1 &&
-                          Localizations.localeOf(context).languageCode.startsWith('zh')
+                  caption: session.selectedTags.length == 1
                       ? PromptTranslationCaption(
                           text: session.selectedTags.first.span.label,
                         )

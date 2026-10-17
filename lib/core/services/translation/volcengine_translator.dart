@@ -25,6 +25,13 @@ class VolcengineTranslator {
   bool _cacheLoaded = false;
   File? _cacheFile;
 
+  String? getCached(String text) {
+    final clean = text.trim();
+    if (clean.isEmpty) return null;
+    _ensureCacheLoaded();
+    return _cache[clean.toLowerCase()];
+  }
+
   String? _accessKeyId;
   String? _secretAccessKey;
 

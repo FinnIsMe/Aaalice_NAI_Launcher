@@ -386,9 +386,20 @@ class _WeightAdjustToolbar extends StatelessWidget {
       selection.start,
       selection.end,
     );
-    final caption = selected == null
-        ? null
-        : PromptWeightEditing.parseWeightSyntax(selected.text).baseText;
+    String? selectedText;
+    if (selection.isValid &&
+        !selection.isCollapsed &&
+        selection.start >= 0 &&
+        selection.end <= controller.text.length &&
+        selection.start < selection.end) {
+      selectedText =
+          controller.text.substring(selection.start, selection.end).trim();
+    } else if (selected != null) {
+      selectedText = selected.text.trim();
+    }
+    final caption = (selectedText != null && selectedText.isNotEmpty)
+        ? PromptWeightEditing.parseWeightSyntax(selectedText).baseText.trim()
+        : null;
     return PromptActionOverlay(
       anchor: caretRect,
       overlaySize: overlaySize,
@@ -404,9 +415,7 @@ class _WeightAdjustToolbar extends StatelessWidget {
               padding: const EdgeInsets.all(6),
               child: PromptWeightControls(
                 onClose: onClose,
-                caption:
-                    caption != null &&
-                        Localizations.localeOf(context).languageCode.startsWith('zh')
+                caption: (caption != null && caption.isNotEmpty)
                     ? PromptTranslationCaption(text: caption)
                     : null,
                 weight: PromptWeightEditing.parseSelection(controller).weight,
