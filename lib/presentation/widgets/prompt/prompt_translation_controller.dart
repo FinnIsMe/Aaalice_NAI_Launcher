@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/autocomplete/tag_translation_lookup.dart';
+import '../../../core/services/translation/volcengine_translator.dart';
 import '../../../core/utils/app_logger.dart';
 
 enum PromptTranslationStatus { pending, translated, missing, failed }
@@ -83,15 +84,19 @@ class PromptTranslationController extends ChangeNotifier {
     for (final text in texts) {
       _inFlight[text] = generation;
     }
-    Map<String, PromptTranslation> resolved;
+    Map<String, PromptTranslation> resolved = {};
     try {
       final translations = await lookup.translateBatch(texts.toList());
-      resolved = {
-        for (final text in texts)
-          text: _translation(
-            translations[TagTranslationLookup.normalizeTag(text)],
-          ),
-      };
+      for (final text in texts) {
+        var tr = translations[TagTranslationLookup.normalizeTag(text)];
+        if (tr == null || tr.trim().isEmpty) {
+          tr = await VolcengineTranslator.instance.translate(text);
+          if (tr != null && tr.trim().isNotEmpty) {
+            lookup.addTranslations({text: tr});
+          }
+        }
+        resolved[text] = _translation(tr);
+      }
     } catch (error, stack) {
       AppLogger.e('Prompt tag translation failed', error, stack);
       resolved = {

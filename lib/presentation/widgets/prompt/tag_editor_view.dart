@@ -20,6 +20,7 @@ import '../autocomplete/autocomplete_overlay_handle.dart';
 import '../common/app_toast.dart';
 import 'components/batch_selection/selection_overlay.dart';
 import 'prompt_action_overlay.dart';
+import 'prompt_translation_caption.dart';
 import 'prompt_translation_controller.dart';
 import 'prompt_weight_controls.dart';
 import 'tag_editor_tree.dart';
@@ -647,6 +648,12 @@ class _TagEditorViewState extends ConsumerState<TagEditorView> {
                       ? () => _action(TagEditorAction.edit)
                       : null,
                   onClose: session.clearSelection,
+                  caption: session.selectedTags.length == 1 &&
+                          Localizations.localeOf(context).languageCode.startsWith('zh')
+                      ? PromptTranslationCaption(
+                          text: session.selectedTags.first.span.payload,
+                        )
+                      : null,
                   weight: commands.weight,
                   enabled: widget.enabled && commands.canAdjust,
                   onWeight: (value) => commands.adjustWeight(value: value),

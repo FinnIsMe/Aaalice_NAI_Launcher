@@ -485,6 +485,22 @@ class LocalStorageService {
     await setSetting(StorageKeys.sdSyntaxAutoConvert, value);
   }
 
+  // ==================== Generation Image Multi-Select ====================
+
+  /// 获取是否启用生成图片多选功能 (默认关闭)
+  bool getGenerationImageMultiSelect() {
+    return getSetting<bool>(
+          StorageKeys.generationImageMultiSelectEnabled,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存是否启用生成图片多选功能
+  Future<void> setGenerationImageMultiSelect(bool value) async {
+    await setSetting(StorageKeys.generationImageMultiSelectEnabled, value);
+  }
+
   // ==================== Resolve Alias On Copy ====================
 
   /// 获取复制时是否展开词库别名 (默认关闭)

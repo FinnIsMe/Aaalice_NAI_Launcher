@@ -30,6 +30,7 @@ import '../../../../data/services/image_metadata_service.dart';
 import '../../../../data/models/metadata/metadata_import_options.dart';
 import '../../../utils/metadata_import_coordinator.dart';
 import '../../../providers/generation/generation_params_selectors.dart';
+import '../../../providers/generation/generation_settings_notifiers.dart';
 import '../../../providers/generation/preview_selection_provider.dart';
 import '../../../providers/history_click_behavior_provider.dart';
 import '../../../providers/image_generation_provider.dart';
@@ -182,6 +183,7 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
       ),
     );
     final theme = Theme.of(context);
+    final isMultiSelectEnabled = ref.watch(generationImageMultiSelectProvider);
     final clickBehavior = ref.watch(historyClickBehaviorNotifierProvider);
     final selectedPreviewId =
         clickBehavior == HistoryClickBehavior.selectPreview
@@ -242,8 +244,9 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                         ),
                         const SizedBox(width: 4),
                       ],
-                      if (state.history.isNotEmpty ||
-                          state.currentImages.isNotEmpty)
+                      if (isMultiSelectEnabled &&
+                          (state.history.isNotEmpty ||
+                              state.currentImages.isNotEmpty))
                         IconButton(
                           onPressed: () {
                             setState(() {
@@ -351,8 +354,9 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                     ],
                   ),
                   actions: [
-                    if (state.history.isNotEmpty ||
-                        state.currentImages.isNotEmpty)
+                    if (isMultiSelectEnabled &&
+                        (state.history.isNotEmpty ||
+                            state.currentImages.isNotEmpty))
                       IconButton(
                         onPressed: () {
                           setState(() {
@@ -423,7 +427,7 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
               ),
 
               // 底部操作栏（有选中时显示）
-              if (_selectedIds.isNotEmpty)
+              if (isMultiSelectEnabled && _selectedIds.isNotEmpty)
                 _buildBottomActions(context, state, theme),
             ],
           ),
@@ -820,10 +824,14 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                             allowRepeatedModifierTaps: true,
                             isFavorite: isFavorite,
                             dragPreparationReady: dragPreparationReady,
-                            enableSelection: historyImage.canBulkSelect,
-                            selectionMode: ref
-                                .read(generationImageCardSelectionProvider)
-                                .isActive,
+                            enableSelection:
+                                isMultiSelectEnabled &&
+                                historyImage.canBulkSelect,
+                            selectionMode:
+                                isMultiSelectEnabled &&
+                                ref
+                                    .read(generationImageCardSelectionProvider)
+                                    .isActive,
                             onSave: historyImage.canSave
                                 ? () => GenerationSaveService.saveImages(
                                     context,
@@ -862,18 +870,19 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                             pinnedHoverActions: _pinnedHoverActions,
                             onDelete: () =>
                                 _deletion.confirmAndDelete([historyImage]),
-                            onSelectionChanged: (selected) {
-                              if (!historyImage.canBulkSelect) {
-                                return;
-                              }
-                              setState(() {
-                                if (selected) {
-                                  _selection.enterAndSelect(historyImage.id);
-                                } else {
-                                  _selection.deselect(historyImage.id);
-                                }
-                              });
-                            },
+                            onSelectionChanged:
+                                isMultiSelectEnabled &&
+                                historyImage.canBulkSelect
+                                ? (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _selection.enterAndSelect(historyImage.id);
+                                      } else {
+                                        _selection.deselect(historyImage.id);
+                                      }
+                                    });
+                                  }
+                                : null,
                             onTap: () => _handleImageTap(
                               context,
                               historyImage,
@@ -884,7 +893,9 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                                     HistoryClickBehavior.selectPreview
                                 ? () => _showLinkedDetail(context, historyImage)
                                 : null,
-                            onLongPress: historyImage.canBulkSelect
+                            onLongPress:
+                                isMultiSelectEnabled &&
+                                historyImage.canBulkSelect
                                 ? () =>
                                       _selection.enterAndSelect(historyImage.id)
                                 : () =>
@@ -1093,10 +1104,11 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
           isFavorite: isFavorite,
           dragPreparationReady: dragPreparationReady,
           completionPreview: state.completionPreviews[image.id],
-          enableSelection: image.canBulkSelect,
-          selectionMode: ref
-              .read(generationImageCardSelectionProvider)
-              .isActive,
+          enableSelection: isMultiSelectEnabled && image.canBulkSelect,
+          selectionMode: isMultiSelectEnabled &&
+              ref
+                  .read(generationImageCardSelectionProvider)
+                  .isActive,
           onSave: image.canSave
               ? () => GenerationSaveService.saveImages(context, ref, [image])
               : null,
@@ -1118,23 +1130,22 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
           showHoverActionBar: false,
           pinnedHoverActions: _pinnedHoverActions,
           onDelete: () => _deletion.confirmAndDelete([image]),
-          onSelectionChanged: (selected) {
-            if (!image.canBulkSelect) {
-              return;
-            }
-            setState(() {
-              if (selected) {
-                _selection.enterAndSelect(image.id);
-              } else {
-                _selection.deselect(image.id);
-              }
-            });
-          },
+          onSelectionChanged: isMultiSelectEnabled && image.canBulkSelect
+              ? (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selection.enterAndSelect(image.id);
+                    } else {
+                      _selection.deselect(image.id);
+                    }
+                  });
+                }
+              : null,
           onTap: () => _handleImageTap(context, image, clickBehavior),
           onDoubleTap: clickBehavior == HistoryClickBehavior.selectPreview
               ? () => _showLinkedDetail(context, image)
               : null,
-          onLongPress: image.canBulkSelect
+          onLongPress: isMultiSelectEnabled && image.canBulkSelect
               ? () => _selection.enterAndSelect(image.id)
               : () => _showLinkedDetail(context, image),
           onFullscreen: () => _showLinkedDetail(context, image),

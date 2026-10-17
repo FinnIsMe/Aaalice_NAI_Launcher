@@ -33,6 +33,7 @@ import '../../../../data/services/image_metadata_service.dart';
 import '../../../adaptive/window_size_class.dart';
 import '../../../providers/generation/generation_error_classifier.dart';
 import '../../../providers/generation/generation_params_selectors.dart';
+import '../../../providers/generation/generation_settings_notifiers.dart';
 import '../../../providers/generation/image_generation_selectors.dart';
 import '../../../providers/generation/generation_view_state_provider.dart';
 import '../../../providers/generation/preview_selection_provider.dart';
@@ -225,7 +226,9 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
                   ),
                 ),
               ),
-              if (selection.isActive)
+              final isMultiSelectEnabled =
+                  ref.watch(generationImageMultiSelectProvider);
+              if (isMultiSelectEnabled && selection.isActive)
                 Builder(
                   builder: (context) => BulkActionBar(
                     selectedCount: selection.selectedCount,
@@ -781,28 +784,33 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
           : null,
       hoverEffectsEnabled: !comparisonEnabled,
       enableHoverScale: !comparisonEnabled,
-      enableSelection: image.canBulkSelect && !comparisonEnabled,
+      enableSelection:
+          isMultiSelectEnabled && image.canBulkSelect && !comparisonEnabled,
       showSelectionOnHover: false,
-      selectionMode: ref.watch(generationImageCardSelectionProvider).isActive,
-      isSelected: ref
-          .watch(generationImageCardSelectionProvider)
-          .isSelected(image.id),
+      selectionMode:
+          isMultiSelectEnabled &&
+          ref.watch(generationImageCardSelectionProvider).isActive,
+      isSelected:
+          isMultiSelectEnabled &&
+          ref.watch(generationImageCardSelectionProvider).isSelected(image.id),
       allowRepeatedModifierTaps: true,
-      onSelectionChanged: image.canBulkSelect
-          ? (selected) {
-              final selection = ref.read(
-                generationImageCardSelectionProvider.notifier,
-              );
-              selected
-                  ? selection.enterAndSelect(image.id)
-                  : selection.deselect(image.id);
-            }
-          : null,
-      onLongPress: image.canBulkSelect
-          ? () => ref
-                .read(generationImageCardSelectionProvider.notifier)
-                .enterAndSelect(image.id)
-          : null,
+      onSelectionChanged:
+          isMultiSelectEnabled && image.canBulkSelect
+              ? (selected) {
+                  final selection = ref.read(
+                    generationImageCardSelectionProvider.notifier,
+                  );
+                  selected
+                      ? selection.enterAndSelect(image.id)
+                      : selection.deselect(image.id);
+                }
+              : null,
+      onLongPress:
+          isMultiSelectEnabled && image.canBulkSelect
+              ? () => ref
+                    .read(generationImageCardSelectionProvider.notifier)
+                    .enterAndSelect(image.id)
+              : null,
       onSave: image.canSave
           ? () => GenerationSaveService.saveImages(context, ref, [image])
           : null,

@@ -4,6 +4,7 @@ import '../../../core/autocomplete/autocomplete_settings.dart'
     as completion_settings;
 import '../../../core/storage/local_storage_service.dart';
 import '../../../core/utils/app_logger.dart';
+import 'image_card_selection_provider.dart';
 
 part 'generation_settings_notifiers.g.dart';
 
@@ -246,3 +247,28 @@ class ImagesPerRequest extends _$ImagesPerRequest {
     _storage.setImagesPerRequest(state);
   }
 }
+
+/// 生成图片多选功能开关 Notifier
+class GenerationImageMultiSelectNotifier extends Notifier<bool> {
+  LocalStorageService get _storage => ref.read(localStorageServiceProvider);
+
+  @override
+  bool build() {
+    return _storage.getGenerationImageMultiSelect();
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    await _storage.setGenerationImageMultiSelect(value);
+    if (!value) {
+      ref.read(generationImageCardSelectionProvider.notifier).exit();
+    }
+  }
+
+  Future<void> toggle() => set(!state);
+}
+
+final generationImageMultiSelectProvider =
+    NotifierProvider<GenerationImageMultiSelectNotifier, bool>(
+  GenerationImageMultiSelectNotifier.new,
+);

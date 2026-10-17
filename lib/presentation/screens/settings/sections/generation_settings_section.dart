@@ -140,6 +140,9 @@ class _GenerationSettingsSectionState
     final streamPreviewEnabled = ref.watch(
       generationStreamPreviewSettingsProvider,
     );
+    final imageMultiSelectEnabled = ref.watch(
+      generationImageMultiSelectProvider,
+    );
     final storage = ref.watch(localStorageServiceProvider);
     final notificationSettings = ref.watch(
       notificationSettingsNotifierProvider,
@@ -233,6 +236,17 @@ class _GenerationSettingsSectionState
                       ),
                     );
                   }
+                },
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.checklist_rounded),
+                title: const Text('启用生成图片多选功能'),
+                subtitle: const Text('控制预览区与历史记录区图片是否显示复选框与批量操作入口'),
+                value: imageMultiSelectEnabled,
+                onChanged: (value) async {
+                  await ref
+                      .read(generationImageMultiSelectProvider.notifier)
+                      .set(value);
                 },
               ),
               LayoutBuilder(

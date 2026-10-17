@@ -406,7 +406,7 @@ class _WeightAdjustToolbar extends StatelessWidget {
                 onClose: onClose,
                 caption:
                     caption != null &&
-                        Localizations.localeOf(context).languageCode == 'zh'
+                        Localizations.localeOf(context).languageCode.startsWith('zh')
                     ? PromptTranslationCaption(text: caption)
                     : null,
                 weight: PromptWeightEditing.parseSelection(controller).weight,

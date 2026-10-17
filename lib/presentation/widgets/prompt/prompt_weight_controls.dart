@@ -95,6 +95,11 @@ class _PromptWeightControlsState extends State<PromptWeightControls> {
             Wrap(
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                if (widget.caption != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: widget.caption!,
+                  ),
                 IconButton(
                   tooltip: l10n.tooltip_resetWeight,
                   onPressed: widget.enabled ? () => widget.onWeight(1) : null,
@@ -105,16 +110,6 @@ class _PromptWeightControlsState extends State<PromptWeightControls> {
                   icon: const Icon(Icons.refresh, size: 18),
                 ),
                 ...widget.trailing,
-                if (widget.onClose != null)
-                  IconButton(
-                    tooltip: l10n.common_close,
-                    onPressed: widget.onClose,
-                    constraints: BoxConstraints.tightFor(
-                      width: extent,
-                      height: extent,
-                    ),
-                    icon: const Icon(Icons.close, size: 18),
-                  ),
               ],
             ),
           ],
