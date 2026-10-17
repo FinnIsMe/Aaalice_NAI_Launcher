@@ -154,6 +154,8 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
     );
     final theme = Theme.of(context);
     final selection = ref.watch(generationImageCardSelectionProvider);
+    final isMultiSelectEnabled =
+        ref.watch(generationImageMultiSelectProvider);
     final selectionNotifier = ref.read(
       generationImageCardSelectionProvider.notifier,
     );
@@ -226,8 +228,6 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
                   ),
                 ),
               ),
-              final isMultiSelectEnabled =
-                  ref.watch(generationImageMultiSelectProvider);
               if (isMultiSelectEnabled && selection.isActive)
                 Builder(
                   builder: (context) => BulkActionBar(
