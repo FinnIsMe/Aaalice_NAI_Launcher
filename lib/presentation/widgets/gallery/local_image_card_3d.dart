@@ -22,6 +22,8 @@ import '../../providers/share_image_settings_provider.dart';
 import '../../providers/copy_drag_watermark_provider.dart';
 import '../../providers/watermark_settings_provider.dart';
 import '../../utils/clipboard_image.dart';
+import 'package:collection/collection.dart';
+import '../../providers/image_action_settings_provider.dart';
 import '../common/app_toast.dart';
 import '../common/card_action_buttons.dart';
 import '../common/image_card_action.dart';
@@ -562,24 +564,17 @@ class _LocalImageCard3DState extends ConsumerState<LocalImageCard3D> {
         ? interactionPolicy.minimumControlExtent
         : 32.0;
 
-    ImageCardAction? findAction(ImageCardActionId id) {
-      for (final a in actions) {
-        if (a.id == id && a.visible) return a;
+    final configuredActions = ref
+        .watch(imageActionSettingsProvider)
+        .forScene(ImageActionScene.localGallery);
+
+    final orderedActiveActions = <ImageCardAction>[];
+    for (final id in configuredActions) {
+      final a = actions.firstWhereOrNull((x) => x.id == id && x.visible);
+      if (a != null) {
+        orderedActiveActions.add(a);
       }
-      return null;
     }
-
-    final copyPromptAction = findAction(ImageCardActionId.copyPrompt);
-    final copyImageAction = findAction(ImageCardActionId.copy);
-    final favoriteAction = findAction(ImageCardActionId.favorite);
-
-    final replicateAction = findAction(ImageCardActionId.sendToGeneration);
-    final inpaintAction = findAction(ImageCardActionId.inpaint);
-    final deleteAction = findAction(ImageCardActionId.delete);
-
-    final overflowActions = actions
-        .where((a) => a.visible && a.group == ImageCardActionGroup.use)
-        .toList();
 
     return Listener(
       behavior: HitTestBehavior.opaque,
@@ -588,91 +583,21 @@ class _LocalImageCard3DState extends ConsumerState<LocalImageCard3D> {
         scheduleMicrotask(() => _suppressCardTap = false);
       },
       onPointerCancel: (_) => _suppressCardTap = false,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 左列 (Column 1): 复制Prompt、复制图片、收藏
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (copyPromptAction != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: ImageCardOverlayActionButton(
-                    config: copyPromptAction,
-                    extent: extent,
-                  ),
-                ),
-              if (copyImageAction != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: ImageCardOverlayActionButton(
-                    config: copyImageAction,
-                    extent: extent,
-                  ),
-                ),
-              if (favoriteAction != null)
-                ImageCardOverlayActionButton(
-                  config: favoriteAction,
-                  extent: extent,
-                ),
-            ],
-          ),
-          const SizedBox(width: 4),
-          // 右列 (Column 2): 复刻、局部重绘、更多操作、删除
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (replicateAction != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: ImageCardOverlayActionButton(
-                    config: replicateAction,
-                    extent: extent,
-                  ),
-                ),
-              if (inpaintAction != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: ImageCardOverlayActionButton(
-                    config: inpaintAction,
-                    extent: extent,
-                  ),
-                ),
-              if (overflowActions.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: SizedBox.square(
-                    dimension: extent,
-                    child: IconButton(
-                      tooltip: context.l10n.localGallery_moreImageActions,
-                      padding: EdgeInsets.zero,
-                      style: ImageOverlayControlStyle.iconButton(
-                        context,
-                        extent: extent,
-                      ),
-                      icon: const Icon(Icons.send, size: 16),
-                      onPressed: () async {
-                        final anchor =
-                            context.findRenderObject()! as RenderBox;
-                        await ImageCardContextMenu.show(
-                          context: context,
-                          position: anchor.localToGlobal(Offset.zero),
-                          actions: overflowActions,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              if (deleteAction != null)
-                ImageCardOverlayActionButton(
-                  config: deleteAction,
-                  extent: extent,
-                ),
-            ],
-          ),
-        ],
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: widget.width - 16),
+        child: Wrap(
+          textDirection: TextDirection.rtl,
+          alignment: WrapAlignment.start,
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            for (final action in orderedActiveActions)
+              ImageCardOverlayActionButton(
+                config: action,
+                extent: extent,
+              ),
+          ],
+        ),
       ),
     );
   }

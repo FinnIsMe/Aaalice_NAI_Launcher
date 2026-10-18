@@ -55,6 +55,7 @@ class SelectableImageCard extends ConsumerStatefulWidget {
     this.showSelectionOnHover = true,
     this.showHoverActionBar = true,
     this.pinnedHoverActions = const [],
+    this.hoverActionIds,
     this.onUpscale,
     this.onReversePrompt,
     this.onImageToImage,
@@ -121,6 +122,7 @@ class SelectableImageCard extends ConsumerStatefulWidget {
   final bool showSelectionOnHover;
   final bool showHoverActionBar;
   final List<ImageCardActionId> pinnedHoverActions;
+  final List<ImageCardActionId>? hoverActionIds;
   final ImageCardCallback? onUpscale;
   final ImageCardCallback? onReversePrompt;
   final ImageCardCallback? onImageToImage;
@@ -200,6 +202,7 @@ class _SelectableImageCardState extends ConsumerState<SelectableImageCard>
     showSelectionOnHover: widget.showSelectionOnHover,
     showHoverActionBar: widget.showHoverActionBar,
     pinnedHoverActions: widget.pinnedHoverActions,
+    hoverActionIds: widget.hoverActionIds,
     onTap: _handleTap,
     onDoubleTap: widget.onDoubleTap,
     onLongPress: widget.onLongPress,

@@ -37,6 +37,7 @@ import '../../../providers/image_generation_provider.dart';
 import '../../../providers/local_gallery_provider.dart';
 import '../../../providers/reverse_prompt_provider.dart';
 import '../../../providers/share_image_settings_provider.dart';
+import '../../../providers/image_action_settings_provider.dart';
 import '../../../providers/copy_drag_watermark_provider.dart';
 import '../../../services/image_workflow_launcher.dart';
 import '../../../widgets/common/app_toast.dart';
@@ -108,13 +109,8 @@ class HistoryPanel extends ConsumerStatefulWidget {
 }
 
 class _HistoryPanelState extends ConsumerState<HistoryPanel> {
-  static const _pinnedHoverActions = [
-    ImageCardActionId.delete,
-    ImageCardActionId.copy,
-    ImageCardActionId.imageToImage,
-    ImageCardActionId.inpaint,
-    ImageCardActionId.save,
-  ];
+  List<ImageCardActionId> get _pinnedHoverActions =>
+      ref.watch(imageActionSettingsProvider).forScene(ImageActionScene.historyCard);
 
   // 历史栏最窄时一行两个按钮仍放得下完整文字，再多就换行。
   static const _batchButtonsPerRow = 2;
