@@ -128,6 +128,11 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
         setState(() => _paramsMenuMounted = false);
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _syncEmptyPanelsExpansion();
+      }
+    });
   }
 
   @override
@@ -190,9 +195,33 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
     return true;
   }
 
+  GenerationWorkbenchPanel _panelForModule(WebLeftPanelModule module) {
+    return switch (module) {
+      WebLeftPanelModule.img2img => GenerationWorkbenchPanel.img2img,
+      WebLeftPanelModule.character => GenerationWorkbenchPanel.characters,
+      WebLeftPanelModule.preciseReference =>
+        GenerationWorkbenchPanel.preciseReference,
+      WebLeftPanelModule.vibeTransfer => GenerationWorkbenchPanel.vibeTransfer,
+      WebLeftPanelModule.reversePrompt =>
+        GenerationWorkbenchPanel.reversePrompt,
+    };
+  }
+
+  void _syncEmptyPanelsExpansion() {
+    final expansionNotifier =
+        ref.read(generationPanelExpansionProvider.notifier);
+    for (final m in _baseModuleOrder) {
+      if (!_moduleHasData(m)) {
+        final panel = _panelForModule(m);
+        expansionNotifier.setExpanded(panel, false, resetManuallyClosed: true);
+      }
+    }
+  }
+
   /// 外部失焦/点击空闲区时触发模块重排判断与平滑过渡动画
   void triggerAutoSortIfChanged() {
     if (!mounted) return;
+    _syncEmptyPanelsExpansion();
     final targetOrder = _computeDesiredOrder();
     if (_ordersMatch(_displayOrder, targetOrder)) return;
 
@@ -236,6 +265,7 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
     WebLeftPanelModule module,
     WebPanelModulesState panelModules,
   ) {
+    if (_moduleHasData(module)) return true;
     return switch (module) {
       WebLeftPanelModule.img2img => true,
       WebLeftPanelModule.character => panelModules.showCharacter,

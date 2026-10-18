@@ -235,6 +235,15 @@ class PromptInputToolbar extends ConsumerWidget {
         .relatedTagsEnabled;
     final regexCount = ref.read(promptRegexRulesProvider).length;
     final modules = ref.read(webPanelModulesProvider);
+    final hasCharacter =
+        ref.read(characterPromptNotifierProvider).characters.isNotEmpty;
+    final hasPreciseRef =
+        ref.read(generationParamsNotifierProvider).preciseReferences.isNotEmpty;
+    final hasVibe =
+        ref.read(generationParamsNotifierProvider).vibeReferencesV4.isNotEmpty;
+    final hasTagExtraction =
+        ref.read(reversePromptProvider).images.isNotEmpty;
+
     final value = await showMenu<String>(
       context: context,
       position: position,
@@ -244,33 +253,37 @@ class PromptInputToolbar extends ConsumerWidget {
           context,
           theme,
           'module_character',
-          modules.showCharacter,
+          hasCharacter || modules.showCharacter,
           '角色区域',
-          '在左侧面板显示角色区域卡片',
+          hasCharacter ? '模块内有内容，已锁定显示' : '在左侧面板显示角色区域卡片',
+          locked: hasCharacter,
         ),
         _toggleItem(
           context,
           theme,
           'module_precise_ref',
-          modules.showPreciseReference,
+          hasPreciseRef || modules.showPreciseReference,
           '精准参考',
-          '在左侧面板显示精准参考卡片',
+          hasPreciseRef ? '模块内有内容，已锁定显示' : '在左侧面板显示精准参考卡片',
+          locked: hasPreciseRef,
         ),
         _toggleItem(
           context,
           theme,
           'module_vibe_transfer',
-          modules.showVibeTransfer,
+          hasVibe || modules.showVibeTransfer,
           '风格迁移',
-          '在左侧面板显示风格迁移/氛围参考卡片',
+          hasVibe ? '模块内有内容，已锁定显示' : '在左侧面板显示风格迁移/氛围参考卡片',
+          locked: hasVibe,
         ),
         _toggleItem(
           context,
           theme,
           'module_tag_extraction',
-          modules.showTagExtraction,
+          hasTagExtraction || modules.showTagExtraction,
           '反推',
-          '在左侧面板显示图片反推卡片',
+          hasTagExtraction ? '模块内有内容，已锁定显示' : '在左侧面板显示图片反推卡片',
+          locked: hasTagExtraction,
         ),
         const PopupMenuDivider(),
         _toggleItem(
@@ -333,13 +346,29 @@ class PromptInputToolbar extends ConsumerWidget {
     if (!context.mounted) return;
     switch (value) {
       case 'module_character':
-        ref.read(webPanelModulesProvider.notifier).toggleCharacter();
+        if (hasCharacter) {
+          AppToast.info(context, '角色区域内有内容，已强制显示不可关闭');
+        } else {
+          ref.read(webPanelModulesProvider.notifier).toggleCharacter();
+        }
       case 'module_precise_ref':
-        ref.read(webPanelModulesProvider.notifier).togglePreciseReference();
+        if (hasPreciseRef) {
+          AppToast.info(context, '精准参考内有内容，已强制显示不可关闭');
+        } else {
+          ref.read(webPanelModulesProvider.notifier).togglePreciseReference();
+        }
       case 'module_vibe_transfer':
-        ref.read(webPanelModulesProvider.notifier).toggleVibeTransfer();
+        if (hasVibe) {
+          AppToast.info(context, '风格迁移内有内容，已强制显示不可关闭');
+        } else {
+          ref.read(webPanelModulesProvider.notifier).toggleVibeTransfer();
+        }
       case 'module_tag_extraction':
-        ref.read(webPanelModulesProvider.notifier).toggleTagExtraction();
+        if (hasTagExtraction) {
+          AppToast.info(context, '反推模块内有内容，已强制显示不可关闭');
+        } else {
+          ref.read(webPanelModulesProvider.notifier).toggleTagExtraction();
+        }
       case 'autocomplete':
         ref.read(autocompleteSettingsProvider.notifier).toggle();
       case 'auto_format':
@@ -367,18 +396,32 @@ class PromptInputToolbar extends ConsumerWidget {
     String value,
     bool enabled,
     String title,
-    String subtitle,
-  ) => PopupMenuItem<String>(
+    String subtitle, {
+    bool locked = false,
+  }) => PopupMenuItem<String>(
     value: value,
     child: Row(
       children: [
         Icon(
           enabled ? Icons.check_box : Icons.check_box_outline_blank,
           size: 20,
-          color: enabled ? theme.colorScheme.primary : null,
+          color: enabled
+              ? (locked
+                  ? theme.colorScheme.primary.withValues(alpha: 0.7)
+                  : theme.colorScheme.primary)
+              : null,
         ),
         const SizedBox(width: 12),
         Expanded(child: _menuLabels(theme, title, subtitle)),
+        if (locked)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Icon(
+              Icons.lock_outline,
+              size: 16,
+              color: theme.colorScheme.outline,
+            ),
+          ),
       ],
     ),
   );

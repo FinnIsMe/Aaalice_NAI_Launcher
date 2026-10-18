@@ -720,6 +720,7 @@ class _LocalImageCard3DState extends ConsumerState<LocalImageCard3D> {
       );
     }
     ref.read(generationParamsNotifierProvider.notifier).randomizeSeed();
+    ref.read(generationParamsNotifierProvider.notifier).updateNSamples(1);
 
     final bytes = await File(widget.record.path).readAsBytes();
     if (!mounted) return;

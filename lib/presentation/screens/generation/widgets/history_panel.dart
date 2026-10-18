@@ -109,11 +109,11 @@ class HistoryPanel extends ConsumerStatefulWidget {
 
 class _HistoryPanelState extends ConsumerState<HistoryPanel> {
   static const _pinnedHoverActions = [
-    ImageCardActionId.save,
+    ImageCardActionId.delete,
+    ImageCardActionId.copy,
     ImageCardActionId.imageToImage,
     ImageCardActionId.inpaint,
-    ImageCardActionId.copy,
-    ImageCardActionId.delete,
+    ImageCardActionId.save,
   ];
 
   // 历史栏最窄时一行两个按钮仍放得下完整文字，再多就换行。
@@ -317,6 +317,8 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                 )
               else
                 WorkspacePanelHeader(
+                  height: 28,
+                  verticalPadding: 0,
                   leading: _buildCollapseButton(),
                   icon: Icons.history_rounded,
                   title: Row(
@@ -326,7 +328,8 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                           context.l10n.generation_historyRecord,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -336,16 +339,18 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                         const SizedBox(width: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 2,
+                            horizontal: 4,
+                            vertical: 1,
                           ),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             '${_getAllSelectableImages(state).length}',
                             style: theme.textTheme.labelSmall?.copyWith(
+                              fontSize: 10,
+                              height: 1.1,
                               color: theme.colorScheme.onPrimaryContainer,
                             ),
                           ),
@@ -358,6 +363,17 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                         (state.history.isNotEmpty ||
                             state.currentImages.isNotEmpty))
                       IconButton(
+                        padding: EdgeInsets.zero,
+                        style: IconButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: theme.colorScheme.primary,
+                        ),
+                        constraints: const BoxConstraints.tightFor(
+                          width: 22,
+                          height: 22,
+                        ),
                         onPressed: () {
                           setState(() {
                             final allImages = _getAllSelectableImages(state);
@@ -377,37 +393,34 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                                   _getAllSelectableImages(state).length
                               ? Icons.deselect
                               : Icons.select_all,
-                          size: 20,
+                          size: 16,
                         ),
                         tooltip:
                             _selectedIds.length ==
-                                _getAllSelectableImages(state).length
-                            ? context.l10n.common_deselectAll
-                            : context.l10n.common_selectAll,
-                        style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary,
-                        ),
-                        constraints: BoxConstraints.tightFor(
-                          width: context.interactionPolicy.minimumControlExtent,
-                          height:
-                              context.interactionPolicy.minimumControlExtent,
-                        ),
+                                    _getAllSelectableImages(state).length
+                                ? context.l10n.common_deselectAll
+                                : context.l10n.common_selectAll,
                       ),
                     if (state.history.isNotEmpty ||
-                        state.currentImages.isNotEmpty)
+                        state.currentImages.isNotEmpty) ...[
+                      const SizedBox(width: 2),
                       IconButton(
-                        onPressed: () => _showClearDialog(context, ref),
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        tooltip: context.l10n.common_clear,
+                        padding: EdgeInsets.zero,
                         style: IconButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           foregroundColor: theme.colorScheme.error,
                         ),
-                        constraints: BoxConstraints.tightFor(
-                          width: context.interactionPolicy.minimumControlExtent,
-                          height:
-                              context.interactionPolicy.minimumControlExtent,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 22,
+                          height: 22,
                         ),
+                        onPressed: () => _showClearDialog(context, ref),
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        tooltip: context.l10n.common_clear,
                       ),
+                    ],
                   ],
                 ),
               if (widget.embedded) const ThemedDivider(height: 1),
@@ -446,14 +459,17 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
           () => ref
               .read(layoutStateNotifierProvider.notifier)
               .setRightPanelExpanded(false),
-      icon: const Icon(Icons.chevron_right),
+      icon: const Icon(Icons.chevron_right, size: 16),
       tooltip: onClose != null
           ? MaterialLocalizations.of(context).closeButtonTooltip
           : context.l10n.common_collapse,
-      constraints: BoxConstraints.tightFor(
-        width: context.interactionPolicy.minimumControlExtent,
-        height: context.interactionPolicy.minimumControlExtent,
+      padding: EdgeInsets.zero,
+      style: IconButton.styleFrom(
+        minimumSize: Size.zero,
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
+      constraints: const BoxConstraints.tightFor(width: 22, height: 22),
     );
   }
 

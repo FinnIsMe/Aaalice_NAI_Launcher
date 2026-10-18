@@ -339,16 +339,6 @@ class _FixedTagsSidebarState extends ConsumerState<FixedTagsSidebar> {
                     ref
                         .read(layoutStateNotifierProvider.notifier)
                         .setFixedTagsSidebarViewMode(nextMode);
-                    if (nextMode == 'list') {
-                      final currentWidth = ref
-                          .read(layoutStateNotifierProvider)
-                          .fixedTagsSidebarWidth;
-                      if (currentWidth < 280.0) {
-                        ref
-                            .read(layoutStateNotifierProvider.notifier)
-                            .setFixedTagsSidebarWidth(280.0);
-                      }
-                    }
                   },
                 ),
               ),

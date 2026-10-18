@@ -609,7 +609,7 @@ void main() {
     expect(tester.getSize(find.byType(IconButton)), const Size.square(40));
   });
 
-  testWidgets('右上操作轨：悬停动作在前、收藏在最后，同高同尺寸', (tester) async {
+  testWidgets('右上操作轨：收藏在最左侧、悬停动作在后，同高同尺寸', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -647,8 +647,8 @@ void main() {
     expect(copy.size, const Size.square(40));
     expect(delete.size, const Size.square(40));
     expect(favorite.size, const Size.square(40));
+    expect(copy.left - favorite.right, 4);
     expect(delete.left - copy.right, 4);
-    expect(favorite.left - delete.right, 4);
     expect(copy.center.dy, favorite.center.dy);
 
     final favoriteStyle = tester

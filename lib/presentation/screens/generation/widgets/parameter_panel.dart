@@ -75,13 +75,22 @@ class ParameterPanel extends ConsumerWidget {
         const SizedBox(height: 16),
 
         // 角色编辑承接完整生成参数，并与下方辅助输入面板保持同级。
-        if (showCharacterEditor && panelModules.showCharacter) ...[
+        if (showCharacterEditor &&
+            (panelModules.showCharacter ||
+                ref.watch(
+                  characterPromptNotifierProvider.select(
+                    (s) => s.characters.isNotEmpty,
+                  ),
+                ))) ...[
           const InlineCharacterSection(),
           const SizedBox(height: 8),
         ],
 
         // 反推面板
-        if (panelModules.showTagExtraction) ...[
+        if (panelModules.showTagExtraction ||
+            ref.watch(
+              reversePromptProvider.select((s) => s.images.isNotEmpty),
+            )) ...[
           const ReversePromptPanel(),
           const SizedBox(height: 8),
         ],
@@ -90,13 +99,23 @@ class ParameterPanel extends ConsumerWidget {
         const Img2ImgPanel(),
 
         // 风格迁移面板 (Vibe Transfer)
-        if (panelModules.showVibeTransfer) ...[
+        if (panelModules.showVibeTransfer ||
+            ref.watch(
+              generationParamsNotifierProvider.select(
+                (p) => p.vibeReferencesV4.isNotEmpty,
+              ),
+            )) ...[
           const SizedBox(height: 8),
           const UnifiedReferencePanel(),
         ],
 
         // Precise Reference 面板 (角色/风格参考)
-        if (panelModules.showPreciseReference) ...[
+        if (panelModules.showPreciseReference ||
+            ref.watch(
+              generationParamsNotifierProvider.select(
+                (p) => p.preciseReferences.isNotEmpty,
+              ),
+            )) ...[
           const SizedBox(height: 8),
           const PreciseReferencePanel(),
         ],
@@ -155,6 +174,7 @@ class _GenerationOutputSettingsSection extends ConsumerWidget {
               child: DraggableNumberInput(
                 value: nSamples,
                 min: 1,
+                max: 6,
                 prefix: '×',
                 onChanged: (value) => ref
                     .read(generationParamsNotifierProvider.notifier)

@@ -224,6 +224,13 @@ class LayoutStateNotifier extends _$LayoutStateNotifier {
         fixedTagsSidebarWidth: 280.0,
       );
       await storage.setFixedTagsSidebarWidth(280.0);
+    } else if (normalized == 'grid') {
+      // 点击切换由列表转换为卡片模式时，自动缩小到最小宽度 (180.0)
+      state = state.copyWith(
+        fixedTagsSidebarViewMode: normalized,
+        fixedTagsSidebarWidth: 180.0,
+      );
+      await storage.setFixedTagsSidebarWidth(180.0);
     } else {
       state = state.copyWith(fixedTagsSidebarViewMode: normalized);
     }

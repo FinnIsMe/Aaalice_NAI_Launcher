@@ -71,6 +71,7 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
     final sampleCountInput = DraggableNumberInput(
       value: nSamples,
       min: 1,
+      max: 6,
       prefix: '×',
       onChanged: (value) {
         ref
