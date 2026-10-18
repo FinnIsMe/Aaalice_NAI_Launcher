@@ -19,7 +19,10 @@ import 'prompt_input_controller.dart';
 import 'prompt_input_models.dart';
 import 'generation_param_sections.dart';
 import 'prompt_type_switch.dart';
+import '../../../providers/character_prompt_provider.dart';
 import '../../../providers/generation/web_panel_modules_provider.dart';
+import '../../../providers/reverse_prompt_provider.dart';
+import '../../../widgets/common/app_toast.dart';
 
 class PromptInputToolbar extends ConsumerWidget {
   const PromptInputToolbar({

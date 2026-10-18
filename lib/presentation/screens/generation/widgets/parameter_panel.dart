@@ -12,7 +12,9 @@ import 'img2img_panel.dart';
 import 'precise_reference_panel.dart';
 import 'reverse_prompt_panel.dart';
 import 'unified_reference_panel.dart';
+import '../../../providers/character_prompt_provider.dart';
 import '../../../providers/generation/web_panel_modules_provider.dart';
+import '../../../providers/reverse_prompt_provider.dart';
 
 /// 参数面板组件（经典布局与移动端使用）
 ///
