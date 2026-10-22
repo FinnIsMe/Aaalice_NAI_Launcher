@@ -406,6 +406,7 @@ class SeedSection extends ConsumerStatefulWidget {
 class _SeedSectionState extends ConsumerState<SeedSection> {
   late final TextEditingController _seedController;
   late final FocusNode _seedFocusNode;
+  bool _isHovered = false;
 
   @override
   void initState() {
@@ -455,23 +456,40 @@ class _SeedSectionState extends ConsumerState<SeedSection> {
         Row(
           children: [
             Expanded(
-              child: ThemedInput(
-                controller: _seedController,
-                focusNode: _seedFocusNode,
-                hintText: context.l10n.generation_seedRandom,
-                keyboardType: TextInputType.number,
-                onChanged: (value) {
-                  // 清空输入框时自动变成随机 (-1)
-                  final newSeed = value.isEmpty
-                      ? -1
-                      : (int.tryParse(value) ?? -1);
-                  if (newSeed != seed) {
-                    ref
-                        .read(generationParamsNotifierProvider.notifier)
-                        .updateSeed(newSeed);
-                  }
-                },
-                suffixIcon: seed == -1
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) => setState(() => _isHovered = true),
+                onExit: (_) => setState(() => _isHovered = false),
+                child: Tooltip(
+                  message: seed == -1
+                      ? context.l10n.generation_seedRandom
+                      : '$seed -> ${context.l10n.generation_seedRandom}',
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _isHovered
+                            ? theme.colorScheme.primary.withValues(alpha: 0.45)
+                            : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: ThemedInput(
+                      controller: _seedController,
+                      focusNode: _seedFocusNode,
+                      readOnly: true,
+                      hintText: context.l10n.generation_seedRandom,
+                      surfaceColor: _isHovered
+                          ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                          : null,
+                      onTap: () {
+                        _seedController.clear();
+                        ref
+                            .read(generationParamsNotifierProvider.notifier)
+                            .updateSeed(-1);
+                      },
+                      suffixIcon: seed == -1
                     ? null
                     : Row(
                         mainAxisSize: MainAxisSize.min,
@@ -506,6 +524,9 @@ class _SeedSectionState extends ConsumerState<SeedSection> {
                           const SizedBox(width: 4),
                         ],
                       ),
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 8),

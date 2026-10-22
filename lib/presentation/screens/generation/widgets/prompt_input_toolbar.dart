@@ -713,6 +713,7 @@ class CompactSeedInput extends ConsumerStatefulWidget {
 class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  bool _isHovered = false;
 
   @override
   void initState() {
@@ -762,44 +763,79 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              keyboardType: TextInputType.number,
-              textAlignVertical: TextAlignVertical.center,
-              style: const TextStyle(
-                fontSize: 11.5,
-                color: grassGreen,
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: InputDecoration(
-                filled: false,
-                isDense: true,
-                prefixText: 'Seed: ',
-                prefixStyle: const TextStyle(
-                  fontSize: 11.5,
-                  color: grassGreen,
-                  fontWeight: FontWeight.w600,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onEnter: (_) => setState(() => _isHovered = true),
+              onExit: (_) => setState(() => _isHovered = false),
+              child: Tooltip(
+                message: seed == -1
+                    ? context.l10n.generation_seedRandom
+                    : '$seed -> ${context.l10n.generation_seedRandom}',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    _controller.clear();
+                    ref
+                        .read(generationParamsNotifierProvider.notifier)
+                        .updateSeed(-1);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _isHovered
+                          ? grassGreen.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _isHovered
+                            ? grassGreen.withValues(alpha: 0.35)
+                            : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: IgnorePointer(
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        readOnly: true,
+                        enableInteractiveSelection: false,
+                        canRequestFocus: false,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: _isHovered
+                              ? grassGreen
+                              : grassGreen.withValues(alpha: 0.95),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: InputDecoration(
+                          filled: false,
+                          isDense: true,
+                          prefixText: 'Seed: ',
+                          prefixStyle: const TextStyle(
+                            fontSize: 11.5,
+                            color: grassGreen,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          hintText: context.l10n.generation_seedRandom,
+                          hintStyle: TextStyle(
+                            fontSize: 11,
+                            color: grassGreen.withValues(alpha: 0.6),
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                hintText: context.l10n.generation_seedRandom,
-                hintStyle: TextStyle(
-                  fontSize: 11,
-                  color: grassGreen.withValues(alpha: 0.6),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                focusedErrorBorder: InputBorder.none,
               ),
-              onChanged: (value) {
-                final newSeed = value.isEmpty ? -1 : (int.tryParse(value) ?? -1);
-                if (newSeed != seed) {
-                  ref.read(generationParamsNotifierProvider.notifier).updateSeed(newSeed);
-                }
-              },
             ),
           ),
           // 1. 清空 (设为随机 -1)
