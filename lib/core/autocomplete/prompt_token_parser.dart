@@ -13,12 +13,13 @@ class PromptTokenParser {
     caseSensitive: false,
   );
   static final RegExp _lineBreak = RegExp(r'[\r\n]');
-  static final RegExp _tagSeparator = RegExp(r'[,\n]');
-  static final RegExp _tagSeparatorWithSpaces = RegExp(r'[,\n\s]+');
+  static final RegExp _tagSeparator = RegExp(r'[,，\n]|::');
+  static final RegExp _tagSeparatorWithSpaces = RegExp(r'[,，\n\s]+|::');
   static final RegExp _syntaxSuffix = RegExp(
     r'^(?::\s*-?\d+(?:\.\d+)?)?[\}\]\)]*',
   );
-  static final RegExp _leadingComma = RegExp(r'^\s*,\s*');
+  static final RegExp _leadingComma = RegExp(r'^\s*[,，]\s*');
+  static final RegExp _leadingDoubleColon = RegExp(r'^\s*::');
 
   static CompletionQuery parse({
     required String text,
@@ -77,13 +78,35 @@ class PromptTokenParser {
     var start = cursor.clamp(lowerBound, upperBound);
     var end = start;
 
-    while (start > lowerBound &&
-        !_isSeparator(text.codeUnitAt(start - 1), splitOnSpaces)) {
-      start--;
-    }
-    while (end < upperBound &&
-        !_isSeparator(text.codeUnitAt(end), splitOnSpaces)) {
-      end++;
+    if (cursor > lowerBound &&
+        cursor < upperBound &&
+        text.codeUnitAt(cursor - 1) == 0x3a &&
+        text.codeUnitAt(cursor) == 0x3a) {
+      start = cursor;
+      end = cursor;
+    } else {
+      while (start > lowerBound) {
+        if (_isSeparator(text.codeUnitAt(start - 1), splitOnSpaces)) {
+          break;
+        }
+        if (start >= lowerBound + 2 &&
+            text.codeUnitAt(start - 1) == 0x3a &&
+            text.codeUnitAt(start - 2) == 0x3a) {
+          break;
+        }
+        start--;
+      }
+      while (end < upperBound) {
+        if (_isSeparator(text.codeUnitAt(end), splitOnSpaces)) {
+          break;
+        }
+        if (end + 2 <= upperBound &&
+            text.codeUnitAt(end) == 0x3a &&
+            text.codeUnitAt(end + 1) == 0x3a) {
+          break;
+        }
+        end++;
+      }
     }
 
     final raw = text.substring(start, end);
@@ -172,12 +195,20 @@ class PromptTokenParser {
       contentOnly: true,
     );
     final upperBound = negativeBlock?.contentRange.end ?? text.length;
-    while (insertionPosition < upperBound &&
-        !_isSeparator(text.codeUnitAt(insertionPosition), splitOnSpaces)) {
+    while (insertionPosition < upperBound) {
+      if (_isSeparator(text.codeUnitAt(insertionPosition), splitOnSpaces)) {
+        break;
+      }
+      if (insertionPosition + 2 <= upperBound &&
+          text.codeUnitAt(insertionPosition) == 0x3a &&
+          text.codeUnitAt(insertionPosition + 1) == 0x3a) {
+        break;
+      }
       insertionPosition++;
     }
     if (insertionPosition < upperBound &&
-        text.codeUnitAt(insertionPosition) == 0x2c) {
+        (text.codeUnitAt(insertionPosition) == 0x2c ||
+            text.codeUnitAt(insertionPosition) == 0xff0c)) {
       insertionPosition++;
       while (insertionPosition < upperBound &&
           (text.codeUnitAt(insertionPosition) == 0x20 ||
@@ -313,14 +344,21 @@ class PromptTokenParser {
     if (query.relatedTag != null && range.start == range.end) {
       final alreadySeparated =
           before.trimRight().endsWith(',') ||
+          before.trimRight().endsWith('，') ||
           before.trimRight().endsWith('\n') ||
-          before.trimRight().endsWith('\r');
+          before.trimRight().endsWith('\r') ||
+          before.trimRight().endsWith('::');
       final prefix = before.isEmpty || alreadySeparated ? '' : ', ';
       final contentAfter = negativeBlock == null
           ? after
           : text.substring(range.end, negativeBlock.contentRange.end);
-      final hasFollowingTag = contentAfter.trimLeft().isNotEmpty;
-      final suffix = autoInsertComma || hasFollowingTag ? ', ' : '';
+      final hasFollowingTag = contentAfter.trimLeft().isNotEmpty &&
+          !contentAfter.trimLeft().startsWith('::');
+      final suffix =
+          (autoInsertComma && !contentAfter.trimLeft().startsWith('::')) ||
+                  hasFollowingTag
+              ? ', '
+              : '';
       final insertion = '$prefix$tag$suffix';
       final result = '$before$insertion$after';
       return (text: result, cursorPosition: before.length + insertion.length);
@@ -336,7 +374,12 @@ class PromptTokenParser {
           .group(0)!;
       final contentAfterSyntax = after.substring(syntaxSuffix.length);
       final existingComma = _leadingComma.firstMatch(contentAfterSyntax);
-      if (existingComma == null) {
+      final existingDoubleColon =
+          _leadingDoubleColon.firstMatch(contentAfterSyntax);
+      if (existingDoubleColon != null) {
+        insertion = '$insertion$syntaxSuffix';
+        after = contentAfterSyntax;
+      } else if (existingComma == null) {
         insertion = '$insertion$syntaxSuffix, ';
         after = contentAfterSyntax;
       } else {
@@ -349,6 +392,14 @@ class PromptTokenParser {
     return (text: result, cursorPosition: before.length + insertion.length);
   }
 
+  static final RegExp _weightPrefixPattern = RegExp(
+    r'^(?:-?(?:\d+\.?\d*|\.\d+)::|::|[\s\{\[\(])+',
+  );
+  static final RegExp _weightSuffixPattern = RegExp(
+    r'(?:::|[\s\}\]\)])+$',
+  );
+  static final RegExp _numericOnly = RegExp(r'^-?\d+(?:\.\d+)?$');
+
   static bool _sameSemanticTags(
     String previousText,
     String currentText,
@@ -360,7 +411,7 @@ class PromptTokenParser {
       return _semanticText(parsed)
           .split(separator)
           .map(_normalizeExistingTag)
-          .where((tag) => tag.isNotEmpty)
+          .where((tag) => tag.isNotEmpty && !_numericOnly.hasMatch(tag))
           .toList(growable: false);
     }
 
@@ -375,14 +426,15 @@ class PromptTokenParser {
 
   static bool _isSeparator(int codeUnit, bool splitOnSpaces) =>
       codeUnit == 0x2c ||
+      codeUnit == 0xff0c ||
       codeUnit == 0x0a ||
       codeUnit == 0x0d ||
       (splitOnSpaces && (codeUnit == 0x20 || codeUnit == 0x09));
 
   static String _normalizeExistingTag(String raw) {
     var value = raw.trim();
-    value = value.replaceFirst(_weightPrefix, '');
-    value = value.replaceFirst(_weightSuffix, '');
+    value = value.replaceFirst(_weightPrefixPattern, '');
+    value = value.replaceFirst(_weightSuffixPattern, '');
     value = value.replaceFirst(_weightNumberSuffix, '');
     value = value.replaceFirst(_artistCategoryPrefix, '');
     return value.trim().replaceAll(' ', '_').toLowerCase();
@@ -397,7 +449,11 @@ class PromptTokenParser {
     final separator = splitOnSpaces ? _tagSeparatorWithSpaces : _tagSeparator;
     for (final segment in _semanticText(parsed).split(separator)) {
       final normalized = _normalizeExistingTag(segment);
-      if (normalized.isNotEmpty && normalized != token) tags.add(normalized);
+      if (normalized.isNotEmpty &&
+          normalized != token &&
+          !_numericOnly.hasMatch(normalized)) {
+        tags.add(normalized);
+      }
     }
     return tags;
   }

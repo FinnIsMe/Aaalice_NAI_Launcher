@@ -494,7 +494,8 @@ class CharacterPositionModeSegments extends ConsumerWidget {
       color: selected
           ? theme.colorScheme.primary
           : theme.colorScheme.onSurfaceVariant,
-      fontWeight: FontWeight.w500,
+      fontWeight: FontWeight.w600,
+      fontSize: 13,
     );
   }
 }

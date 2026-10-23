@@ -232,6 +232,36 @@ class ResizeCanvasAction extends EditorAction {
   String get description => 'Resize Canvas (${mode.label})';
 }
 
+/// 设置/变更选区操作（对标 PS 选区历史记录，纳入统一历史栈支持 Ctrl+Z 撤销/重做）
+class SetSelectionAction extends EditorAction {
+  final Path? previousPath;
+  final Path? newPath;
+  final String actionDescription;
+
+  SetSelectionAction({
+    required this.previousPath,
+    required this.newPath,
+    this.actionDescription = 'Set Selection',
+  });
+
+  @override
+  void execute(EditorState state) {
+    state.selectionManager.setSelection(newPath, saveHistory: false);
+    state.notifyRenderChange();
+    state.requestUiUpdate();
+  }
+
+  @override
+  void undo(EditorState state) {
+    state.selectionManager.setSelection(previousPath, saveHistory: false);
+    state.notifyRenderChange();
+    state.requestUiUpdate();
+  }
+
+  @override
+  String get description => actionDescription;
+}
+
 /// 选区随像素一起变化时，撤销/重做要把选区一并换回
 class SelectionChange {
   const SelectionChange({required this.before, required this.after});

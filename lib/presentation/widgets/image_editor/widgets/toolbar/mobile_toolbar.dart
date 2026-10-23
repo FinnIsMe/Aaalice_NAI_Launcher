@@ -8,6 +8,7 @@ import '../../tools/tool_base.dart';
 import '../../../../widgets/common/themed_divider.dart';
 import 'editor_tool_group_section.dart';
 import 'editor_toolbar_tools.dart';
+import '../../liquify/liquify_dialog.dart';
 
 /// 移动端底部工具栏
 class MobileToolbar extends StatelessWidget {
@@ -69,6 +70,12 @@ class MobileToolbar extends StatelessWidget {
                     tooltip: clearToolbarTooltip(context, state),
                     enabled: canClearFromToolbar(state),
                     onTap: onClear ?? state.clearActiveLayerWithHistory,
+                  ),
+                  _ActionButton(
+                    icon: Icons.waves,
+                    tooltip: '液化 (Liquify)',
+                    enabled: state.layerManager.activeLayer?.hasContent == true,
+                    onTap: () => LiquifyDialog.show(context, state),
                   ),
                 ],
               );

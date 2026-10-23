@@ -4,6 +4,8 @@ import '../../../core/utils/alias_parser.dart';
 import '../../../core/utils/character_prompt_block_parser.dart';
 import '../../../core/utils/prompt_edit_document.dart';
 import 'prompt_display_controller.dart';
+import '../../utils/text_sanitizer_utils.dart';
+
 
 /// NAI 语法高亮控制器
 /// 继承 TextEditingController，重写 buildTextSpan 实现语法着色
@@ -11,6 +13,15 @@ class NaiSyntaxController extends TextEditingController {
   PromptDisplayController? _displayController;
   PromptDisplayController get displayController =>
       _displayController ??= PromptDisplayController(this);
+
+  @override
+  set value(TextEditingValue newValue) {
+    if (newValue.composing.isValid && !newValue.composing.isCollapsed) {
+      super.value = newValue;
+      return;
+    }
+    super.value = TextSanitizerUtils.sanitizeEditingValue(newValue);
+  }
 
   @override
   void dispose() {

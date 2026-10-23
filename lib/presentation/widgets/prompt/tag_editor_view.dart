@@ -15,6 +15,7 @@ import '../../adaptive/interaction_policy.dart';
 import '../../themes/core/layered_surface_style.dart';
 import '../../themes/core/input_surface_style.dart';
 import '../../router/app_routes.dart';
+import '../../utils/text_sanitizer_utils.dart';
 import '../autocomplete/autocomplete_wrapper.dart';
 import '../autocomplete/autocomplete_overlay_handle.dart';
 import '../common/app_toast.dart';
@@ -772,6 +773,7 @@ class _TagEditorViewState extends ConsumerState<TagEditorView> {
           enabled: widget.enabled,
           maxLines: null,
           textInputAction: TextInputAction.done,
+          inputFormatters: [TextSanitizerInputFormatter()],
           decoration: InputDecoration(
             hintText: context.l10n.tagMode_add,
             filled: true,

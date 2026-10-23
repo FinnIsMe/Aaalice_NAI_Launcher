@@ -7,21 +7,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/character/character_prompt.dart';
 import '../../../data/models/image/image_params.dart' show ImageParamsExtension;
 import '../../adaptive/adaptive_presenter.dart';
-import '../../adaptive/interaction_policy.dart';
 import '../../prompt_assistant/providers/prompt_assistant_history_provider.dart';
-import '../prompt/prompt_editor_control_row.dart';
+import '../../providers/character_position_canvas_provider.dart';
 import '../../providers/character_prompt_provider.dart';
 import '../../providers/generation/character_editor_layout_provider.dart';
 import '../../providers/image_generation_provider.dart';
+import '../../utils/prompt_content_height_calculator.dart';
 import '../common/themed_confirm_dialog.dart';
 import '../common/vertical_resize_handle.dart';
 import '../prompt/toolbar/toolbar.dart';
 import '../prompt/unified/unified.dart';
+import 'add_to_library_dialog.dart';
 
-/// 角色提示词编辑器（正/负切换 + 统一提示词编辑器）
+/// 角色提示词编辑器（新版单行紧凑流）
 ///
-/// 官网布局的卡内编辑与经典布局的全宽编辑面板共用。
-/// 挂载时自动把光标送进当前输入框；输入实时写回 provider。
+/// 顶部单行合并栏：[选框(勾选+名称)] + [正向/负向宽Tab(填满中间)] + [...] + [X]
+/// 下方为纯净、高密度提示词编辑器（保留完整 Ctrl+F、自动补全、语法高亮、历史助手）。
 class CharacterPromptEditor extends ConsumerStatefulWidget {
   static String tapRegionGroupId(String characterId) =>
       'character-prompt-editor-$characterId';
@@ -29,12 +30,16 @@ class CharacterPromptEditor extends ConsumerStatefulWidget {
   final CharacterPrompt character;
   final bool compact;
   final bool autofocus;
+  final int index;
+  final int total;
 
   const CharacterPromptEditor({
     super.key,
     required this.character,
     this.compact = false,
     this.autofocus = false,
+    this.index = 0,
+    this.total = 1,
   });
 
   @override
@@ -42,7 +47,9 @@ class CharacterPromptEditor extends ConsumerStatefulWidget {
       _CharacterPromptEditorState();
 }
 
-class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
+class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor>
+    with TickerProviderStateMixin {
+  bool _isDragging = false;
   late final TextEditingController _promptController = TextEditingController(
     text: widget.character.prompt,
   );
@@ -55,6 +62,9 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
   /// 0 = 正向提示词，1 = 负向提示词
   int _tabIndex = 0;
 
+  AnimationController? _heightAnimController;
+  double? _animatedHeight;
+
   @override
   void initState() {
     super.initState();
@@ -66,16 +76,12 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
   @override
   void didUpdateWidget(CharacterPromptEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 切换编辑目标（同一面板复用 State）时重置输入框并重新聚焦
     if (oldWidget.character.id != widget.character.id) {
       _promptController.text = widget.character.prompt;
       _negativeController.text = widget.character.negativePrompt;
       _focusCurrentTab();
       return;
     }
-    // 外部状态变化（随机生成、词库导入等）时同步到输入框。
-    // 输入框聚焦中绝不同步：生命周期内的 controller.text 赋值会重置
-    // 光标并打断键盘输入连接，聚焦时以用户输入为准
     if (!_promptFocusNode.hasFocus &&
         widget.character.prompt != _promptController.text) {
       _promptController.text = widget.character.prompt;
@@ -88,6 +94,7 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
 
   @override
   void dispose() {
+    _heightAnimController?.dispose();
     _promptController.dispose();
     _negativeController.dispose();
     _promptFocusNode.dispose();
@@ -95,11 +102,12 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
     super.dispose();
   }
 
-  /// 输入框是否持有焦点（供外层 TapRegion 判断是否应退出编辑态）
   bool get hasEditorFocus =>
       _promptFocusNode.hasFocus || _negativeFocusNode.hasFocus;
 
   void _focusCurrentTab() {
+    _heightAnimController?.stop();
+    _animatedHeight = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       (_tabIndex == 0 ? _promptFocusNode : _negativeFocusNode).requestFocus();
@@ -136,18 +144,61 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
     _focusCurrentTab();
   }
 
+  void _animateToContentHeight(
+    String text,
+    double maxWidth,
+    double minimumHeight,
+    double maximumHeight,
+    CharacterEditorHeightKey heightKey,
+  ) {
+    if (!mounted) return;
+    final target = calculatePromptContentHeight(
+      context: context,
+      text: text,
+      maxWidth: maxWidth,
+      minimumHeight: minimumHeight,
+      maximumHeight: maximumHeight,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    );
+
+    setState(() {
+      _isDragging = false;
+      _animatedHeight = target;
+    });
+    ref.read(characterEditorHeightProvider(heightKey).notifier).state = target;
+  }
+
+  void _handleAction(BuildContext context, _CharacterCardAction action) {
+    final notifier = ref.read(characterPromptNotifierProvider.notifier);
+    switch (action) {
+      case _CharacterCardAction.position:
+        ref.read(characterPositionCanvasProvider.notifier).toggle();
+      case _CharacterCardAction.moveUp:
+        notifier.moveCharacterUp(widget.index);
+      case _CharacterCardAction.moveDown:
+        notifier.moveCharacterDown(widget.index);
+      case _CharacterCardAction.addToLibrary:
+        AddToLibraryDialog.show(
+          context,
+          name: widget.character.name,
+          content: widget.character.prompt,
+        );
+      case _CharacterCardAction.clearPrompt:
+        _clearCurrentPrompt();
+      case _CharacterCardAction.delete:
+        ref.read(selectedCharacterIdProvider.notifier).clear();
+        notifier.removeCharacter(widget.character.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final assistantSessionId = _tabIndex == 0
-        ? PromptHistorySessionIds.characterPrompt(widget.character.id)
-        : PromptHistorySessionIds.characterNegative(widget.character.id);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildEditorHeader(l10n, assistantSessionId),
-        const SizedBox(height: 6),
+        _buildMergedHeader(context),
         if (_tabIndex == 0)
           _buildPromptEditor(
             controller: _promptController,
@@ -169,47 +220,124 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
     );
   }
 
-  Widget _buildEditorHeader(AppLocalizations l10n, String sessionId) {
-    final positive = _tabIndex == 0;
-    final currentController = positive
-        ? _promptController
-        : _negativeController;
-    return PromptEditorControlRow(
-      sessionId: sessionId,
-      leading: Row(
+  Widget _buildMergedHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    final character = widget.character;
+
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.22),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
         children: [
-          Flexible(
-            child: _EditorTab(
-              label: l10n.prompt_positivePrompt,
-              selected: _tabIndex == 0,
-              onTap: () {
-                setState(() => _tabIndex = 0);
-                _focusCurrentTab();
+          // 1. [选框]: 启用/禁用勾选框
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: Checkbox(
+              value: character.enabled,
+              onChanged: (_) {
+                ref
+                    .read(characterPromptNotifierProvider.notifier)
+                    .toggleCharacterEnabled(character.id);
               },
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // 2. 角色名称 (点击就地重命名，无男女区分)
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 40, maxWidth: 110),
+            child: CharacterNameField(
+              character: character,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(
-            child: _EditorTab(
-              label: l10n.prompt_negativePrompt,
-              isNegative: true,
-              selected: _tabIndex == 1,
-              onTap: () {
-                setState(() => _tabIndex = 1);
-                _focusCurrentTab();
-              },
+          // 3. [正向 / 负向] 弹性伸缩 Tab（占满剩余所有空白空间）
+          Expanded(
+            child: Container(
+              height: 26,
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(
+                color: colorScheme.surface.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+                  width: 0.8,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _EditorTab(
+                      label: l10n.prompt_positivePrompt,
+                      selected: _tabIndex == 0,
+                      onTap: () {
+                        setState(() => _tabIndex = 0);
+                        _focusCurrentTab();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    child: _EditorTab(
+                      label: l10n.prompt_negativePrompt,
+                      isNegative: true,
+                      selected: _tabIndex == 1,
+                      onTap: () {
+                        setState(() => _tabIndex = 1);
+                        _focusCurrentTab();
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+          const SizedBox(width: 4),
+          // 4. [...] 更多选项按钮（在删除左边）
+          _CharacterActionsMenu(
+            onHeader: colorScheme.onSurfaceVariant,
+            canMoveUp: widget.index > 0,
+            canMoveDown: widget.index < widget.total - 1,
+            onSelected: (action) => _handleAction(context, action),
+          ),
+          // 5. [X] 删除角色按钮（直接删除当前角色，支持 0~n 个角色自由增删）
+          IconButton(
+            key: ValueKey('character-delete-${character.id}'),
+            icon: const Icon(Icons.close, size: 15),
+            tooltip: l10n.common_delete,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            onPressed: () {
+              ref.read(selectedCharacterIdProvider.notifier).clear();
+              ref
+                  .read(characterPromptNotifierProvider.notifier)
+                  .removeCharacter(character.id);
+            },
           ),
         ],
       ),
-      action: currentController.text.isEmpty
-          ? null
-          : IconButton(
-              key: const ValueKey('character-prompt-clear-button'),
-              tooltip: l10n.toolbar_clear,
-              onPressed: _clearCurrentPrompt,
-              icon: const Icon(Icons.clear, size: 20),
-            ),
     );
   }
 
@@ -247,66 +375,89 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor> {
     );
 
     final viewportHeight = MediaQuery.sizeOf(context).height;
-    final minimumHeight = widget.compact ? 88.0 : 112.0;
+    final minimumHeight = widget.compact ? 68.0 : 76.0;
     final maximumHeight = math.max(
       minimumHeight,
       math.min(viewportHeight * 0.5, widget.compact ? 360.0 : 480.0),
     );
     final heightKey = (characterId: widget.character.id, negative: isNegative);
     final storedHeight = ref.watch(characterEditorHeightProvider(heightKey));
-    final editorHeight = (storedHeight ?? minimumHeight)
-        .clamp(minimumHeight, maximumHeight)
-        .toDouble();
-    final resizeHandleHeight =
-        context.interactionPolicy.prefersTouchPresentation
-        ? context.interactionPolicy.minimumControlExtent
-        : 20.0;
     final fieldName = isNegative ? 'negative' : 'positive';
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          key: ValueKey('character-prompt-editor-area-$fieldName'),
-          height: editorHeight,
-          child: PromptEditorWithToolbar(
-            toolbarConfig: PromptEditorToolbarConfig.compactMode.copyWith(
-              showClearButton: false,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final editorHeight = (_animatedHeight ?? storedHeight ?? minimumHeight)
+            .clamp(minimumHeight, maximumHeight)
+            .toDouble();
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AnimatedContainer(
+              duration: _isDragging ? Duration.zero : const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              key: ValueKey('character-prompt-editor-area-$fieldName'),
+              height: editorHeight,
+              child: PromptEditorWithToolbar(
+                toolbarConfig: PromptEditorToolbarConfig.compactMode.copyWith(
+                  showClearButton: false,
+                ),
+                inputConfig: inputConfig,
+                controller: controller,
+                focusNode: focusNode,
+                sessionId: isNegative
+                    ? PromptHistorySessionIds.characterNegative(
+                        widget.character.id,
+                      )
+                    : PromptHistorySessionIds.characterPrompt(
+                        widget.character.id,
+                      ),
+                enableAssistant: !negativeLocked,
+                showTagModeSwitch: false,
+                assistantTapRegionGroupId:
+                    CharacterPromptEditor.tapRegionGroupId(
+                  widget.character.id,
+                ),
+                onChanged: onChanged,
+                onCleared: () => onChanged(''),
+                onFormatted: (formattedText) => _animateToContentHeight(
+                  formattedText,
+                  constraints.maxWidth,
+                  minimumHeight,
+                  maximumHeight,
+                  heightKey,
+                ),
+                expands: true,
+              ),
             ),
-            inputConfig: inputConfig,
-            controller: controller,
-            focusNode: focusNode,
-            sessionId: isNegative
-                ? PromptHistorySessionIds.characterNegative(widget.character.id)
-                : PromptHistorySessionIds.characterPrompt(widget.character.id),
-            enableAssistant: !negativeLocked,
-            showTagModeSwitch: false,
-            assistantTapRegionGroupId: CharacterPromptEditor.tapRegionGroupId(
-              widget.character.id,
+            VerticalResizeHandle(
+              key: ValueKey('character-prompt-resize-handle-$fieldName'),
+              height: 12.0,
+              onDragStart: () => setState(() => _isDragging = true),
+              onDragEnd: () => setState(() => _isDragging = false),
+              onDrag: (delta) {
+                _heightAnimController?.stop();
+                final heightState = ref.read(
+                  characterEditorHeightProvider(heightKey).notifier,
+                );
+                final currentHeight =
+                    (heightState.state ?? editorHeight).clamp(
+                  minimumHeight,
+                  maximumHeight,
+                );
+                final next = (currentHeight + delta)
+                    .clamp(minimumHeight, maximumHeight)
+                    .toDouble();
+                setState(() {
+                  _animatedHeight = next;
+                });
+                heightState.state = next;
+              },
             ),
-            onChanged: onChanged,
-            onCleared: () => onChanged(''),
-            expands: true,
-          ),
-        ),
-        VerticalResizeHandle(
-          key: ValueKey('character-prompt-resize-handle-$fieldName'),
-          height: resizeHandleHeight,
-          onDrag: (delta) {
-            final heightState = ref.read(
-              characterEditorHeightProvider(heightKey).notifier,
-            );
-            // Several pointer events can arrive before the next build.
-            final currentHeight = (heightState.state ?? editorHeight).clamp(
-              minimumHeight,
-              maximumHeight,
-            );
-            heightState.state = (currentHeight + delta)
-                .clamp(minimumHeight, maximumHeight)
-                .toDouble();
-          },
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -333,25 +484,25 @@ class _EditorTab extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(4),
       child: Container(
-        constraints: BoxConstraints(
-          minHeight: context.interactionPolicy.minimumControlExtent,
-        ),
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         decoration: BoxDecoration(
           color: selected
-              ? selectedColor.withValues(alpha: 0.12)
+              ? selectedColor.withValues(alpha: 0.18)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.labelMedium?.copyWith(
             color: selected ? selectedColor : colorScheme.onSurfaceVariant,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            fontSize: 13,
           ),
         ),
       ),
@@ -359,7 +510,117 @@ class _EditorTab extends StatelessWidget {
   }
 }
 
-/// 清空全部角色（带确认框），官网布局区块头与经典布局角色行共用
+enum _CharacterCardAction {
+  position,
+  moveUp,
+  moveDown,
+  addToLibrary,
+  clearPrompt,
+  delete,
+}
+
+class _CharacterActionsMenu extends StatelessWidget {
+  final Color onHeader;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final ValueChanged<_CharacterCardAction> onSelected;
+
+  const _CharacterActionsMenu({
+    required this.onHeader,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+
+    return PopupMenuButton<_CharacterCardAction>(
+      key: const Key('character-actions-menu'),
+      tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
+      onSelected: onSelected,
+      padding: EdgeInsets.zero,
+      icon: Icon(Icons.more_horiz, size: 16, color: onHeader),
+      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _CharacterCardAction.position,
+          child: _CharacterMenuLabel(
+            icon: Icons.control_camera,
+            label: l10n.characterCanvas_title,
+          ),
+        ),
+        PopupMenuItem(
+          value: _CharacterCardAction.moveUp,
+          enabled: canMoveUp,
+          child: _CharacterMenuLabel(
+            icon: Icons.arrow_upward,
+            label: l10n.characterEditor_moveUp,
+          ),
+        ),
+        PopupMenuItem(
+          value: _CharacterCardAction.moveDown,
+          enabled: canMoveDown,
+          child: _CharacterMenuLabel(
+            icon: Icons.arrow_downward,
+            label: l10n.characterEditor_moveDown,
+          ),
+        ),
+        PopupMenuItem(
+          value: _CharacterCardAction.addToLibrary,
+          child: _CharacterMenuLabel(
+            icon: Icons.library_add_outlined,
+            label: l10n.tagLibrary_addToLibrary,
+          ),
+        ),
+        PopupMenuItem(
+          value: _CharacterCardAction.clearPrompt,
+          child: _CharacterMenuLabel(
+            icon: Icons.clear_all,
+            label: l10n.common_clear,
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: _CharacterCardAction.delete,
+          child: _CharacterMenuLabel(
+            icon: Icons.delete_outline,
+            label: l10n.common_delete,
+            color: theme.colorScheme.error,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CharacterMenuLabel extends StatelessWidget {
+  const _CharacterMenuLabel({
+    required this.icon,
+    required this.label,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = color ?? Theme.of(context).colorScheme.onSurface;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: foreground),
+        const SizedBox(width: 10),
+        Text(label, style: TextStyle(color: foreground)),
+      ],
+    );
+  }
+}
+
+/// 清空全部角色（带确认框）
 Future<void> confirmClearAllCharacters(
   BuildContext context,
   WidgetRef ref,
@@ -406,9 +667,6 @@ Future<void> confirmClearAllCharacters(
 }
 
 /// 角色名称就地编辑框
-///
-/// 嵌在卡片/编辑面板头部的名字位置，点击即可直接改名，
-/// 输入实时写回 provider（空白输入不生效，保留原名）。
 class CharacterNameField extends ConsumerStatefulWidget {
   final CharacterPrompt character;
   final TextStyle? style;
@@ -428,8 +686,6 @@ class _CharacterNameFieldState extends ConsumerState<CharacterNameField> {
   @override
   void initState() {
     super.initState();
-    // 失焦提交：输入过程完全本地，不触发 provider 更新与整卡重建，
-    // 焦点和光标不会被打断
     _focusNode.addListener(_onFocusChanged);
   }
 
@@ -454,7 +710,6 @@ class _CharacterNameFieldState extends ConsumerState<CharacterNameField> {
       _controller.text = widget.character.name;
       return;
     }
-    // 外部改名（如词库导入覆盖）时同步；编辑中（持有焦点）不覆盖用户输入
     if (!_focusNode.hasFocus && widget.character.name != _controller.text) {
       _controller.text = widget.character.name;
     }
@@ -477,10 +732,11 @@ class _CharacterNameFieldState extends ConsumerState<CharacterNameField> {
       focusNode: _focusNode,
       maxLength: 50,
       maxLines: 1,
+      textAlignVertical: TextAlignVertical.center,
       style: widget.style,
       decoration: InputDecoration(
         isDense: true,
-        isCollapsed: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         filled: false,
         counterText: '',
         border: InputBorder.none,

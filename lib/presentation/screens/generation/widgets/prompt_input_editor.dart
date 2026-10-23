@@ -23,12 +23,14 @@ class PromptInputEditor extends ConsumerWidget {
     required this.commands,
     required this.viewData,
     this.compact = false,
+    this.onFormatted,
   });
 
   final PromptInputController controller;
   final PromptInputCommands commands;
   final PromptInputViewData viewData;
   final bool compact;
+  final ValueChanged<String>? onFormatted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,7 +73,7 @@ class PromptInputEditor extends ConsumerWidget {
             }
           },
           enabled: viewData.autoGrow && !compact && !viewData.isMaximized,
-          builder: (manualHeight) => Stack(
+          builder: (manualHeight, animateToContentHeight) => Stack(
             fit: StackFit.passthrough,
             children: [
               UnifiedPromptInput(
@@ -82,6 +84,10 @@ class PromptInputEditor extends ConsumerWidget {
                 ),
                 controller: promptController,
                 focusNode: focusNode,
+                onFormatted: (text) {
+                  animateToContentHeight(text);
+                  onFormatted?.call(text);
+                },
                 surfaceColor: compact
                     ? inputSurfaceFillColor(
                         Theme.of(context).colorScheme,

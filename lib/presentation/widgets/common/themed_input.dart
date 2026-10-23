@@ -1,8 +1,13 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/utils/keyboard_modifier_utils.dart';
 import '../../../core/utils/localization_extension.dart';
 import '../../adaptive/interaction_policy.dart';
+import '../../utils/prompt_phrase_selection_utils.dart';
+import '../../utils/text_sanitizer_utils.dart';
 import 'input_surface_container.dart';
 import 'themed_confirm_dialog.dart';
 import 'themed_text_selection_toolbar.dart';
@@ -137,6 +142,9 @@ class ThemedInput extends StatefulWidget {
   /// 读屏名称，可见标签不在输入框内时提供
   final String? semanticLabel;
 
+  /// 是否启用针对提示词的短语智能双击选择（<=3 词选整段，>3 词选单词）
+  final bool enableSmartPhraseSelection;
+
   const ThemedInput({
     super.key,
     this.controller,
@@ -182,6 +190,7 @@ class ThemedInput extends StatefulWidget {
     this.contextMenuBuilder,
     this.enableNativeRedoShortcut = true,
     this.semanticLabel,
+    this.enableSmartPhraseSelection = false,
   });
 
   /// 创建多行输入框
@@ -227,6 +236,7 @@ class ThemedInput extends StatefulWidget {
     this.contextMenuBuilder,
     this.enableNativeRedoShortcut = true,
     this.semanticLabel,
+    this.enableSmartPhraseSelection = false,
   });
 
   @override
@@ -238,6 +248,11 @@ class _ThemedInputState extends State<ThemedInput> {
   late FocusNode _effectiveFocusNode;
   bool _ownsFocusNode = false;
   bool _hasContent = false;
+  Duration? _lastPointerDownTime;
+  Offset? _lastPointerDownPosition;
+  int _consecutiveTapCount = 0;
+  bool _pendingDoubleTap = false;
+  Offset? _doubleTapPosition;
 
   @override
   void initState() {
@@ -291,7 +306,106 @@ class _ThemedInputState extends State<ThemedInput> {
   }
 
   void _onFocusChanged() {
+    if (_effectiveFocusNode.hasFocus) {
+      reconcileHardwareKeyboardModifiers();
+    }
     if (mounted) setState(() {});
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    // 鼠标在输入框按下时，立即校验并矫正 Windows 修饰键状态，
+    // 杜绝因输入法切换/失焦/画布操作导致的 Shift 状态卡死而误触发 Shift+Click 扩展选区
+    reconcileHardwareKeyboardModifiers();
+
+    if (!widget.enableSmartPhraseSelection ||
+        event.kind != PointerDeviceKind.mouse ||
+        event.buttons != kPrimaryButton) {
+      _lastPointerDownTime = null;
+      _lastPointerDownPosition = null;
+      _pendingDoubleTap = false;
+      return;
+    }
+
+    final now = event.timeStamp;
+    final isConsecutive = _lastPointerDownTime != null &&
+        (now - _lastPointerDownTime!) <= kDoubleTapTimeout &&
+        _lastPointerDownPosition != null &&
+        (event.localPosition - _lastPointerDownPosition!).distance <= kDoubleTapSlop;
+
+    if (isConsecutive) {
+      _consecutiveTapCount++;
+    } else {
+      _consecutiveTapCount = 1;
+    }
+
+    _lastPointerDownTime = now;
+    _lastPointerDownPosition = event.localPosition;
+
+    if (_consecutiveTapCount == 2) {
+      _pendingDoubleTap = true;
+      _doubleTapPosition = event.position;
+      _scheduleSmartPhraseSelection();
+    } else {
+      _pendingDoubleTap = false;
+    }
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_pendingDoubleTap && _lastPointerDownPosition != null) {
+      if ((event.localPosition - _lastPointerDownPosition!).distance > kTouchSlop) {
+        _pendingDoubleTap = false;
+      }
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    _pendingDoubleTap = false;
+  }
+
+  void _scheduleSmartPhraseSelection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pendingDoubleTap) return;
+      _pendingDoubleTap = false;
+
+      final controller = _effectiveController;
+      final text = controller.text;
+      if (text.isEmpty) return;
+
+      int? clickOffset;
+      final renderEditable = _findRenderEditable();
+      if (renderEditable != null && _doubleTapPosition != null) {
+        final textPosition = renderEditable.getPositionForPoint(_doubleTapPosition!);
+        clickOffset = textPosition.offset;
+      }
+
+      clickOffset ??= controller.selection.isValid
+          ? controller.selection.baseOffset
+          : 0;
+
+      final smartSelection =
+          PromptPhraseSelectionUtils.calculateDoubleTapSelection(
+        text: text,
+        offset: clickOffset,
+      );
+
+      if (smartSelection != controller.selection) {
+        controller.selection = smartSelection;
+      }
+    });
+  }
+
+  RenderEditable? _findRenderEditable() {
+    RenderEditable? found;
+    void search(RenderObject? ro) {
+      if (ro is RenderEditable) {
+        found = ro;
+        return;
+      }
+      ro?.visitChildren(search);
+    }
+
+    search(context.findRenderObject());
+    return found;
   }
 
   void _onTextChanged() {
@@ -398,7 +512,7 @@ class _ThemedInputState extends State<ThemedInput> {
         onTapOutside: widget.onTapOutside,
         readOnly: widget.readOnly,
         enabled: widget.enabled,
-        inputFormatters: widget.inputFormatters,
+        inputFormatters: [TextSanitizerInputFormatter(), if (widget.inputFormatters != null) ...widget.inputFormatters!],
         obscureText: widget.obscureText,
         maxLength: widget.maxLength,
         style: widget.style,
@@ -428,7 +542,15 @@ class _ThemedInputState extends State<ThemedInput> {
           )
         : field;
 
-    Widget content = textField;
+    final interactiveTextField = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handlePointerDown,
+      onPointerMove: _handlePointerMove,
+      onPointerCancel: _handlePointerCancel,
+      child: textField,
+    );
+
+    Widget content = interactiveTextField;
 
     // 需要清空按钮时恒用 Stack 包装、仅切换按钮显隐：
     // 若按「空/非空」增删 Stack 层，输入框会在删空瞬间因父链结构变化
@@ -436,7 +558,7 @@ class _ThemedInputState extends State<ThemedInput> {
     if (widget.showClearButton) {
       content = Stack(
         children: [
-          textField,
+          interactiveTextField,
           if (_hasContent)
             Positioned(
               top: 4,

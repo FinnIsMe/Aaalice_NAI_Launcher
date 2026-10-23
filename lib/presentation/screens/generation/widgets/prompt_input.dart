@@ -29,6 +29,7 @@ class PromptInputWidget extends ConsumerStatefulWidget {
     this.controller,
     this.autoGrow = false,
     this.active = true,
+    this.onFormatted,
   });
 
   final bool compact;
@@ -40,6 +41,7 @@ class PromptInputWidget extends ConsumerStatefulWidget {
   final PromptInputController? controller;
   final bool autoGrow;
   final bool active;
+  final ValueChanged<String>? onFormatted;
 
   @override
   ConsumerState<PromptInputWidget> createState() => _PromptInputWidgetState();
@@ -197,6 +199,7 @@ class _PromptInputWidgetState extends ConsumerState<PromptInputWidget> {
       controller: _controller,
       commands: commands,
       viewData: viewData,
+      onFormatted: widget.onFormatted,
     );
   }
 }
@@ -207,12 +210,14 @@ class _FullPromptInput extends ConsumerWidget {
     required this.controller,
     required this.commands,
     required this.viewData,
+    this.onFormatted,
   });
 
   final GlobalKey editorKey;
   final PromptInputController controller;
   final PromptInputCommands commands;
   final PromptInputViewData viewData;
+  final ValueChanged<String>? onFormatted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -222,6 +227,7 @@ class _FullPromptInput extends ConsumerWidget {
       controller: controller,
       commands: commands,
       viewData: viewData,
+      onFormatted: onFormatted,
     );
     PromptInputFooter buildFooter({bool includeBottomActions = false}) =>
         PromptInputFooter(

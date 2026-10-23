@@ -30,7 +30,6 @@ import '../../../../data/services/image_metadata_service.dart';
 import '../../../../data/models/metadata/metadata_import_options.dart';
 import '../../../utils/metadata_import_coordinator.dart';
 import '../../../providers/generation/generation_params_selectors.dart';
-import '../../../providers/generation/generation_settings_notifiers.dart';
 import '../../../providers/generation/preview_selection_provider.dart';
 import '../../../providers/history_click_behavior_provider.dart';
 import '../../../providers/image_generation_provider.dart';
@@ -286,7 +285,34 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                           padding: const EdgeInsets.all(8),
                         ),
                       if (state.history.isNotEmpty ||
-                          state.currentImages.isNotEmpty)
+                          state.currentImages.isNotEmpty) ...[
+                        IconButton(
+                          onPressed: _scrollToTop,
+                          icon: const Icon(Icons.vertical_align_top_rounded, size: 18),
+                          tooltip: context.l10n.localeName.startsWith('zh')
+                              ? '回到顶部'
+                              : 'Scroll to top',
+                          style: IconButton.styleFrom(
+                            foregroundColor: theme.colorScheme.onSurfaceVariant,
+                            hoverColor:
+                                theme.colorScheme.primary.withValues(alpha: 0.16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                          visualDensity:
+                              context.interactionPolicy.touchAvailable
+                              ? VisualDensity.standard
+                              : VisualDensity.compact,
+                          constraints: BoxConstraints.tightFor(
+                            width:
+                                context.interactionPolicy.minimumControlExtent,
+                            height:
+                                context.interactionPolicy.minimumControlExtent,
+                          ),
+                          padding: const EdgeInsets.all(8),
+                        ),
+                        const SizedBox(width: 8),
                         IconButton(
                           onPressed: () {
                             _showClearDialog(context, ref);
@@ -308,6 +334,7 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                           ),
                           padding: const EdgeInsets.all(8),
                         ),
+                      ],
                     ],
                   ),
                 )
@@ -399,21 +426,52 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
                       ),
                     if (state.history.isNotEmpty ||
                         state.currentImages.isNotEmpty) ...[
-                      const SizedBox(width: 2),
+                      const SizedBox(width: 4),
                       IconButton(
                         padding: EdgeInsets.zero,
                         style: IconButton.styleFrom(
-                          minimumSize: Size.zero,
+                          minimumSize: const Size(28, 28),
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: theme.colorScheme.onSurfaceVariant,
+                          hoverColor:
+                              theme.colorScheme.primary.withValues(alpha: 0.16),
+                          highlightColor:
+                              theme.colorScheme.primary.withValues(alpha: 0.24),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        constraints: const BoxConstraints.tightFor(
+                          width: 28,
+                          height: 28,
+                        ),
+                        onPressed: _scrollToTop,
+                        icon: const Icon(Icons.vertical_align_top_rounded, size: 17),
+                        tooltip: context.l10n.localeName.startsWith('zh')
+                            ? '回到顶部'
+                            : 'Scroll to top',
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(28, 28),
                           padding: EdgeInsets.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           foregroundColor: theme.colorScheme.error,
+                          hoverColor:
+                              theme.colorScheme.error.withValues(alpha: 0.14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
                         ),
                         constraints: const BoxConstraints.tightFor(
-                          width: 22,
-                          height: 22,
+                          width: 28,
+                          height: 28,
                         ),
                         onPressed: () => _showClearDialog(context, ref),
-                        icon: const Icon(Icons.delete_outline, size: 16),
+                        icon: const Icon(Icons.delete_outline, size: 17),
                         tooltip: context.l10n.common_clear,
                       ),
                     ],
@@ -1285,6 +1343,15 @@ class _HistoryPanelState extends ConsumerState<HistoryPanel> {
       if (!mounted || imageId == null) return;
       unawaited(_scrollToSelection(imageId, epoch));
     });
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0.0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Future<void> _scrollToSelection(String imageId, int epoch) async {

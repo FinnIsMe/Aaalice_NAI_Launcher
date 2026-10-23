@@ -7,10 +7,9 @@ import '../../../data/models/character/character_prompt.dart';
 import '../../providers/character_prompt_provider.dart';
 import '../../providers/tag_library_page_provider.dart';
 import '../tag_library/tag_library_picker_dialog.dart';
+import 'character_position_canvas.dart';
 
-/// 添加角色按钮组件。
-///
-/// [compact] 用于角色二级菜单标题行，保留文字识别的同时缩小内边距。
+/// 角色顶栏操作区：词库入口 + 纯加号新建角色 + AI/自定义模式切换
 class AddCharacterButtons extends ConsumerWidget {
   const AddCharacterButtons({super.key, this.compact = false});
 
@@ -18,48 +17,32 @@ class AddCharacterButtons extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context)!;
-    final hasScaledText = MediaQuery.textScalerOf(context).scale(14) > 14;
-
-    return Wrap(
-      spacing: compact && hasScaledText ? 2 : 4,
-      runSpacing: 4,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _GenderButton(
-          key: const Key('character-add-female'),
-          icon: Icons.female,
-          label: l10n.characterEditor_addFemale,
-          color: const Color(0xFFEC4899),
-          compact: compact,
-          onTap: () => _addCharacter(ref, CharacterGender.female),
-        ),
-        _GenderButton(
-          key: const Key('character-add-male'),
-          icon: Icons.male,
-          label: l10n.characterEditor_addMale,
-          color: const Color(0xFF3B82F6),
-          compact: compact,
-          onTap: () => _addCharacter(ref, CharacterGender.male),
-        ),
-        _GenderButton(
-          key: const Key('character-add-other'),
-          icon: Icons.transgender,
-          label: l10n.characterEditor_addOther,
-          color: const Color(0xFF8B5CF6),
-          compact: compact,
-          onTap: () => _addCharacter(ref, CharacterGender.other),
-        ),
         _LibraryButton(
           key: const Key('character-add-from-library'),
           compact: compact,
           onTap: () => _addFromLibrary(context, ref),
         ),
+        const SizedBox(width: 4),
+        _AddCharacterIconButton(
+          key: const Key('character-add-button'),
+          compact: compact,
+          onTap: () => _addCharacter(ref),
+        ),
+        const SizedBox(width: 6),
+        const CharacterPositionModeSegments(),
       ],
     );
   }
 
-  void _addCharacter(WidgetRef ref, CharacterGender gender) {
-    ref.read(characterPromptNotifierProvider.notifier).addCharacter(gender);
+  void _addCharacter(WidgetRef ref) {
+    ref.read(characterPromptNotifierProvider.notifier).addCharacter(
+      CharacterGender.other,
+      prompt: '',
+    );
   }
 
   Future<void> _addFromLibrary(BuildContext context, WidgetRef ref) async {
@@ -70,11 +53,11 @@ class AddCharacterButtons extends ConsumerWidget {
       // 记录使用
       ref.read(tagLibraryPageNotifierProvider.notifier).recordUsage(entry.id);
 
-      // 创建新角色
+      // 创建新角色（不区分性别，直接按名称和内容导入）
       ref
           .read(characterPromptNotifierProvider.notifier)
           .addCharacter(
-            CharacterGender.female, // 默认女性
+            CharacterGender.other,
             name: entry.displayName,
             prompt: parsed.positivePrompt,
             negativePrompt: parsed.hasNegativeBlock
@@ -86,81 +69,62 @@ class AddCharacterButtons extends ConsumerWidget {
   }
 }
 
-/// 性别按钮组件（无边框+色差风格）
-class _GenderButton extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
+/// 纯加号新建角色按钮（小巧精致，无文字）
+class _AddCharacterIconButton extends StatefulWidget {
   final bool compact;
   final VoidCallback onTap;
 
-  const _GenderButton({
+  const _AddCharacterIconButton({
     super.key,
-    required this.icon,
-    required this.label,
-    required this.color,
     required this.compact,
     required this.onTap,
   });
 
   @override
-  State<_GenderButton> createState() => _GenderButtonState();
+  State<_AddCharacterIconButton> createState() => _AddCharacterIconButtonState();
 }
 
-class _GenderButtonState extends State<_GenderButton> {
+class _AddCharacterIconButtonState extends State<_AddCharacterIconButton> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 150),
-          padding: EdgeInsets.symmetric(
-            horizontal: widget.compact ? 6 : 12,
-            vertical: widget.compact ? 5 : 7,
-          ),
-          decoration: BoxDecoration(
-            // 无边框，常态淡背景，悬停时加深
-            color: _isHovered
-                ? widget.color.withValues(alpha: 0.18)
-                : widget.color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                widget.icon,
-                size: widget.compact ? 15 : 17,
-                color: widget.color,
+    return Tooltip(
+      message: l10n.common_add,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 150),
+            width: widget.compact ? 24 : 28,
+            height: widget.compact ? 24 : 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _isHovered
+                  ? colorScheme.primary.withValues(alpha: 0.25)
+                  : colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: _isHovered
+                    ? colorScheme.primary.withValues(alpha: 0.6)
+                    : colorScheme.primary.withValues(alpha: 0.3),
+                width: 1,
               ),
-              SizedBox(width: widget.compact ? 3 : 5),
-              Text(
-                widget.label,
-                style:
-                    (widget.compact
-                            ? theme.textTheme.labelSmall
-                            : theme.textTheme.labelMedium)
-                        ?.copyWith(
-                          color: _isHovered
-                              ? widget.color
-                              : colorScheme.onSurfaceVariant,
-                          fontWeight: _isHovered
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                        ),
-              ),
-            ],
+            ),
+            child: Icon(
+              Icons.add,
+              size: widget.compact ? 15 : 17,
+              color: colorScheme.primary,
+            ),
           ),
         ),
       ),
@@ -168,7 +132,7 @@ class _GenderButtonState extends State<_GenderButton> {
   }
 }
 
-/// 词库按钮组件（无边框+色差风格）
+/// 词库按钮组件
 class _LibraryButton extends StatefulWidget {
   final bool compact;
   final VoidCallback onTap;
@@ -200,22 +164,27 @@ class _LibraryButtonState extends State<_LibraryButton> {
               ? Duration.zero
               : const Duration(milliseconds: 150),
           padding: EdgeInsets.symmetric(
-            horizontal: widget.compact ? 6 : 12,
-            vertical: widget.compact ? 5 : 7,
+            horizontal: widget.compact ? 6 : 10,
+            vertical: widget.compact ? 4 : 6,
           ),
           decoration: BoxDecoration(
-            // 无边框，常态淡背景，悬停时加深
             color: _isHovered
                 ? accentColor.withValues(alpha: 0.18)
                 : accentColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(
+              color: _isHovered
+                  ? accentColor.withValues(alpha: 0.4)
+                  : Colors.transparent,
+              width: 1,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.library_books_outlined,
-                size: widget.compact ? 15 : 17,
+                size: widget.compact ? 14 : 16,
                 color: _isHovered ? accentColor : colorScheme.onSurfaceVariant,
               ),
               SizedBox(width: widget.compact ? 3 : 5),
@@ -232,6 +201,7 @@ class _LibraryButtonState extends State<_LibraryButton> {
                           fontWeight: _isHovered
                               ? FontWeight.w600
                               : FontWeight.w500,
+                          fontSize: widget.compact ? 11 : 12,
                         ),
               ),
             ],

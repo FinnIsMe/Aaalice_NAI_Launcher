@@ -10,6 +10,7 @@ import '../tools/clone_stamp_tool.dart';
 import 'clone_source_marker_painter.dart';
 import 'layer_painter.dart';
 import 'stroke_preview_painter.dart';
+import 'transform_overlay_painter.dart';
 
 /// 编辑器画布组件
 /// 处理绑制、手势和键盘交互
@@ -68,6 +69,7 @@ class _EditorCanvasState extends State<EditorCanvas>
 
     // 添加硬件键盘监听（优先级高于 IME，解决中文输入法下快捷键失效问题）
     HardwareKeyboard.instance.addHandler(_inputHandler.handleHardwareKey);
+    _focusNode.addListener(_handleFocusChanged);
   }
 
   @override
@@ -101,8 +103,15 @@ class _EditorCanvasState extends State<EditorCanvas>
     }
   }
 
+  void _handleFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      _inputHandler.resetAllInputStates();
+    }
+  }
+
   @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChanged);
     widget.state.renderNotifier.removeListener(_syncSelectionAnimation);
     HardwareKeyboard.instance.removeHandler(_inputHandler.handleHardwareKey);
     _selectionAnimationController.dispose();
@@ -201,6 +210,17 @@ class _EditorCanvasState extends State<EditorCanvas>
                             ),
                           ),
 
+                          // 自由变换定界框 - 独立重绘区域
+                          Positioned.fill(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                painter: TransformOverlayPainter(
+                                  state: widget.state,
+                                ),
+                              ),
+                            ),
+                          ),
+
                           // 仿制图章源点准星 - 独立重绘区域（涂抹时逐点移动）
                           if (widget.state.currentTool
                               case final CloneStampTool cloneStamp)
@@ -244,6 +264,9 @@ class _EditorCanvasState extends State<EditorCanvas>
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    if (!_focusNode.hasFocus) {
+      _focusNode.requestFocus();
+    }
     if ((event.buttons & kPrimaryButton) != 0 &&
         _shouldSuppressPointer(event)) {
       _suppressedPointers.add(event.pointer);

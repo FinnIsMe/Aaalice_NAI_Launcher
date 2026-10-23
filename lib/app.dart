@@ -13,6 +13,7 @@ import 'core/utils/app_logger.dart';
 import 'core/platform/platform_capabilities.dart';
 import 'core/services/desktop_app_shutdown_service.dart';
 import 'core/services/interactive_work_gate.dart';
+import 'core/utils/keyboard_modifier_utils.dart';
 import 'core/shortcuts/default_shortcuts.dart';
 import 'presentation/adaptive/interaction_policy.dart';
 import 'presentation/adaptive/window_size_class.dart';
@@ -104,6 +105,7 @@ class _AppBootstrapEffectsState extends ConsumerState<AppBootstrapEffects>
     LocalGalleryThumbnailProvider.setAppForeground(isForeground);
 
     if (state == AppLifecycleState.resumed) {
+      reconcileHardwareKeyboardModifiers();
       InteractiveWorkGate.instance.markInteraction();
       unawaited(_resumeQueueAfterBackground());
       // 桌面端切换窗口焦点也会 inactive→resumed，只有真正进过后台才重新恢复连接

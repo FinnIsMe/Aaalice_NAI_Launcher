@@ -141,11 +141,11 @@ class LayerContentSnapshot {
 
 /// 拖动中的平移预览，只影响屏幕绘制，松手提交前不改动图层数据
 class LayerMovePreview {
-  /// 整层平移
-  LayerMovePreview.whole(this.offset) : region = null, _remainder = null;
+  /// 整层平移或矩阵变换
+  LayerMovePreview.whole(this.offset, [this.matrix]) : region = null, _remainder = null;
 
-  /// 只平移 [region] 内的像素；[extent] 需覆盖图层内容与区域
-  LayerMovePreview.region(Path this.region, this.offset, Rect extent)
+  /// 针对选区平移或矩阵变换
+  LayerMovePreview.region(Path this.region, this.offset, Rect extent, [this.matrix])
     : _remainder = Path.combine(
         PathOperation.difference,
         Path()..addRect(extent.expandToInclude(region.getBounds()).inflate(1)),
@@ -154,15 +154,22 @@ class LayerMovePreview {
 
   final Path? region;
   final Offset offset;
+  final Matrix4? matrix;
   final Path? _remainder;
 
   LayerMovePreview withOffset(Offset next) {
     final selected = region;
-    if (selected == null) return LayerMovePreview.whole(next);
-    return LayerMovePreview._(selected, next, _remainder);
+    if (selected == null) return LayerMovePreview.whole(next, matrix);
+    return LayerMovePreview._(selected, next, _remainder, matrix);
   }
 
-  LayerMovePreview._(this.region, this.offset, this._remainder);
+  LayerMovePreview withMatrix(Matrix4 nextMatrix) {
+    final selected = region;
+    if (selected == null) return LayerMovePreview.whole(offset, nextMatrix);
+    return LayerMovePreview._(selected, offset, _remainder, nextMatrix);
+  }
+
+  LayerMovePreview._(this.region, this.offset, this._remainder, [this.matrix]);
 
   Rect affectedBounds(Rect contentBounds) {
     final selected = region;
@@ -710,7 +717,11 @@ class Layer {
     }
     final region = preview.region;
     if (region == null) {
-      canvas.translate(preview.offset.dx, preview.offset.dy);
+      if (preview.matrix != null) {
+        canvas.transform(preview.matrix!.storage);
+      } else {
+        canvas.translate(preview.offset.dx, preview.offset.dy);
+      }
       _drawCachedOrRender(canvas, filterQuality: filterQuality);
     } else {
       canvas.save();
@@ -718,7 +729,11 @@ class Layer {
       _drawCachedOrRender(canvas, filterQuality: filterQuality);
       canvas.restore();
       canvas.save();
-      canvas.translate(preview.offset.dx, preview.offset.dy);
+      if (preview.matrix != null) {
+        canvas.transform(preview.matrix!.storage);
+      } else {
+        canvas.translate(preview.offset.dx, preview.offset.dy);
+      }
       canvas.clipPath(region);
       _drawCachedOrRender(canvas, filterQuality: filterQuality);
       canvas.restore();

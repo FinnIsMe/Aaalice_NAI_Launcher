@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/utils/localization_extension.dart';
 import '../../../adaptive/interaction_policy.dart';
+import '../../../utils/prompt_content_height_calculator.dart';
 import '../../../widgets/common/vertical_resize_handle.dart';
 
 /// Keeps manual sizing local to the editor and reuses its mounted child while
@@ -21,21 +22,68 @@ class PromptEditorResizeRegion extends StatefulWidget {
   final double? initialHeight;
   final ValueChanged<double?>? onHeightChanged;
   final bool enabled;
-  final Widget Function(bool manualHeight) builder;
+  final Widget Function(
+    bool manualHeight,
+    void Function(String text) animateToContentHeight,
+  )
+  builder;
 
   @override
   State<PromptEditorResizeRegion> createState() =>
       _PromptEditorResizeRegionState();
 }
 
-class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion> {
+class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion>
+    with SingleTickerProviderStateMixin {
   final _editorKey = GlobalKey();
   late final _height = ValueNotifier<double?>(widget.initialHeight);
   double? _dragHeight;
+  AnimationController? _animController;
 
-  double get _renderedHeight => _editorKey.currentContext!.size!.height;
+  double get _renderedHeight => _editorKey.currentContext?.size?.height ?? 96.0;
+
+  void _animateToContentHeight(
+    String text,
+    double maxWidth,
+    double minimum,
+    double maximum,
+  ) {
+    if (!mounted || !widget.enabled) return;
+    final current = _height.value ?? _renderedHeight;
+    final target = calculatePromptContentHeight(
+      context: context,
+      text: text,
+      maxWidth: maxWidth,
+      minimumHeight: minimum,
+      maximumHeight: maximum,
+      contentPadding: const EdgeInsets.all(12),
+    );
+    if ((current - target).abs() < 1.0) return;
+
+    _animController?.dispose();
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    _animController = controller;
+    final anim = Tween<double>(begin: current, end: target).animate(
+      CurvedAnimation(parent: controller, curve: Curves.easeOutCubic),
+    );
+    controller.addListener(() {
+      if (!mounted) return;
+      _height.value = anim.value;
+    });
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        widget.onHeightChanged?.call(target);
+        _animController = null;
+      }
+    });
+    controller.forward();
+  }
 
   void _resize(double delta, double minimum, double maximum) {
+    _animController?.stop();
     final next = ((_dragHeight ?? _renderedHeight) + delta)
         .clamp(minimum, maximum)
         .toDouble();
@@ -47,6 +95,7 @@ class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion> {
   }
 
   void _reset() {
+    _animController?.stop();
     _dragHeight = null;
     _height.value = null;
     widget.onHeightChanged?.call(null);
@@ -55,13 +104,13 @@ class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion> {
 
   @override
   void dispose() {
+    _animController?.dispose();
     _height.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final child = widget.builder(widget.enabled && _height.value != null);
     final policy = context.interactionPolicy;
     final handleHeight = policy.prefersTouchPresentation
         ? policy.minimumControlExtent
@@ -72,6 +121,15 @@ class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion> {
         final minimum = math.min(
           maximum,
           math.max(96.0, MediaQuery.textScalerOf(context).scale(24) + 24),
+        );
+        final child = widget.builder(
+          widget.enabled && _height.value != null,
+          (text) => _animateToContentHeight(
+            text,
+            constraints.maxWidth,
+            minimum,
+            maximum,
+          ),
         );
         return Column(
           mainAxisSize: MainAxisSize.min,

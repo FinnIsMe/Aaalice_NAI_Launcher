@@ -40,6 +40,8 @@ import 'tools/frame_tool.dart';
 import 'tools/tool_base.dart';
 import 'canvas/editor_canvas.dart';
 import 'widgets/toolbar/desktop_toolbar.dart';
+import 'liquify/liquify_dialog.dart';
+
 import 'widgets/toolbar/editor_overflow_menu.dart';
 import 'widgets/toolbar/editor_view_menu.dart';
 import 'widgets/toolbar/mobile_toolbar.dart';
@@ -2834,6 +2836,33 @@ class ImageEditorWorkspaceState extends State<ImageEditorWorkspace> {
           const Spacer(),
 
           _buildDesktopCompressionControl(expanded: availableWidth >= 1700),
+          const SizedBox(width: 4),
+
+          // 顶部菜单栏「液化」入口：在重绘与编辑模式下均常驻可见
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              _state.layerManager,
+              _state.layerManager.activeLayerNotifier,
+            ]),
+            builder: (context, _) {
+              final canLiquify = _state.layerManager.layers.any((l) => l.hasContent);
+              if (availableWidth >= 1280) {
+                return TextButton.icon(
+                  icon: const Icon(Icons.waves, size: 18),
+                  label: const Text('液化'),
+                  onPressed: canLiquify ? () => LiquifyDialog.show(context, _state) : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurface,
+                  ),
+                );
+              }
+              return IconButton(
+                icon: const Icon(Icons.waves, size: 20),
+                onPressed: canLiquify ? () => LiquifyDialog.show(context, _state) : null,
+                tooltip: '液化 (Liquify)',
+              );
+            },
+          ),
           const SizedBox(width: 4),
 
           if (!_isInpaintMode)

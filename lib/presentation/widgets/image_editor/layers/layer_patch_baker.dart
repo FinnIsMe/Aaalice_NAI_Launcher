@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart';
 
 import 'layer.dart';
 import 'layer_raster.dart';
@@ -122,6 +122,37 @@ class LayerPatchBaker {
   }
 
   /// 把 [upper]（带自身不透明度与混合模式）合并进 [lower] 的像素
+  /// 矩阵自由变换（Ctrl+T）：将图层或选区应用 [matrix] 并烘焙为新光栅
+  static BakedLayerImage transformRegion(
+    Layer layer, {
+    required Matrix4 matrix,
+    required Rect extent,
+    Path? region,
+  }) {
+    return _bake(extent, (canvas) {
+      if (region == null) {
+        canvas.transform(matrix.storage);
+        layer.renderPixels(canvas);
+      } else {
+        final remainder = Path.combine(
+          PathOperation.difference,
+          Path()..addRect(extent.expandToInclude(layer.contentBounds)),
+          region,
+        );
+        canvas.save();
+        canvas.clipPath(remainder);
+        layer.renderPixels(canvas);
+        canvas.restore();
+
+        canvas.save();
+        canvas.transform(matrix.storage);
+        canvas.clipPath(region);
+        layer.renderPixels(canvas);
+        canvas.restore();
+      }
+    });
+  }
+
   static BakedLayerImage mergeDown({
     required Layer upper,
     required Layer lower,

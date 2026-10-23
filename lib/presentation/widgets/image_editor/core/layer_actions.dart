@@ -213,6 +213,8 @@ class CutSelectionToLayerAction extends EditorAction {
       );
     });
     state.clearSelection(saveHistory: false);
+    state.notifyRenderChange();
+    state.requestUiUpdate();
   }
 
   @override
@@ -226,6 +228,8 @@ class CutSelectionToLayerAction extends EditorAction {
       layers.setActiveLayer(sourceId);
     });
     state.setSelection(selection, saveHistory: false);
+    state.notifyRenderChange();
+    state.requestUiUpdate();
   }
 
   @override
@@ -238,4 +242,53 @@ class CutSelectionToLayerAction extends EditorAction {
 
   @override
   String get description => 'Cut Selection';
+}
+
+/// 把选区像素复制到紧贴源图层上方的新图层（Ctrl+J），一步撤销同时删除新图层、恢复之前活动图层并找回选区
+class CopySelectionToLayerAction extends EditorAction {
+  CopySelectionToLayerAction({
+    required LayerData layerData,
+    required this.insertIndex,
+    required this.selection,
+    String? previousActiveLayerId,
+    this.actionDescription = 'Layer via Copy',
+  }) : _layerData = layerData,
+       _previousActiveLayerId = previousActiveLayerId;
+
+  final LayerData _layerData;
+  final int insertIndex;
+  final Path selection;
+  final String? _previousActiveLayerId;
+  final String actionDescription;
+
+  String get layerId => _layerData.id;
+
+  @override
+  void execute(EditorState state) {
+    state.layerManager.insertLayerFromData(
+      _layerData,
+      insertIndex,
+      setActive: true,
+    );
+    state.clearSelection(saveHistory: false);
+    state.notifyRenderChange();
+    state.requestUiUpdate();
+  }
+
+  @override
+  void undo(EditorState state) {
+    state.layerManager.removeLayer(_layerData.id);
+    if (_previousActiveLayerId != null) {
+      state.layerManager.setActiveLayer(_previousActiveLayerId);
+    }
+    state.setSelection(selection, saveHistory: false);
+    state.notifyRenderChange();
+    state.requestUiUpdate();
+  }
+
+  @override
+  void dispose() => _layerData.dispose();
+
+  @override
+  String get description => actionDescription;
 }

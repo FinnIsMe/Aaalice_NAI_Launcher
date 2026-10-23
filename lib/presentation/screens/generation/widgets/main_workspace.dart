@@ -16,7 +16,7 @@ import 'resize_handle.dart';
 ///
 /// 显示提示词输入区、图像预览区和生成控制按钮。
 /// 支持提示词区域最大化/还原功能。
-class MainWorkspace extends ConsumerWidget {
+class MainWorkspace extends ConsumerStatefulWidget {
   final VoidCallback onToggleMaximize;
   final PromptInputController promptInputController;
   final GlobalKey promptInputKey;
@@ -50,7 +50,14 @@ class MainWorkspace extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainWorkspace> createState() => _MainWorkspaceState();
+}
+
+class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
+  bool _isDragging = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final layoutState = ref.watch(layoutStateNotifierProvider);
     final isPromptMaximized = ref.watch(promptMaximizeNotifierProvider);
@@ -73,7 +80,7 @@ class MainWorkspace extends ConsumerWidget {
         final interactionPolicy = context.interactionPolicy;
         final resizeHandleHeight = interactionPolicy.prefersTouchPresentation
             ? interactionPolicy.minimumControlExtent
-            : _resizeHandleHeight;
+            : MainWorkspace._resizeHandleHeight;
         final promptAreaHeight = _resolvePromptAreaHeight(
           context,
           layoutState,
@@ -92,15 +99,31 @@ class MainWorkspace extends ConsumerWidget {
               Expanded(
                 child: _PreservedPromptArea(
                   hidden: canvasOpen,
-                  child: _buildPromptInput(theme, isPromptMaximized),
+                  child: _buildPromptInput(
+                    theme,
+                    isPromptMaximized,
+                    constraints.maxWidth,
+                    constraints.maxHeight,
+                    resizeHandleHeight,
+                  ),
                 ),
               )
             else
               _PreservedPromptArea(
                 hidden: canvasOpen,
-                child: SizedBox(
+                child: AnimatedContainer(
+                  duration: _isDragging
+                      ? Duration.zero
+                      : const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
                   height: promptAreaHeight,
-                  child: _buildPromptInput(theme, isPromptMaximized),
+                  child: _buildPromptInput(
+                    theme,
+                    isPromptMaximized,
+                    constraints.maxWidth,
+                    constraints.maxHeight,
+                    resizeHandleHeight,
+                  ),
                 ),
               ),
 
@@ -108,6 +131,8 @@ class MainWorkspace extends ConsumerWidget {
             if (!isPromptMaximized && !canvasOpen)
               VerticalResizeHandle(
                 height: resizeHandleHeight,
+                onDragStart: () => setState(() => _isDragging = true),
+                onDragEnd: () => setState(() => _isDragging = false),
                 onDrag: (dy) {
                   final maxHeight = _resolvePromptAreaHeightCap(
                     constraints.maxHeight,
@@ -118,7 +143,7 @@ class MainWorkspace extends ConsumerWidget {
                       .read(layoutStateNotifierProvider)
                       .promptAreaHeight;
                   final newHeight = (storedHeight + dy)
-                      .clamp(_minPromptAreaHeight, maxHeight)
+                      .clamp(MainWorkspace._minPromptAreaHeight, maxHeight)
                       .toDouble();
                   ref
                       .read(layoutStateNotifierProvider.notifier)
@@ -130,7 +155,7 @@ class MainWorkspace extends ConsumerWidget {
             if (!isPromptMaximized)
               if (useScrollableWorkspace)
                 const SizedBox(
-                  height: _minPreviewAreaHeight,
+                  height: MainWorkspace._minPreviewAreaHeight,
                   child: ImagePreviewWidget(),
                 )
               else
@@ -155,17 +180,45 @@ class MainWorkspace extends ConsumerWidget {
     );
   }
 
-  Widget _buildPromptInput(ThemeData theme, bool isPromptMaximized) {
+  Widget _buildPromptInput(
+    ThemeData theme,
+    bool isPromptMaximized,
+    double maxWidth,
+    double maxHeight,
+    double resizeHandleHeight,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.5),
       ),
       child: PromptInputWidget(
-        key: promptInputKey,
-        controller: promptInputController,
-        onToggleMaximize: onToggleMaximize,
+        key: widget.promptInputKey,
+        controller: widget.promptInputController,
+        onToggleMaximize: widget.onToggleMaximize,
         isMaximized: isPromptMaximized,
+        onFormatted: (formattedText) {
+          final heightCap = _resolvePromptAreaHeightCap(
+            maxHeight,
+            resizeHandleHeight,
+          );
+          final params = ref.read(generationParamsNotifierProvider);
+          final isNegativeMode = widget.promptInputController.isNegativeMode;
+          final prompt = isNegativeMode ? params.prompt : formattedText;
+          final negativePrompt =
+              isNegativeMode ? formattedText : params.negativePrompt;
+          final targetHeight = _estimatePromptAreaHeight(
+            context,
+            maxWidth,
+            prompt,
+            negativePrompt,
+          ).clamp(MainWorkspace._minPromptAreaHeight, heightCap).toDouble();
+
+          setState(() => _isDragging = false);
+          ref
+              .read(layoutStateNotifierProvider.notifier)
+              .setPromptAreaHeight(targetHeight);
+        },
       ),
     );
   }
@@ -184,18 +237,18 @@ class MainWorkspace extends ConsumerWidget {
       resizeHandleHeight,
     );
     final storedHeight = layoutState.promptAreaHeight
-        .clamp(_minPromptAreaHeight, heightCap)
+        .clamp(MainWorkspace._minPromptAreaHeight, heightCap)
         .toDouble();
     final adaptiveHeight = _estimatePromptAreaHeight(
       context,
       maxWidth,
       prompt,
       negativePrompt,
-    ).clamp(_minPromptAreaHeight, heightCap).toDouble();
+    ).clamp(MainWorkspace._minPromptAreaHeight, heightCap).toDouble();
 
     // 用户设置值是基础高度，避免空提示词时编辑器默认缩成窄条；
     // 内容更多时仍允许区域自适应增高，但不会突破预览区安全上限。
-    return resolveClassicPromptAreaHeight(
+    return MainWorkspace.resolveClassicPromptAreaHeight(
       storedHeight: storedHeight,
       adaptiveHeight: adaptiveHeight,
       heightCap: heightCap,
@@ -213,10 +266,10 @@ class MainWorkspace extends ConsumerWidget {
     final maxByPreviewBudget =
         availableHeight -
         resizeHandleHeight -
-        _generationControlsReservedHeight -
-        _minPreviewAreaHeight;
+        MainWorkspace._generationControlsReservedHeight -
+        MainWorkspace._minPreviewAreaHeight;
     final cappedHeight = maxByPreviewBudget
-        .clamp(_minPromptAreaHeight, double.infinity)
+        .clamp(MainWorkspace._minPromptAreaHeight, double.infinity)
         .toDouble();
     return cappedHeight;
   }
@@ -230,8 +283,8 @@ class MainWorkspace extends ConsumerWidget {
     final safeMaxWidth = maxWidth.isFinite && maxWidth > 0 ? maxWidth : 800.0;
     final textWidth =
         (safeMaxWidth -
-                _promptOuterHorizontalPadding -
-                _promptInputHorizontalPadding)
+                MainWorkspace._promptOuterHorizontalPadding -
+                MainWorkspace._promptInputHorizontalPadding)
             .clamp(120.0, 2000.0);
     final promptHeight = _measurePromptTextHeight(context, prompt, textWidth);
     final negativeHeight = _measurePromptTextHeight(
@@ -243,7 +296,14 @@ class MainWorkspace extends ConsumerWidget {
         ? promptHeight
         : negativeHeight;
 
-    return _promptAreaChromeHeight + textHeight + _promptTextSafetyPadding;
+    if (promptHeight == 0 && negativeHeight == 0) {
+      return MainWorkspace._minPromptAreaHeight;
+    }
+
+    return (MainWorkspace._promptAreaChromeHeight +
+            textHeight +
+            MainWorkspace._promptTextSafetyPadding)
+        .clamp(MainWorkspace._minPromptAreaHeight, double.infinity);
   }
 
   double _measurePromptTextHeight(
@@ -251,15 +311,18 @@ class MainWorkspace extends ConsumerWidget {
     String text,
     double maxWidth,
   ) {
+    if (text.trim().isEmpty) return 0.0;
     final theme = Theme.of(context);
     final textStyle = theme.textTheme.bodyMedium ?? const TextStyle();
     final painter = TextPainter(
-      text: TextSpan(text: text.isEmpty ? ' ' : text, style: textStyle),
+      text: TextSpan(text: text, style: textStyle),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     )..layout(maxWidth: maxWidth);
 
-    return painter.height;
+    final height = painter.height;
+    painter.dispose();
+    return height;
   }
 }
 

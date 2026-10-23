@@ -9,6 +9,7 @@ import '../../tools/tool_base.dart';
 import '../../../../widgets/common/themed_divider.dart';
 import 'editor_tool_group_section.dart';
 import 'editor_toolbar_tools.dart';
+import '../../liquify/liquify_dialog.dart';
 import 'editor_view_menu.dart';
 
 /// 桌面端垂直工具栏
@@ -115,6 +116,13 @@ class DesktopToolbar extends StatelessWidget {
                   enabled: canClearFromToolbar(state),
                   onTap: onClear ?? () => state.clearActiveLayerWithHistory(),
                 ),
+                _ActionButton(
+                  minimumExtent: minimumControlExtent,
+                  icon: Icons.waves,
+                  tooltip: '液化 (Liquify)',
+                  enabled: state.layerManager.layers.any((l) => l.hasContent),
+                  onTap: () => LiquifyDialog.show(context, state),
+                ),
               ],
             );
           },
@@ -203,6 +211,16 @@ class _ViewControls extends StatelessWidget {
         return Column(
           children: [
             const ThemedDivider(height: _dividerHeight),
+            ListenableBuilder(
+              listenable: state.layerManager,
+              builder: (context, _) => _ActionButton(
+                minimumExtent: minimumExtent,
+                icon: Icons.waves,
+                tooltip: '液化 (Liquify)',
+                enabled: state.layerManager.layers.any((l) => l.hasContent),
+                onTap: () => LiquifyDialog.show(context, state),
+              ),
+            ),
             _ActionButton(
               minimumExtent: minimumExtent,
               icon: Icons.zoom_in,

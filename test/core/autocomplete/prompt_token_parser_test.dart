@@ -61,6 +61,100 @@ void main() {
       );
     });
 
+    test('treats double colon as a delimiter and preserves closing weight syntax', () {
+      // Case 1: Editing tag at the end of a weighted block (2::boy,man,happy,sky::)
+      final skyQuery = PromptTokenParser.parse(
+        text: '2::boy,man,happy,sky::',
+        cursorPosition: '2::boy,man,happy,sky'.length,
+        limit: 20,
+        locale: 'en',
+      );
+      expect(skyQuery.token, 'sky');
+      expect(
+        skyQuery.fullText.substring(
+          skyQuery.replacementRange.start,
+          skyQuery.replacementRange.end,
+        ),
+        'sky',
+      );
+      expect(skyQuery.existingTags, containsAll(['boy', 'man', 'happy']));
+      expect(skyQuery.existingTags, isNot(contains('sky')));
+
+      final skyApplied = PromptTokenParser.apply(
+        text: skyQuery.fullText,
+        query: skyQuery,
+        canonicalTag: 'night_sky',
+        autoInsertComma: true,
+        replaceUnderscores: true,
+      );
+      expect(skyApplied.text, '2::boy,man,happy,night sky::');
+
+      // Case 2: Inserting a new tag before closing double colon
+      final treeQuery = PromptTokenParser.parse(
+        text: '2::boy,man,happy,sun,tree::',
+        cursorPosition: '2::boy,man,happy,sun,tree'.length,
+        limit: 20,
+        locale: 'en',
+      );
+      expect(treeQuery.token, 'tree');
+      final treeApplied = PromptTokenParser.apply(
+        text: treeQuery.fullText,
+        query: treeQuery,
+        canonicalTag: 'palm_tree',
+        autoInsertComma: true,
+        replaceUnderscores: true,
+      );
+      expect(treeApplied.text, '2::boy,man,happy,sun,palm tree::');
+
+      // Case 3: embarrassed ::brown hair without comma
+      final embarrassedQuery = PromptTokenParser.parse(
+        text: 'very dark skin,embarrassed ::brown hair, brown eyes',
+        cursorPosition: 'very dark skin,embarrassed'.length,
+        limit: 20,
+        locale: 'en',
+      );
+      expect(embarrassedQuery.token, 'embarrassed');
+      expect(
+        embarrassedQuery.fullText.substring(
+          embarrassedQuery.replacementRange.start,
+          embarrassedQuery.replacementRange.end,
+        ),
+        'embarrassed',
+      );
+
+      final brownHairQuery = PromptTokenParser.parse(
+        text: 'very dark skin,embarrassed ::brown hair, brown eyes',
+        cursorPosition: 'very dark skin,embarrassed ::brown'.length,
+        limit: 20,
+        locale: 'en',
+      );
+      expect(brownHairQuery.token, 'brown_hair');
+      expect(
+        brownHairQuery.fullText.substring(
+          brownHairQuery.replacementRange.start,
+          brownHairQuery.replacementRange.end,
+        ),
+        'brown hair',
+      );
+
+      // Case 4: Editing inside single braced weight block {2::boy::}
+      final bracedWeight = PromptTokenParser.parse(
+        text: '{2::boy::}',
+        cursorPosition: '{2::bo'.length,
+        limit: 20,
+        locale: 'en',
+      );
+      expect(bracedWeight.token, 'boy');
+      final bracedApplied = PromptTokenParser.apply(
+        text: bracedWeight.fullText,
+        query: bracedWeight,
+        canonicalTag: '1boy',
+        autoInsertComma: true,
+        replaceUnderscores: false,
+      );
+      expect(bracedApplied.text, '{2::1boy::}');
+    });
+
     test('supports space-separated tag search when explicitly enabled', () {
       final query = PromptTokenParser.parse(
         text: 'foot_focus lo',

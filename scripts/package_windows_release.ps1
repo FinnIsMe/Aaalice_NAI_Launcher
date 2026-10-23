@@ -67,7 +67,7 @@ function Assert-WindowsFlutterRuntime {
   }
 }
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $root
 
 if ([string]::IsNullOrWhiteSpace($Version)) {

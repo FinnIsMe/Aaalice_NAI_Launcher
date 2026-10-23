@@ -16,7 +16,6 @@ import '../../../../data/models/character/character_prompt.dart';
 import '../../../providers/alias_resolver_service.dart';
 import '../../../../presentation/utils/text_selection_utils.dart';
 import '../../../adaptive/interaction_policy.dart';
-import '../../../providers/generation/generation_settings_notifiers.dart';
 import '../../../providers/tag_library_page_provider.dart';
 import '../../../screens/tag_library_page/widgets/entry_add_dialog.dart';
 import '../../autocomplete/autocomplete_wrapper.dart';
@@ -44,7 +43,6 @@ import '../../../../core/utils/nai_prompt_parser.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../providers/quality_preset_provider.dart';
 import '../../../providers/uc_preset_provider.dart';
-import '../../../screens/generation/widgets/prompt_input_models.dart';
 import '../../../utils/active_preset_deduplicator.dart';
 
 /// 统一提示词输入组件
@@ -138,7 +136,11 @@ class UnifiedPromptInput extends ConsumerStatefulWidget {
     this.assistantTapRegionGroupId,
     this.onOpenAssistantSettings,
     this.onComfyuiImport,
+    this.onFormatted,
   });
+
+  /// 提示词格式化后触发（用于联动外层高度自适应动画等）
+  final void Function(String text)? onFormatted;
 
   @override
   ConsumerState<UnifiedPromptInput> createState() => _UnifiedPromptInputState();
@@ -203,6 +205,7 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
 
     final isCtrl = HardwareKeyboard.instance.isControlPressed;
     final isShift = HardwareKeyboard.instance.isShiftPressed;
+    final isAlt = HardwareKeyboard.instance.isAltPressed;
     final isMeta = HardwareKeyboard.instance.isMetaPressed;
 
     if ((isCtrl || isMeta) &&
@@ -260,6 +263,14 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
     }
     if (isCtrl && isShift && logicalKey == LogicalKeyboardKey.keyT) {
       unawaited(_runAssistantAction(AssistantTaskType.translate));
+      return true;
+    }
+
+    // 格式化快捷键：Shift+Alt+F 或 Ctrl+Shift+F 或 Ctrl+Alt+L
+    if ((isShift && isAlt && logicalKey == LogicalKeyboardKey.keyF) ||
+        (isCtrl && isShift && logicalKey == LogicalKeyboardKey.keyF) ||
+        (isCtrl && isAlt && logicalKey == LogicalKeyboardKey.keyL)) {
+      formatPromptManually();
       return true;
     }
 
@@ -472,7 +483,10 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
 
     final originalValue = _effectiveController.value;
     var text = originalValue.text;
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      widget.onFormatted?.call('');
+      return;
+    }
 
     var changed = false;
     final messages = <String>[];
@@ -585,6 +599,73 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
         AppToast.info(context, messages.join(' + '));
       }
     }
+
+    widget.onFormatted?.call(_effectiveController.text);
+  }
+
+  /// 手动格式化提示词（支持快捷键或主动调用，触发内容高度自适应动画）
+  void formatPromptManually() {
+    final originalValue = _effectiveController.value;
+    var text = originalValue.text;
+    if (text.isEmpty) {
+      widget.onFormatted?.call('');
+      return;
+    }
+
+    var changed = false;
+    final messages = <String>[];
+
+    // 正则替换
+    if (widget.config.enableRegexReplace) {
+      final rules = ref.read(promptRegexRulesProvider);
+      final result = PromptRegexReplacer.apply(text, rules);
+      if (result.changed) {
+        text = result.text;
+        changed = true;
+        messages.add(
+          context.l10n.prompt_regexReplaceApplied(result.appliedRules.length),
+        );
+      }
+    }
+
+    // SD 语法自动转换
+    if (widget.config.enableSdSyntaxAutoConvert) {
+      final converted = SdToNaiConverter.convert(text);
+      if (converted != text) {
+        text = converted;
+        changed = true;
+        messages.add('SD→NAI');
+      }
+    }
+
+    // 自动格式化
+    final formatted = NaiPromptFormatter.format(text);
+    if (formatted != text) {
+      text = formatted;
+      changed = true;
+      if (!messages.contains('SD→NAI')) {
+        messages.add(context.l10n.prompt_formatted);
+      }
+    }
+
+    if (changed) {
+      final selection = TextSelectionUtils.preserveLineAndColumnSelection(
+        oldText: originalValue.text,
+        newText: text,
+        selection: originalValue.selection,
+      );
+      _effectiveController.value = originalValue.copyWith(
+        text: text,
+        selection: selection,
+        composing: TextRange.empty,
+      );
+      _handleTextChanged(text);
+      if (mounted && messages.isNotEmpty) {
+        AppToast.info(context, messages.join(' + '));
+      }
+    }
+
+    widget.onFormatted?.call(_effectiveController.text);
   }
 
   /// 同步外部控制器变化到内部状态
@@ -1518,6 +1599,7 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
       onClearPressed: widget.config.showClearButton ? _handleClear : null,
       clearNeedsConfirm: widget.config.clearNeedsConfirm,
       contextMenuBuilder: _buildContextMenu,
+      enableSmartPhraseSelection: true,
     );
 
     // 接管 Ctrl+C / Ctrl+X：覆盖 EditableText 内置的 CopySelectionTextIntent

@@ -37,6 +37,9 @@ class MagicWandTool extends EditorTool {
   String get id => 'magic_wand';
 
   @override
+  bool get isSelectionTool => true;
+
+  @override
   bool get followsLayerRole => true;
 
   @override

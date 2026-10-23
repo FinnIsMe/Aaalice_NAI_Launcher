@@ -26,6 +26,8 @@ class CollapsibleImagePanel extends StatefulWidget {
     this.collapsedHoverPreviewBuilder,
     this.collapsedHoverPreviewInteractive = false,
     this.hoverPreviewWaitDuration = const Duration(milliseconds: 350),
+    this.headerPadding,
+    this.minHeaderHeight,
     this.child,
     this.childBuilder,
   }) : assert(child != null || childBuilder != null);
@@ -58,6 +60,8 @@ class CollapsibleImagePanel extends StatefulWidget {
   /// 允许指针进入悬浮预览并滚动长内容；默认关闭以维持纯摘要面板的点击语义。
   final bool collapsedHoverPreviewInteractive;
   final Duration hoverPreviewWaitDuration;
+  final EdgeInsetsGeometry? headerPadding;
+  final double? minHeaderHeight;
 
   final Widget? child;
   final WidgetBuilder? childBuilder;
@@ -379,14 +383,17 @@ class _CollapsibleImagePanelState extends State<CollapsibleImagePanel>
                             top: Radius.circular(12),
                           ),
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 44),
+                            constraints: BoxConstraints(
+                              minHeight: widget.minHeaderHeight ?? 44,
+                            ),
                             child: SizedBox(
                               width: double.infinity,
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
+                                padding: widget.headerPadding ??
+                                    const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [

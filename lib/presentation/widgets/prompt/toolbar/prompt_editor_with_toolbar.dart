@@ -78,6 +78,9 @@ class PromptEditorWithToolbar extends ConsumerStatefulWidget {
   /// 工具栏后置自定义按钮
   final List<Widget>? toolbarTrailingActions;
 
+  /// 提示词格式化完成回调
+  final void Function(String text)? onFormatted;
+
   /// ComfyUI 多角色导入回调
   ///
   /// 当用户确认导入 ComfyUI 格式的多角色提示词时触发。
@@ -107,6 +110,7 @@ class PromptEditorWithToolbar extends ConsumerStatefulWidget {
     this.toolbarLeadingActions,
     this.toolbarTrailingActions,
     this.onComfyuiImport,
+    this.onFormatted,
   });
 
   @override
@@ -212,6 +216,7 @@ class _PromptEditorWithToolbarState
             // StackFit.expand 触发 infinite height 布局异常
             fitContent: !widget.expands,
             onComfyuiImport: widget.onComfyuiImport,
+            onFormatted: widget.onFormatted,
           ),
         ),
       ],

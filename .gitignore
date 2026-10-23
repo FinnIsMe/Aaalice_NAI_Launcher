@@ -286,4 +286,5 @@ mask_upload_*.md
 flutter_windows.zip
 dist/*.zip
 dist/*.exe
+assets/databases/*.db
 .kimi/

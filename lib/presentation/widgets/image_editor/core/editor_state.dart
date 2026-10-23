@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 
 import '../frame/editor_frame_commands.dart';
+import '../../../../core/utils/keyboard_modifier_utils.dart';
 import '../layers/layer.dart';
 import '../layers/layer_manager.dart';
 import '../layers/layer_role.dart';
@@ -16,6 +16,7 @@ import 'color_manager.dart';
 import 'history_manager.dart';
 import 'layer_commands.dart';
 import 'layer_move_controller.dart';
+import 'layer_transform_controller.dart';
 import 'layer_role_policy.dart';
 import 'mask_paint_style.dart';
 import 'pixel_readback_queue.dart';
@@ -66,6 +67,8 @@ class EditorState extends ChangeNotifier {
 
   /// 移动工具的拖动与微移
   late final LayerMoveController layerMover = LayerMoveController(this);
+  late final LayerTransformController transformController = LayerTransformController(this);
+  bool enterFreeTransform() => transformController.begin();
 
   /// 填充等需要先回读像素的编辑；导出与撤销前须等它清空
   final PixelReadbackQueue pixelReadbacks = PixelReadbackQueue();
@@ -146,7 +149,9 @@ class EditorState extends ChangeNotifier {
   // ===== Alt 键状态（用于临时拾色器模式）=====
 
   /// 获取 Alt 键是否按下（从硬件键盘状态读取）
-  bool get isAltPressed => HardwareKeyboard.instance.isAltPressed;
+  bool get isAltPressed => isAltPressedNow();
+  bool get isShiftPressed => isShiftPressedNow();
+  bool get isCtrlPressed => isControlPressedNow();
 
   // ===== 代理属性（向后兼容）=====
 
@@ -328,11 +333,43 @@ class EditorState extends ChangeNotifier {
 
   // ===== 代理方法：选区 =====
 
-  void setSelection(Path? path, {bool saveHistory = true}) =>
-      selectionManager.setSelection(path, saveHistory: saveHistory);
-  void clearSelection({bool saveHistory = true}) =>
-      selectionManager.clearSelection(saveHistory: saveHistory);
-  void invertSelection() => selectionManager.invertSelection(_frame);
+  void setSelection(Path? path, {bool saveHistory = true, String? description}) {
+    if (saveHistory) {
+      final prev = selectionManager.selectionPath;
+      if (prev == path) return;
+      selectionManager.setSelection(path, saveHistory: true);
+      historyManager.execute(
+        SetSelectionAction(
+          previousPath: prev != null ? Path.from(prev) : null,
+          newPath: path != null ? Path.from(path) : null,
+          actionDescription: description ?? 'Set Selection',
+        ),
+        this,
+      );
+    } else {
+      selectionManager.setSelection(path, saveHistory: false);
+    }
+  }
+
+  void clearSelection({bool saveHistory = true}) {
+    if (selectionManager.hasSelection) {
+      setSelection(null, saveHistory: saveHistory, description: 'Clear Selection');
+    }
+  }
+
+  void invertSelection() {
+    final current = selectionManager.selectionPath;
+    if (current != null) {
+      final fullRect = Path()..addRect(_frame);
+      final inverted = Path.combine(
+        PathOperation.difference,
+        fullRect,
+        current,
+      );
+      setSelection(inverted, saveHistory: true, description: 'Invert Selection');
+    }
+  }
+
   void setPreviewPath(Path? path) => selectionManager.setPreviewPath(path);
   void clearPreview() => selectionManager.clearPreview();
 
@@ -479,24 +516,10 @@ class EditorState extends ChangeNotifier {
   // ===== 撤销/重做 =====
 
   bool undo() {
-    // 优先撤销选区
-    if (toolManager.currentTool?.isSelectionTool == true &&
-        selectionManager.canUndoSelection) {
-      selectionManager.undoSelection();
-      return true;
-    }
-
     return _afterPendingEdits(historyManager.undo);
   }
 
   bool redo() {
-    // 优先重做选区
-    if (toolManager.currentTool?.isSelectionTool == true &&
-        selectionManager.canRedoSelection) {
-      selectionManager.redoSelection();
-      return true;
-    }
-
     return _afterPendingEdits(historyManager.redo);
   }
 
@@ -513,19 +536,9 @@ class EditorState extends ChangeNotifier {
     return true;
   }
 
-  bool get canUndo {
-    if (toolManager.currentTool?.isSelectionTool == true) {
-      return selectionManager.canUndoSelection || historyManager.canUndo;
-    }
-    return historyManager.canUndo;
-  }
+  bool get canUndo => historyManager.canUndo;
 
-  bool get canRedo {
-    if (toolManager.currentTool?.isSelectionTool == true) {
-      return selectionManager.canRedoSelection || historyManager.canRedo;
-    }
-    return historyManager.canRedo;
-  }
+  bool get canRedo => historyManager.canRedo;
 
   /// 清空当前图层（支持撤销）
   void clearActiveLayerWithHistory() {

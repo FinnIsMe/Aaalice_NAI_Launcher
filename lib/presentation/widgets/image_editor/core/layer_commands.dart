@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -160,22 +161,48 @@ class LayerCommands {
   }
 
   bool get canEditSelectionPixels {
-    final layer = _layers.activeLayer;
-    return _state.selectionPath != null &&
-        layer != null &&
-        !layer.locked &&
-        layer.hasContent;
+    final selection = _state.selectionPath;
+    if (selection == null) return false;
+    final active = _layers.activeLayer;
+    if (active != null && !active.locked && !active.isMask && active.hasContent) {
+      return true;
+    }
+    return _layers.imageLayers.any((l) => !l.locked && l.visible && l.hasContent);
   }
 
-  /// 剪切选区像素到紧贴当前图层上方的新图层，新图层与原图层同一角色
-  bool cutSelectionToNewLayer({required String layerName}) {
-    final selection = _state.selectionPath;
-    final source = _layers.activeLayer;
-    if (!canEditSelectionPixels || selection == null || source == null) {
-      return false;
+  /// 寻找可提取选区像素的源图层及烘焙出的像素片段：
+  /// 优先使用活动图层（若未锁定、非蒙版且在选区内有像素）；
+  /// 若活动图层不满足，则自动向下回退查找包含选区像素的可见图片层（对标 PS 体验，防止用户停留在空图层或蒙版层时无法分离）
+  (Layer, BakedLayerImage)? _extractFromCandidateLayers(Path selection) {
+    final active = _layers.activeLayer;
+    if (active != null && !active.locked && !active.isMask && active.hasContent) {
+      final extracted = LayerPatchBaker.extractRegion(active, region: selection);
+      if (extracted != null) {
+        return (active, extracted);
+      }
     }
-    final extracted = LayerPatchBaker.extractRegion(source, region: selection);
-    if (extracted == null) return false;
+    for (final layer in _layers.imageLayers) {
+      if (layer == active) continue;
+      if (!layer.locked && layer.visible && layer.hasContent) {
+        final extracted = LayerPatchBaker.extractRegion(layer, region: selection);
+        if (extracted != null) {
+          return (layer, extracted);
+        }
+      }
+    }
+    return null;
+  }
+
+  /// 剪切选区像素到紧贴当前图层上方的新图层（Ctrl+Shift+J）；一步撤销恢复原状
+  bool cutSelectionToNewLayer({String? layerName}) {
+    final selection = _state.selectionPath;
+    if (selection == null) return false;
+
+    final pair = _extractFromCandidateLayers(selection);
+    if (pair == null) return false;
+    final source = pair.$1;
+    final extracted = pair.$2;
+
     final BakedLayerImage remainder;
     try {
       remainder = LayerPatchBaker.eraseRegion(
@@ -187,23 +214,27 @@ class LayerCommands {
       extracted.dispose();
       rethrow;
     }
+
+    final defaultName = layerName ?? 'Layer ${_layers.layers.length + 1}';
+    final newLayerData = LayerData(
+      id: const Uuid().v4(),
+      name: defaultName,
+      visible: true,
+      locked: false,
+      opacity: source.opacity,
+      blendMode: source.blendMode,
+      role: LayerRole.image,
+      content: LayerContentSnapshot.shared(
+        baseRaster: extracted.raster,
+        baseImageOffset: extracted.offset,
+      ),
+    );
+
     _state.historyManager.execute(
       CutSelectionToLayerAction(
         sourceId: source.id,
         remainder: remainder,
-        cutLayer: LayerData(
-          id: const Uuid().v4(),
-          name: layerName,
-          visible: true,
-          locked: false,
-          opacity: source.opacity,
-          blendMode: source.blendMode,
-          role: source.role,
-          content: LayerContentSnapshot.shared(
-            baseRaster: extracted.raster,
-            baseImageOffset: extracted.offset,
-          ),
-        ),
+        cutLayer: newLayerData,
         selection: selection,
       ),
       _state,
@@ -211,11 +242,73 @@ class LayerCommands {
     return true;
   }
 
+  /// 复制选区像素到紧贴当前图层上方的新图层（Ctrl+J）；若无选区则完整复制当前图层
+  bool copySelectionToNewLayer({String? layerName}) {
+    final selection = _state.selectionPath;
+    if (selection != null) {
+      final pair = _extractFromCandidateLayers(selection);
+      if (pair == null) return false;
+      final source = pair.$1;
+      final extracted = pair.$2;
+
+      final sourceIndex = _layers.indexOfLayer(source.id);
+      final int targetIndex;
+      if (_policy.rolesEnabled) {
+        final maskCount = _layers.layers.where((l) => l.isMask).length;
+        targetIndex = (sourceIndex >= 0) ? math.max(maskCount, sourceIndex) : maskCount;
+      } else {
+        targetIndex = (sourceIndex >= 0) ? sourceIndex : 0;
+      }
+
+      final defaultName = layerName ?? 'Layer ${_layers.layers.length + 1}';
+      final newLayerData = LayerData(
+        id: const Uuid().v4(),
+        name: defaultName,
+        visible: true,
+        locked: false,
+        opacity: 1.0,
+        blendMode: source.blendMode,
+        role: LayerRole.image,
+        content: LayerContentSnapshot.shared(
+          baseRaster: extracted.raster,
+          baseImageOffset: extracted.offset,
+        ),
+      );
+
+      final previousActiveId = _layers.activeLayerId;
+      _state.historyManager.execute(
+        CopySelectionToLayerAction(
+          layerData: newLayerData,
+          insertIndex: targetIndex,
+          selection: selection,
+          previousActiveLayerId: previousActiveId,
+          actionDescription: 'Layer via Copy',
+        ),
+        _state,
+      );
+      return true;
+    } else {
+      // 无选区时：对标 PS 原生逻辑，完整复制当前图层
+      Layer? source = _layers.activeLayer;
+      if (source == null || source.locked || source.isMask || !source.hasContent) {
+        source = _layers.imageLayers.where((l) => !l.locked && l.visible && l.hasContent).firstOrNull ?? source;
+      }
+      if (source == null || source.locked) return false;
+      final defaultName = layerName ?? '${source.name} Copy';
+      duplicate(source, name: defaultName);
+      return true;
+    }
+  }
+
   /// 清除当前图层在选区内的像素，选区保留
   bool clearSelectionPixels() {
     final selection = _state.selectionPath;
-    final layer = _layers.activeLayer;
-    if (!canEditSelectionPixels || selection == null || layer == null) {
+    if (selection == null) return false;
+    Layer? layer = _layers.activeLayer;
+    if (layer == null || layer.locked || !layer.hasContent || layer.isMask) {
+      layer = _layers.imageLayers.where((l) => !l.locked && l.visible && l.hasContent).firstOrNull ?? layer;
+    }
+    if (layer == null || layer.locked || !layer.hasContent) {
       return false;
     }
     final erased = LayerPatchBaker.eraseRegion(
@@ -231,6 +324,8 @@ class LayerCommands {
       ),
       _state,
     );
+    _state.notifyRenderChange();
+    _state.requestUiUpdate();
     return true;
   }
 }
