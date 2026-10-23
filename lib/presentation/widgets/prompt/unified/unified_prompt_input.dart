@@ -470,6 +470,11 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
       ref
           .read(promptAssistantHistoryProvider.notifier)
           .push(_sessionId, _effectiveController.text);
+    } else {
+      // 点击/聚焦文本框准备输入时：触发高度自适应
+      if (!_tagMode) {
+        widget.onFormatted?.call(_effectiveController.text);
+      }
     }
   }
 
@@ -1595,6 +1600,11 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
           ? null
           : (_) => _handleTextChanged(_effectiveController.text),
       onSubmitted: (_) => widget.onSubmitted?.call(_effectiveController.text),
+      onTap: () {
+        if (!_tagMode) {
+          widget.onFormatted?.call(_effectiveController.text);
+        }
+      },
       showClearButton: widget.config.showClearButton,
       onClearPressed: widget.config.showClearButton ? _handleClear : null,
       clearNeedsConfirm: widget.config.clearNeedsConfirm,
