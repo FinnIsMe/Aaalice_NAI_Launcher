@@ -569,13 +569,24 @@ class _ThemedInputState extends State<ThemedInput> {
       );
     }
 
+    final tappedContent = GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        widget.onTap?.call();
+        if (widget.enabled && !_effectiveFocusNode.hasFocus) {
+          _effectiveFocusNode.requestFocus();
+        }
+      },
+      child: content,
+    );
+
     final container = InputSurfaceContainer(
       borderRadius: widget.borderRadius,
       enabled: widget.enabled,
       isFocused: _effectiveFocusNode.hasFocus,
       hasError: widget.hasError || inputDecoration.errorText != null,
       backgroundColor: widget.surfaceColor,
-      child: content,
+      child: tappedContent,
     );
 
     // 如果有帮助文字，添加在下方

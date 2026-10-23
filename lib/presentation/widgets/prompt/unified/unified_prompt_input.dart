@@ -483,6 +483,7 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
     if (!widget.config.enableAutoFormat &&
         !widget.config.enableSdSyntaxAutoConvert &&
         !widget.config.enableRegexReplace) {
+      widget.onFormatted?.call(_effectiveController.text);
       return;
     }
 
@@ -1610,6 +1611,7 @@ class _UnifiedPromptInputState extends ConsumerState<UnifiedPromptInput> {
       clearNeedsConfirm: widget.config.clearNeedsConfirm,
       contextMenuBuilder: _buildContextMenu,
       enableSmartPhraseSelection: true,
+      onTapOutside: (_) => _effectiveFocusNode.unfocus(),
     );
 
     // 接管 Ctrl+C / Ctrl+X：覆盖 EditableText 内置的 CopySelectionTextIntent

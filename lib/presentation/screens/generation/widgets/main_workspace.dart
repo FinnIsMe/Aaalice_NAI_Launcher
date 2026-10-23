@@ -57,6 +57,31 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
   bool _isDragging = false;
 
   @override
+  void initState() {
+    super.initState();
+    widget.promptInputController.addListener(_onPromptControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(MainWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.promptInputController != widget.promptInputController) {
+      oldWidget.promptInputController.removeListener(_onPromptControllerChanged);
+      widget.promptInputController.addListener(_onPromptControllerChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.promptInputController.removeListener(_onPromptControllerChanged);
+    super.dispose();
+  }
+
+  void _onPromptControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final layoutState = ref.watch(layoutStateNotifierProvider);
@@ -81,6 +106,7 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
         final resizeHandleHeight = interactionPolicy.prefersTouchPresentation
             ? interactionPolicy.minimumControlExtent
             : MainWorkspace._resizeHandleHeight;
+        final isNegative = widget.promptInputController.isNegativeMode;
         final promptAreaHeight = _resolvePromptAreaHeight(
           context,
           layoutState,
@@ -89,10 +115,14 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
           resizeHandleHeight,
           promptTexts.prompt,
           promptTexts.negativePrompt,
+          isNegativeMode: isNegative,
         );
 
-        final workspace = Column(
-          children: [
+        final workspace = GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: Column(
+            children: [
             // 画布只从布局中收起提示词区，不卸载编辑器。隐藏时仍按原始
             // 非零尺寸布局，避免 EditableText 丢失滚动、selection 与 IME 会话。
             if (isPromptMaximized)
@@ -173,7 +203,8 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
               child: const GenerationControls(),
             ),
           ],
-        );
+        ),
+      );
         if (!useScrollableWorkspace) return workspace;
         return SingleChildScrollView(primary: false, child: workspace);
       },
@@ -212,6 +243,7 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
             maxWidth,
             prompt,
             negativePrompt,
+            isNegativeMode: isNegativeMode,
           ).clamp(MainWorkspace._minPromptAreaHeight, heightCap).toDouble();
 
           setState(() => _isDragging = false);
@@ -230,8 +262,9 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
     double maxHeight,
     double resizeHandleHeight,
     String prompt,
-    String negativePrompt,
-  ) {
+    String negativePrompt, {
+    bool? isNegativeMode,
+  }) {
     final heightCap = _resolvePromptAreaHeightCap(
       maxHeight,
       resizeHandleHeight,
@@ -244,6 +277,7 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
       maxWidth,
       prompt,
       negativePrompt,
+      isNegativeMode: isNegativeMode,
     ).clamp(MainWorkspace._minPromptAreaHeight, heightCap).toDouble();
 
     // 用户设置值是基础高度，避免空提示词时编辑器默认缩成窄条；
@@ -278,8 +312,9 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
     BuildContext context,
     double maxWidth,
     String prompt,
-    String negativePrompt,
-  ) {
+    String negativePrompt, {
+    bool? isNegativeMode,
+  }) {
     final safeMaxWidth = maxWidth.isFinite && maxWidth > 0 ? maxWidth : 800.0;
     final textWidth =
         (safeMaxWidth -
@@ -292,11 +327,16 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
       negativePrompt,
       textWidth,
     );
-    final textHeight = promptHeight > negativeHeight
-        ? promptHeight
-        : negativeHeight;
+    final double textHeight;
+    if (isNegativeMode != null) {
+      textHeight = isNegativeMode ? negativeHeight : promptHeight;
+    } else {
+      textHeight = promptHeight > negativeHeight
+          ? promptHeight
+          : negativeHeight;
+    }
 
-    if (promptHeight == 0 && negativeHeight == 0) {
+    if (textHeight == 0) {
       return MainWorkspace._minPromptAreaHeight;
     }
 
@@ -313,7 +353,9 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
   ) {
     if (text.trim().isEmpty) return 0.0;
     final theme = Theme.of(context);
-    final textStyle = theme.textTheme.bodyMedium ?? const TextStyle();
+    final textStyle = theme.textTheme.bodyLarge ??
+        theme.textTheme.bodyMedium ??
+        const TextStyle(fontSize: 16, height: 1.45);
     final painter = TextPainter(
       text: TextSpan(text: text, style: textStyle),
       textDirection: Directionality.of(context),

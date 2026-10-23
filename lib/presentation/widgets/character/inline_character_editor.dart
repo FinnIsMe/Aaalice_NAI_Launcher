@@ -292,7 +292,10 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor>
                       label: l10n.prompt_positivePrompt,
                       selected: _tabIndex == 0,
                       onTap: () {
-                        setState(() => _tabIndex = 0);
+                        setState(() {
+                          _tabIndex = 0;
+                          _animatedHeight = null;
+                        });
                         _focusCurrentTab();
                       },
                     ),
@@ -304,7 +307,10 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor>
                       isNegative: true,
                       selected: _tabIndex == 1,
                       onTap: () {
-                        setState(() => _tabIndex = 1);
+                        setState(() {
+                          _tabIndex = 1;
+                          _animatedHeight = null;
+                        });
                         _focusCurrentTab();
                       },
                     ),

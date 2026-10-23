@@ -13,8 +13,7 @@ import 'package:flutter/material.dart';
 class PromptPhraseSelectionUtils {
   PromptPhraseSelectionUtils._();
 
-  static const String _delimiters = ',，\n\r';
-  static final RegExp _whitespaceRegExp = RegExp(r'\s+');
+  static const String _delimiters = ',，\n\r#＃';
   static final RegExp _wordRegExp = RegExp(r'\S+');
   static final RegExp _colonWeightSuffix = RegExp(r':-?\d+(?:\.\d*)?\s*$');
   static final RegExp _naiWeightPrefix = RegExp(r'^-?(?:\d+(?:\.\d*)?|\.\d+)::');

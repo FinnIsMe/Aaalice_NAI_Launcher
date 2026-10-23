@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nai_launcher/presentation/utils/prompt_phrase_selection_utils.dart';
 
@@ -197,6 +196,46 @@ void main() {
         offset: 8, // inside happy
       );
       expect(selection.textInside(text), 'happy male furry');
+    });
+
+    test('# and ＃ delimiters: double click next to hash does not select hash', () {
+      const text = 'source#kiss';
+
+      // Double click 'kiss'
+      var selection = PromptPhraseSelectionUtils.calculateDoubleTapSelection(
+        text: text,
+        offset: 8, // 'i' in 'kiss'
+      );
+      expect(selection.textInside(text), 'kiss');
+
+      // Double click 'source'
+      selection = PromptPhraseSelectionUtils.calculateDoubleTapSelection(
+        text: text,
+        offset: 2, // 'u' in 'source'
+      );
+      expect(selection.textInside(text), 'source');
+    });
+
+    test('# with full-width ＃ and multiple words', () {
+      const text = 'masterpiece#source#kiss，cute girl＃solo';
+
+      var selection = PromptPhraseSelectionUtils.calculateDoubleTapSelection(
+        text: text,
+        offset: 19, // 'k' in 'kiss'
+      );
+      expect(selection.textInside(text), 'kiss');
+
+      selection = PromptPhraseSelectionUtils.calculateDoubleTapSelection(
+        text: text,
+        offset: 14, // in 'source'
+      );
+      expect(selection.textInside(text), 'source');
+
+      selection = PromptPhraseSelectionUtils.calculateDoubleTapSelection(
+        text: text,
+        offset: 35, // in 'solo'
+      );
+      expect(selection.textInside(text), 'solo');
     });
   });
 }

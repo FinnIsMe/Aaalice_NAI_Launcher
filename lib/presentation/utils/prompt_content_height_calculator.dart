@@ -12,17 +12,20 @@ double calculatePromptContentHeight({
   required double maxWidth,
   required double minimumHeight,
   required double maximumHeight,
+  TextStyle? style,
   EdgeInsets contentPadding = const EdgeInsets.symmetric(
     horizontal: 12,
     vertical: 10,
   ),
-  double extraBottomBuffer = 14.0,
+  double extraBottomBuffer = 24.0,
 }) {
   if (text.trim().isEmpty) return minimumHeight;
 
   final theme = Theme.of(context);
-  var effectiveStyle =
-      theme.textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
+  var effectiveStyle = style ??
+      theme.textTheme.bodyLarge ??
+      theme.textTheme.bodyMedium ??
+      const TextStyle(fontSize: 16, height: 1.45);
   if (MediaQuery.boldTextOf(context)) {
     effectiveStyle = effectiveStyle.merge(
       const TextStyle(fontWeight: FontWeight.bold),
