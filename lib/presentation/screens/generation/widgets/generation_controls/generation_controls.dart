@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -114,25 +116,58 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
       pinnedActions: pinnedBeforePrimary,
       primaryAction: SizedBox(
         key: const ValueKey('generation-footer-primary-action'),
-        child: GenerateButtonWithCost(
-          height: compact ? 30 : 36,
-          isGenerating: isGenerating,
-          showCancel: showCancel,
-          batchStatus: batchStatus,
-          cooldownRemainingSeconds: cooldownState.remainingSeconds,
-          onGenerate: () => unawaited(_handleGenerate(context, ref)),
-          onCancel: () =>
-              ref.read(imageGenerationNotifierProvider.notifier).cancel(),
-          onSkipCurrent: () => ref
-              .read(imageGenerationNotifierProvider.notifier)
-              .skipCurrentRequest(),
-          showCost: !isUpscaleMode,
-          requiresLogin: !isAuthenticated && !isGenerating,
-          compact: compact,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent) {
+              _handleScrollSampleCount(
+                event,
+                nSamples,
+                isGenerating || showCancel,
+              );
+            }
+          },
+          child: GenerateButtonWithCost(
+            height: compact ? 30 : 36,
+            isGenerating: isGenerating,
+            showCancel: showCancel,
+            batchStatus: batchStatus,
+            cooldownRemainingSeconds: cooldownState.remainingSeconds,
+            onGenerate: () => unawaited(_handleGenerate(context, ref)),
+            onCancel: () =>
+                ref.read(imageGenerationNotifierProvider.notifier).cancel(),
+            onSkipCurrent: () => ref
+                .read(imageGenerationNotifierProvider.notifier)
+                .skipCurrentRequest(),
+            showCost: !isUpscaleMode,
+            requiresLogin: !isAuthenticated && !isGenerating,
+            compact: compact,
+          ),
         ),
       ),
       rightActions: rightActions,
     );
+  }
+
+  void _handleScrollSampleCount(
+    PointerScrollEvent event,
+    int currentSamples,
+    bool isBusy,
+  ) {
+    if (isBusy) return;
+    final delta = event.scrollDelta.dy > 0 ? -1 : 1;
+    final nextValue = DraggableNumberInput.calculateNextStepValue(
+      currentValue: currentSamples,
+      stepDirection: delta,
+      scrollValues: const [1, 2, 4, 6],
+      min: 1,
+    );
+    if (nextValue != currentSamples) {
+      ref
+          .read(generationParamsNotifierProvider.notifier)
+          .updateNSamples(nextValue);
+      HapticFeedback.selectionClick();
+    }
   }
 
   Future<void> _handleGenerate(BuildContext context, WidgetRef ref) async {

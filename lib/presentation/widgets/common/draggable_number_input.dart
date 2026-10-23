@@ -41,6 +41,45 @@ class DraggableNumberInput extends StatefulWidget {
     this.dragSensitivity = 20.0,
   });
 
+  /// 根据滚轮方向在可选阶梯值列表中步进
+  static int calculateNextStepValue({
+    required int currentValue,
+    required int stepDirection,
+    List<int>? scrollValues,
+    int min = 1,
+    int? max,
+  }) {
+    if (scrollValues != null && scrollValues.isNotEmpty) {
+      final sortedValues = List<int>.from(scrollValues)..sort();
+      if (stepDirection > 0) {
+        // 向上步进
+        if (currentValue >= sortedValues.last) {
+          // 已达到或超过滚动上限（如 6），不再向上增加
+          return currentValue;
+        }
+        for (final v in sortedValues) {
+          if (v > currentValue) return v;
+        }
+        return sortedValues.last;
+      } else if (stepDirection < 0) {
+        // 向下步进
+        if (currentValue <= sortedValues.first) {
+          // 已达到或低于滚动下限（如 1），不再向下减少
+          return sortedValues.first;
+        }
+        for (int i = sortedValues.length - 1; i >= 0; i--) {
+          if (sortedValues[i] < currentValue) return sortedValues[i];
+        }
+        return sortedValues.first;
+      }
+      return currentValue;
+    }
+    final nextRaw = currentValue + stepDirection;
+    if (nextRaw < min) return min;
+    if (max != null && nextRaw > max) return max;
+    return nextRaw;
+  }
+
   @override
   State<DraggableNumberInput> createState() => _DraggableNumberInputState();
 }
@@ -85,33 +124,13 @@ class _DraggableNumberInputState extends State<DraggableNumberInput> {
   }
 
   int _calculateNextStepValue(int currentValue, int stepDirection) {
-    final values = widget.scrollValues;
-    if (values != null && values.isNotEmpty) {
-      final sortedValues = List<int>.from(values)..sort();
-      if (stepDirection > 0) {
-        // 向上步进
-        if (currentValue >= sortedValues.last) {
-          // 已达到或超过滚动上限（如 6），不再向上增加
-          return currentValue;
-        }
-        for (final v in sortedValues) {
-          if (v > currentValue) return v;
-        }
-        return sortedValues.last;
-      } else if (stepDirection < 0) {
-        // 向下步进
-        if (currentValue <= sortedValues.first) {
-          // 已达到或低于滚动下限（如 1），不再向下减少
-          return sortedValues.first;
-        }
-        for (int i = sortedValues.length - 1; i >= 0; i--) {
-          if (sortedValues[i] < currentValue) return sortedValues[i];
-        }
-        return sortedValues.first;
-      }
-      return currentValue;
-    }
-    return _clampValue(currentValue + stepDirection);
+    return DraggableNumberInput.calculateNextStepValue(
+      currentValue: currentValue,
+      stepDirection: stepDirection,
+      scrollValues: widget.scrollValues,
+      min: widget.min,
+      max: widget.max,
+    );
   }
 
   void _onFocusChange() {

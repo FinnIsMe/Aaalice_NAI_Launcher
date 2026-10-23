@@ -788,6 +788,172 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
+
+  testWidgets('scrolling over generate button steps sample count', (
+    tester,
+  ) async {
+    final storage = _MemoryLocalStorageService({
+      StorageKeys.autoSaveImages: false,
+      StorageKeys.showRandomPromptTools: true,
+    });
+    late ProviderContainer container;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authNotifierProvider.overrideWith(_AuthenticatedAuthNotifier.new),
+          localStorageServiceProvider.overrideWith((ref) => storage),
+          kritaBridgeNotifierProvider.overrideWith(
+            (ref) => _TestKritaBridgeNotifier(),
+          ),
+          replicationQueueNotifierProvider.overrideWith(
+            _TestReplicationQueueNotifier.new,
+          ),
+          queueExecutionNotifierProvider.overrideWith(
+            _TestQueueExecutionNotifier.new,
+          ),
+          subscriptionNotifierProvider.overrideWith(
+            _TestSubscriptionNotifier.new,
+          ),
+          estimatedCostProvider.overrideWith((ref) => 0),
+          isFreeGenerationProvider.overrideWith((ref) => true),
+        ],
+        child: Consumer(
+          builder: (context, ref, child) {
+            container = ProviderScope.containerOf(context);
+            return const MaterialApp(
+              locale: Locale('zh'),
+              supportedLocales: AppLocalizations.supportedLocales,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              home: Scaffold(
+                body: SizedBox(
+                  width: 700,
+                  height: 180,
+                  child: GenerationControls(compact: true),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // \xe5\x88\x9d\xe5\xa7\x8b\xe7\x8a\xb6\xe6\x80\x81\xe4\xb8\xba 1
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(1),
+    );
+
+    final generateButtonFinder = find.byKey(
+      const ValueKey('generation-footer-primary-action'),
+    );
+    expect(generateButtonFinder, findsOneWidget);
+
+    // \xe5\x90\x91\xe4\xb8\x8a\xe6\xbb\x9a\xe5\x8a\xa8\xef\xbc\x88dy < 0\xef\xbc\x89\xef\xbc\x9a1 -> 2
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, -100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(2),
+    );
+
+    // \xe5\x90\x91\xe4\xb8\x8a\xe6\xbb\x9a\xe5\x8a\xa8\xef\xbc\x9a2 -> 4
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, -100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(4),
+    );
+
+    // \xe5\x90\x91\xe4\xb8\x8a\xe6\xbb\x9a\xe5\x8a\xa8\xef\xbc\x9a4 -> 6
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, -100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(6),
+    );
+
+    // \xe8\xbe\xbe\xe4\xb8\x8a\xe9\x99\x90 6\xef\xbc\x8c\xe7\xbb\xa7\xe7\xbb\xad\xe5\x90\x91\xe4\xb8\x8a\xe4\xb8\x8d\xe5\xa2\x9e\xe5\x8a\xa0
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, -100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(6),
+    );
+
+    // \xe5\x90\x91\xe4\xb8\x8b\xe6\xbb\x9a\xe5\x8a\xa8\xef\xbc\x88dy > 0\xef\xbc\x89\xef\xbc\x9a6 -> 4
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, 100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(4),
+    );
+
+    // \xe5\x90\x91\xe4\xb8\x8b\xe6\xbb\x9a\xe5\x8a\xa8\xef\xbc\x9a4 -> 2
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, 100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(2),
+    );
+
+    // \xe5\x90\x91\xe4\xb8\x8b\xe6\xbb\x9a\xe5\x8a\xa8\xef\xbc\x9a2 -> 1
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, 100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(1),
+    );
+
+    // \xe8\xbe\xbe\xe4\xb8\x8b\xe9\x99\x90 1\xef\xbc\x8c\xe7\xbb\xa7\xe7\xbb\xad\xe5\x90\x91\xe4\xb8\x8b\xe4\xb8\x8d\xe5\x87\x8f\xe5\xb0\x91
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(generateButtonFinder),
+        scrollDelta: const Offset(0, 100),
+      ),
+    );
+    await tester.pump();
+    expect(
+      container.read(generationParamsNotifierProvider).nSamples,
+      equals(1),
+    );
+  });
 }
 
 Future<void> _pumpBatchSettingsForm(WidgetTester tester) async {
