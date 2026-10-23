@@ -81,17 +81,19 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
       },
     );
     final pinnedBeforePrimary = <Widget>[
-      if (compact) const AutoSaveToggleChip(compact: true),
-    ];
-    final leftActions = <Widget>[
-      opusUsage,
-      anlasBalance,
       if (compact) ...[
         Visibility.maintain(
           visible: !showCancel,
           child: const BatchSettingsButton(compact: true),
         ),
         Visibility.maintain(visible: !showCancel, child: sampleCountInput),
+      ],
+    ];
+    final leftActions = <Widget>[
+      opusUsage,
+      anlasBalance,
+      if (compact) ...[
+        const AutoSaveToggleChip(compact: true),
         if (showRandomTools)
           RandomModeToggle(enabled: randomMode, compact: compact),
       ],
@@ -302,7 +304,7 @@ class _RenderGenerationControlsLayout extends RenderBox
 
     final leftWidth = _groupWidth(left);
     final pinnedWidth = _groupWidth(pinned);
-    final pinnedGap = pinned.isNotEmpty ? 20.0 : 0.0;
+    final pinnedGap = pinned.isNotEmpty ? _primarySpacing : 0.0;
     final rightWidth = _groupWidth(right);
     final naturalWidth =
         leftWidth + rightWidth + pinnedWidth + pinnedGap + minimumPrimaryWidth + _primarySpacing * 2;
@@ -347,12 +349,13 @@ class _RenderGenerationControlsLayout extends RenderBox
     final leftWidth = _groupWidth(left);
     final pinnedWidth = _groupWidth(pinned);
     final rightWidth = _groupWidth(right);
+    final pinnedGap = pinned.isNotEmpty ? _primarySpacing : 0.0;
     final primaryX = _compact
         ? width - rightWidth - primary.size.width
-        : leftWidth + _primarySpacing + (pinned.isNotEmpty ? pinnedWidth + 20.0 : 0.0);
+        : leftWidth + _primarySpacing + (pinned.isNotEmpty ? pinnedWidth + pinnedGap : 0.0);
     _positionGroup(left, 0, height);
     if (pinned.isNotEmpty) {
-      final pinnedX = primaryX - 20.0 - pinnedWidth;
+      final pinnedX = primaryX - pinnedGap - pinnedWidth;
       _positionGroup(pinned, pinnedX, height);
     }
     _position(primary, primaryX, (height - primary.size.height) / 2);
