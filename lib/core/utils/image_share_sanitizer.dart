@@ -9,6 +9,7 @@ import 'package:nai_png_codec/nai_png_codec.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'isolate_pool.dart';
 import 'png_share_source.dart';
 
 typedef ShareImagePrepareFunction =
@@ -116,6 +117,7 @@ class ShareImageTransferCache {
         transform: transform,
       );
       final file = await _writeTempFile(prepared);
+      _preparedImages.remove(key);
       _temporaryFiles[key] = file;
       return file;
     });
@@ -126,6 +128,8 @@ class ShareImageTransferCache {
   }
 
   Future<void> dispose() async {
+    _preparedImages.clear();
+    _preparedFiles.clear();
     for (final file in _temporaryFiles.values) {
       if (await file.exists()) {
         try {
@@ -627,7 +631,7 @@ class ImageShareSanitizer {
     }
 
     final transferableBytes = TransferableTypedData.fromList([bytes]);
-    return Isolate.run(() {
+    return ComputeGate.singleTask().runIsolate(() {
       final materializedBytes = transferableBytes.materialize().asUint8List();
       return prepareForCopyOrDrag(
         materializedBytes,

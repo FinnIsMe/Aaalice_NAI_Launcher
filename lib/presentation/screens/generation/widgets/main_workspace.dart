@@ -200,7 +200,7 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
                   top: BorderSide(color: theme.dividerColor, width: 1),
                 ),
               ),
-              child: const GenerationControls(),
+              child: const RepaintBoundary(child: GenerationControls()),
             ),
           ],
         ),
@@ -218,7 +218,8 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
     double maxHeight,
     double resizeHandleHeight,
   ) {
-    return Container(
+    return RepaintBoundary(
+      child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.5),
@@ -252,6 +253,7 @@ class _MainWorkspaceState extends ConsumerState<MainWorkspace> {
               .setPromptAreaHeight(targetHeight);
         },
       ),
+    ),
     );
   }
 
