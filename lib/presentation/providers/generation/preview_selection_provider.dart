@@ -12,12 +12,6 @@ class GenerationPreviewSelection extends _$GenerationPreviewSelection {
   @override
   String? build() {
     ref.listen(imageGenerationNotifierProvider, (previous, next) {
-      if (previous?.status != GenerationStatus.generating &&
-          next.status == GenerationStatus.generating) {
-        state = null;
-        return;
-      }
-
       final selectedId = state;
       if (selectedId == null) return;
       if (previous?.panelImages != next.panelImages &&

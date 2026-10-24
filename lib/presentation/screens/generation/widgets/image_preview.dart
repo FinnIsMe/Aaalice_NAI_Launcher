@@ -7,7 +7,6 @@ import '../services/generation_image_batch_actions.dart';
 import '../services/generation_image_deletion.dart';
 import '../services/generation_detail_data.dart';
 import '../services/generation_save_service.dart';
-import 'package:nai_launcher/data/models/image/image_postprocess_phase.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -27,13 +26,10 @@ import '../../../../core/utils/file_explorer_utils.dart';
 import '../../../../core/utils/localization_extension.dart';
 import '../../../../core/utils/vibe_file_parser.dart';
 import '../../../../data/models/gallery/nai_image_metadata.dart';
-import '../../../../data/models/image/image_stream_chunk.dart';
 import '../../../providers/alias_resolver_service.dart';
 import '../../../../data/services/image_metadata_service.dart';
 import '../../../adaptive/window_size_class.dart';
 import '../../../providers/generation/generation_error_classifier.dart';
-import '../../../providers/generation/generation_params_selectors.dart';
-import '../../../providers/generation/generation_settings_notifiers.dart';
 import '../../../providers/generation/image_generation_selectors.dart';
 import '../../../providers/generation/generation_view_state_provider.dart';
 import '../../../providers/generation/preview_selection_provider.dart';
@@ -256,43 +252,7 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
     ImageGenerationState state,
     ThemeData theme,
   ) {
-    // 错误状态
-    if (state.status == GenerationStatus.error) {
-      return _buildErrorState(theme, state.errorMessage, context);
-    }
-
-    // 使用批次分辨率（点击生成时捕获），fallback 到全局参数
-    final previewDimensions = ref.watch(
-      generationParamsNotifierProvider.select(selectPreviewDimensionsViewData),
-    );
-    final batchWidth = state.batchWidth ?? previewDimensions.width;
-    final batchHeight = state.batchHeight ?? previewDimensions.height;
-
-    // 生成中状态
-    if (state.isGenerating) {
-      final previewSlots = _visibleStreamPreviewSlots(state);
-      // 如果有已完成图像或当前请求有多个预览槽位，显示网格视图。
-      if (state.currentImages.isNotEmpty || previewSlots.length > 1) {
-        return _buildGeneratingWithCompletedImages(
-          context,
-          ref,
-          state,
-          theme,
-          batchWidth,
-          batchHeight,
-        );
-      }
-      // 否则只显示生成中卡片
-      return _buildSingleGeneratingState(
-        context,
-        state,
-        theme,
-        batchWidth,
-        batchHeight,
-      );
-    }
-
-    // 角色位置画布不能遮挡生成与错误状态，也不能跨越模型/角色能力边界。
+    // 角色位置画布不能跨越模型/角色能力边界。
     final showCharacterCanvas =
         ref.watch(characterPositionCanvasProvider) &&
         ref.watch(characterPositionCanvasAvailableProvider);
@@ -318,6 +278,11 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
       }
     }
 
+    // 错误状态
+    if (state.status == GenerationStatus.error) {
+      return _buildErrorState(theme, state.errorMessage, context);
+    }
+
     // 有图像：根据数量决定布局（使用 displayImages）
     if (state.hasImages) {
       if (state.displayImages.length == 1) {
@@ -331,40 +296,6 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
 
     // 空状态
     return _buildEmptyState(theme, context);
-  }
-
-  List<StreamPreviewSlot> _visibleStreamPreviewSlots(
-    ImageGenerationState state,
-  ) {
-    final completedCount = state.currentImages.length;
-    return [
-      for (final slot in state.streamPreviewSlots)
-        if (slot.imageNumber > completedCount) slot,
-    ]..sort((a, b) => a.imageNumber.compareTo(b.imageNumber));
-  }
-
-  Widget _buildGeneratingCard({
-    required int imageWidth,
-    required int imageHeight,
-    required int currentImage,
-    required int totalImages,
-    required double progress,
-    ImagePostprocessPhase? postprocessPhase,
-    Uint8List? streamPreview,
-    FocusedStreamPreviewPlacement? focusedPreviewPlacement,
-  }) {
-    return SelectableImageCard(
-      isGenerating: true,
-      currentImage: currentImage,
-      totalImages: totalImages,
-      progress: progress,
-      postprocessPhase: postprocessPhase,
-      streamPreview: streamPreview,
-      focusedPreviewPlacement: focusedPreviewPlacement,
-      imageWidth: imageWidth,
-      imageHeight: imageHeight,
-      enableSelection: false,
-    );
   }
 
   /// 构建多图网格视图
@@ -410,113 +341,6 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
           },
         );
       },
-    );
-  }
-
-  /// 生成中 + 有已完成图像的混合视图
-  Widget _buildGeneratingWithCompletedImages(
-    BuildContext context,
-    WidgetRef ref,
-    ImageGenerationState state,
-    ThemeData theme,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final completedImages = state.currentImages;
-    final previewSlots = _visibleStreamPreviewSlots(state);
-    final generatingCount = previewSlots.isNotEmpty ? previewSlots.length : 1;
-    final totalItems = completedImages.length + generatingCount;
-    final aspectRatio = imageWidth / imageHeight;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final crossAxisCount = ImagePreviewWidget.resolveGridColumnCount(
-          totalItems,
-          constraints.maxWidth,
-        );
-
-        return GridView.builder(
-          padding: const EdgeInsets.all(8),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: aspectRatio,
-          ),
-          itemCount: totalItems,
-          itemBuilder: (context, index) {
-            // 已完成的图像
-            if (index < completedImages.length) {
-              final image = completedImages[index];
-              return _buildGeneratedImageCard(
-                context: context,
-                ref: ref,
-                image: image,
-                index: index,
-                showIndex: true,
-                onTapOverride: () {
-                  ref
-                      .read(generationPreviewSelectionProvider.notifier)
-                      .select(image.id);
-                },
-              );
-            }
-
-            final generationIndex = index - completedImages.length;
-            if (previewSlots.isNotEmpty &&
-                generationIndex < previewSlots.length) {
-              final slot = previewSlots[generationIndex];
-              return _buildGeneratingCard(
-                imageWidth: imageWidth,
-                imageHeight: imageHeight,
-                currentImage: slot.imageNumber,
-                totalImages: slot.totalImages,
-                progress: slot.progress,
-                postprocessPhase: slot.postprocessPhase,
-                streamPreview: slot.previewBytes,
-                focusedPreviewPlacement: slot.focusedPreviewPlacement,
-              );
-            }
-
-            return _buildGeneratingCard(
-              imageWidth: imageWidth,
-              imageHeight: imageHeight,
-              currentImage: state.currentImage,
-              totalImages: state.totalImages,
-              progress: state.progress,
-              streamPreview: state.streamPreview,
-              focusedPreviewPlacement: state.focusedPreviewPlacement,
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// 生成中的居中显示（无已完成图像时）
-  Widget _buildSingleGeneratingState(
-    BuildContext context,
-    ImageGenerationState state,
-    ThemeData theme,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final aspectRatio = imageWidth / imageHeight;
-    final previewSlots = _visibleStreamPreviewSlots(state);
-    final slot = previewSlots.isNotEmpty ? previewSlots.first : null;
-    return _buildSingleAspectRatioCard(
-      aspectRatio: aspectRatio,
-      child: _buildGeneratingCard(
-        imageWidth: imageWidth,
-        imageHeight: imageHeight,
-        currentImage: slot?.imageNumber ?? state.currentImage,
-        totalImages: slot?.totalImages ?? state.totalImages,
-        progress: slot?.progress ?? state.progress,
-        postprocessPhase: slot?.postprocessPhase,
-        streamPreview: slot?.previewBytes ?? state.streamPreview,
-        focusedPreviewPlacement:
-            slot?.focusedPreviewPlacement ?? state.focusedPreviewPlacement,
-      ),
     );
   }
 
@@ -1077,28 +901,6 @@ class _ImagePreviewWidgetState extends ConsumerState<ImagePreviewWidget> {
         AppToast.error(context, context.l10n.image_saveFailed(e.toString()));
       }
     }
-  }
-
-  Widget _buildSingleAspectRatioCard({
-    required double aspectRatio,
-    required Widget child,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardSize = _fitAspectRatio(
-          aspectRatio: aspectRatio,
-          maxSize: Size(constraints.maxWidth, constraints.maxHeight),
-        );
-
-        return Center(
-          child: SizedBox(
-            width: cardSize.width,
-            height: cardSize.height,
-            child: child,
-          ),
-        );
-      },
-    );
   }
 
   Size _fitAspectRatio({required double aspectRatio, required Size maxSize}) {

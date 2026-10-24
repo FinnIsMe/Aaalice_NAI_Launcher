@@ -145,7 +145,7 @@ void main() {
       expect(container.read(generationPreviewSelectionProvider), isNull);
     });
 
-    test('generation start clears the selection', () {
+    test('generation start preserves the selection', () {
       final notifier = container.read(
         generationPreviewSelectionProvider.notifier,
       )..select('a');
@@ -157,7 +157,7 @@ void main() {
         ),
       );
 
-      expect(container.read(generationPreviewSelectionProvider), isNull);
+      expect(container.read(generationPreviewSelectionProvider), 'a');
       expect(notifier, isNotNull);
     });
 

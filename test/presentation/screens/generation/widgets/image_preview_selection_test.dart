@@ -86,7 +86,7 @@ void main() {
     },
   );
 
-  testWidgets('generating state keeps priority over linked selection', (
+  testWidgets('linked selection stays visible during generation', (
     tester,
   ) async {
     final history = _image('history', 80);
@@ -111,8 +111,9 @@ void main() {
         .read(generationPreviewSelectionProvider.notifier)
         .select(history.id);
     generationNotifier.replace(
-      const ImageGenerationState(
+      ImageGenerationState(
         status: GenerationStatus.generating,
+        history: [history],
         currentImage: 1,
         totalImages: 1,
         batchWidth: 64,
@@ -126,11 +127,12 @@ void main() {
     final card = tester.widget<SelectableImageCard>(
       find.byType(SelectableImageCard),
     );
-    expect(card.isGenerating, isTrue);
+    expect(card.isGenerating, isFalse);
+    expect(card.imageBytes, same(history.bytes));
   });
 
   testWidgets(
-    'completed card opened during batch generation uses current batch images',
+    'completed card selected during batch generation uses current batch images',
     (tester) async {
       final oldDisplay = _image('old-display', 20);
       final currentA = _image('current-a', 80);
@@ -159,6 +161,9 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
+      container
+          .read(generationPreviewSelectionProvider.notifier)
+          .select(currentB.id);
 
       await tester.pumpWidget(_app(container));
       await tester.pump();
