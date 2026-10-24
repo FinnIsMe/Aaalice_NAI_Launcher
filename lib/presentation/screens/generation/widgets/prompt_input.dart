@@ -74,7 +74,11 @@ class _PromptInputWidgetState extends ConsumerState<PromptInputWidget> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final hadPending = ref.read(hasPendingPromptProvider);
       _coordinator.consumePendingPrompt();
+      if (hadPending) {
+        ref.read(promptAutoFitRequestProvider.notifier).state++;
+      }
       if (widget.autofocus) _controller.promptFocusNode.requestFocus();
       setState(() {});
     });
@@ -138,11 +142,21 @@ class _PromptInputWidgetState extends ConsumerState<PromptInputWidget> {
           // Some focused widget tests intentionally omit queue dependencies.
         }
         if (queueActive) return;
+        var externalChanged = false;
         if (previous?.prompt != next.prompt) {
+          if (_controller.promptController.text != next.prompt) {
+            externalChanged = true;
+          }
           _controller.syncPrompt(next.prompt);
         }
         if (previous?.negativePrompt != next.negativePrompt) {
+          if (_controller.negativeController.text != next.negativePrompt) {
+            externalChanged = true;
+          }
           _controller.syncNegativePrompt(next.negativePrompt);
+        }
+        if (externalChanged) {
+          ref.read(promptAutoFitRequestProvider.notifier).state++;
         }
       },
     );
@@ -151,6 +165,7 @@ class _PromptInputWidgetState extends ConsumerState<PromptInputWidget> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _coordinator.consumePendingPrompt();
+        ref.read(promptAutoFitRequestProvider.notifier).state++;
         setState(() {});
       });
     });

@@ -7,6 +7,7 @@ import '../../../../core/storage/local_storage_service.dart';
 import '../../../../data/models/image/image_params.dart';
 import '../../../prompt_assistant/providers/prompt_assistant_history_provider.dart';
 import '../../../providers/image_generation_provider.dart';
+import '../../../providers/pending_prompt_provider.dart';
 import '../../../themes/core/input_surface_style.dart';
 import '../../../widgets/autocomplete/autocomplete.dart';
 import '../../../widgets/prompt/unified/unified_prompt_config.dart';
@@ -41,6 +42,7 @@ class PromptInputEditor extends ConsumerWidget {
       sdSyntaxAutoConvertSettingsProvider,
     );
     final storage = ref.watch(localStorageServiceProvider);
+    final autoFitVersion = ref.watch(promptAutoFitRequestProvider);
     final negative = controller.isNegativeMode;
     // 模型固定 UC 预设时负向提示词不会发送，只读保留给切回后的模型使用。
     final negativeLocked =
@@ -73,6 +75,9 @@ class PromptInputEditor extends ConsumerWidget {
             }
           },
           enabled: viewData.autoGrow && !compact && !viewData.isMaximized,
+          autoFitVersion: autoFitVersion,
+          autoFitText: () => promptController.text,
+          onAutoFit: onFormatted,
           builder: (manualHeight, animateToContentHeight) => Stack(
             fit: StackFit.passthrough,
             children: [

@@ -17,11 +17,17 @@ class PromptEditorResizeRegion extends StatefulWidget {
     required this.builder,
     this.initialHeight,
     this.onHeightChanged,
+    this.autoFitVersion = 0,
+    this.autoFitText,
+    this.onAutoFit,
   });
 
   final double? initialHeight;
   final ValueChanged<double?>? onHeightChanged;
   final bool enabled;
+  final int autoFitVersion;
+  final ValueGetter<String>? autoFitText;
+  final ValueChanged<String>? onAutoFit;
   final Widget Function(
     bool manualHeight,
     void Function(String text) animateToContentHeight,
@@ -39,8 +45,50 @@ class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion>
   late final _height = ValueNotifier<double?>(widget.initialHeight);
   double? _dragHeight;
   AnimationController? _animController;
+  double? _lastMaxWidth;
+  double? _lastMinimum;
+  double? _lastMaximum;
+  int _handledAutoFitVersion = 0;
 
   double get _renderedHeight => _editorKey.currentContext?.size?.height ?? 96.0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoFitVersion > 0) {
+      _scheduleAutoFit();
+    }
+  }
+
+  @override
+  void didUpdateWidget(PromptEditorResizeRegion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoFitVersion != oldWidget.autoFitVersion &&
+        widget.autoFitVersion != _handledAutoFitVersion) {
+      _scheduleAutoFit();
+    }
+  }
+
+  void _scheduleAutoFit() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.autoFitVersion == _handledAutoFitVersion) return;
+      _handledAutoFitVersion = widget.autoFitVersion;
+      final text = widget.autoFitText?.call() ?? '';
+      if (widget.enabled &&
+          _lastMaxWidth != null &&
+          _lastMinimum != null &&
+          _lastMaximum != null) {
+        _animateToContentHeight(
+          text,
+          _lastMaxWidth!,
+          _lastMinimum!,
+          _lastMaximum!,
+        );
+      }
+      widget.onAutoFit?.call(text);
+    });
+  }
 
   void _animateToContentHeight(
     String text,
@@ -58,9 +106,21 @@ class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion>
       maximumHeight: maximum,
       contentPadding: const EdgeInsets.all(12),
     );
-    if ((current - target).abs() < 1.0) return;
+    final wasManual = _height.value != null;
+    if (wasManual && (current - target).abs() < 1.0) return;
 
     _animController?.dispose();
+    if (!TickerMode.valuesOf(context).enabled) {
+      _animController = null;
+      _height.value = target;
+      if (!wasManual) setState(() {});
+      widget.onHeightChanged?.call(target);
+      return;
+    }
+    if (!wasManual) {
+      _height.value = current;
+      setState(() {});
+    }
     final controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
@@ -122,6 +182,9 @@ class _PromptEditorResizeRegionState extends State<PromptEditorResizeRegion>
           maximum,
           math.max(96.0, MediaQuery.textScalerOf(context).scale(24) + 24),
         );
+        _lastMaxWidth = constraints.maxWidth;
+        _lastMinimum = minimum;
+        _lastMaximum = maximum;
         final child = widget.builder(
           widget.enabled && _height.value != null,
           (text) => _animateToContentHeight(

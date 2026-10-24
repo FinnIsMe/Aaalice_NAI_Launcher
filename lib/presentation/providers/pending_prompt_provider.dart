@@ -102,3 +102,6 @@ bool hasPendingPrompt(Ref ref) {
   final state = ref.watch(pendingPromptNotifierProvider);
   return state.prompt != null || state.negativePrompt != null;
 }
+
+/// 外部复刻/导入参数后触发提示词文本框高度自适应的递增版本号
+final promptAutoFitRequestProvider = StateProvider<int>((ref) => 0);

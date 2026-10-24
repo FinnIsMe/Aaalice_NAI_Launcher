@@ -12,6 +12,7 @@ import '../../providers/character_position_canvas_provider.dart';
 import '../../providers/character_prompt_provider.dart';
 import '../../providers/generation/character_editor_layout_provider.dart';
 import '../../providers/image_generation_provider.dart';
+import '../../providers/pending_prompt_provider.dart';
 import '../../utils/prompt_content_height_calculator.dart';
 import '../common/themed_confirm_dialog.dart';
 import '../common/vertical_resize_handle.dart';
@@ -64,6 +65,7 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor>
 
   AnimationController? _heightAnimController;
   double? _animatedHeight;
+  int _lastAutoFitVersion = 0;
 
   @override
   void initState() {
@@ -388,11 +390,35 @@ class _CharacterPromptEditorState extends ConsumerState<CharacterPromptEditor>
     );
     final heightKey = (characterId: widget.character.id, negative: isNegative);
     final storedHeight = ref.watch(characterEditorHeightProvider(heightKey));
+    final autoFitVersion = ref.watch(promptAutoFitRequestProvider);
     final fieldName = isNegative ? 'negative' : 'positive';
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final editorHeight = (_animatedHeight ?? storedHeight ?? minimumHeight)
+        final shouldAutoFitOnRequest =
+            autoFitVersion > 0 && _lastAutoFitVersion != autoFitVersion;
+        if (shouldAutoFitOnRequest) {
+          _lastAutoFitVersion = autoFitVersion;
+          _animatedHeight = null;
+        }
+        final defaultHeight =
+            autoFitVersion > 0 && controller.text.trim().isNotEmpty
+                ? calculatePromptContentHeight(
+                    context: context,
+                    text: controller.text,
+                    maxWidth: constraints.maxWidth,
+                    minimumHeight: minimumHeight,
+                    maximumHeight: maximumHeight,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  )
+                : minimumHeight;
+        final resolvedStoredHeight =
+            shouldAutoFitOnRequest ? null : storedHeight;
+        final editorHeight =
+            (_animatedHeight ?? resolvedStoredHeight ?? defaultHeight)
             .clamp(minimumHeight, maximumHeight)
             .toDouble();
 

@@ -8,6 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../providers/character_prompt_provider.dart';
 import '../providers/fixed_tags_provider.dart';
 import '../providers/image_generation_provider.dart';
+import '../providers/pending_prompt_provider.dart';
 import '../providers/quality_preset_provider.dart';
 import '../../data/models/vibe/vibe_reference.dart';
 import '../../data/services/vibe_library_storage_service.dart';
@@ -166,6 +167,12 @@ class MetadataImportCoordinator {
       if (dedupNeg.hasRemovals) {
         notifier.updateNegativePrompt(dedupNeg.cleanedText);
       }
+    }
+
+    if (options.importPrompt ||
+        options.importNegativePrompt ||
+        options.importCharacterPrompts) {
+      read(promptAutoFitRequestProvider.notifier).state++;
     }
 
     return appliedCount;
