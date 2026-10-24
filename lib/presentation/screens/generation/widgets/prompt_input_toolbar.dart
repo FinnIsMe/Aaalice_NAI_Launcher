@@ -67,17 +67,18 @@ class PromptInputToolbar extends ConsumerWidget {
       builder: (context, constraints) {
         final usesLargeText = MediaQuery.textScalerOf(context).scale(14) > 21;
         final usesCompactSingleRow =
-            viewData.autoGrow && constraints.maxWidth >= 360 && !usesLargeText;
+            viewData.autoGrow && constraints.maxWidth >= 300 && !usesLargeText;
         if (usesCompactSingleRow) {
-          final showUtilityLabels =
-              constraints.maxWidth >= (viewData.showMaximizeButton ? 520 : 450);
           return SizedBox(
             key: const ValueKey('generation_prompt_compact_single_row'),
             height: 32,
             child: Row(
               children: [
-                const Expanded(
-                  child: CompactSeedInput(),
+                Expanded(
+                  child: SizeSection(
+                    compact: true,
+                    showTitle: constraints.maxWidth >= 450,
+                  ),
                 ),
                 const SizedBox(width: 5),
                 PromptTypeSwitch(
@@ -93,27 +94,26 @@ class PromptInputToolbar extends ConsumerWidget {
                   ),
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    FixedTagsButton(
+                    const FixedTagsButton(
                       compact: true,
-                      iconOnly: !showUtilityLabels,
-                      maxLabelWidth: showUtilityLabels ? 48 : null,
+                      singleCharLabel: true,
                     ),
                     const SizedBox(width: 3),
                     QualityTagsSelector(
                       model: model,
                       compact: true,
-                      iconOnly: !showUtilityLabels,
-                      maxLabelWidth: showUtilityLabels ? 48 : null,
+                      singleCharLabel: true,
                     ),
                     const SizedBox(width: 3),
                     UcPresetSelector(
                       model: model,
                       compact: true,
-                      iconOnly: !showUtilityLabels,
-                      maxLabelWidth: showUtilityLabels ? 48 : null,
+                      singleCharLabel: true,
                     ),
-                    const SizedBox(width: 3),
-                    toolbar,
+                    if (viewData.showMaximizeButton) ...[
+                      const SizedBox(width: 3),
+                      toolbar,
+                    ],
                   ],
                 ),
               ],
@@ -221,11 +221,29 @@ class PromptInputToolbar extends ConsumerWidget {
     isFullscreen: viewData.isMaximized,
   );
 
-  static Future<void> _showSettingsMenu(
+  static Future<void> showSettingsMenu(
     BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final position = PromptEditorToolbar.getSettingsButtonPosition(context);
+    WidgetRef ref, {
+    BuildContext? targetContext,
+  }) async {
+    RelativeRect? position;
+    if (targetContext != null) {
+      final RenderBox? button = targetContext.findRenderObject() as RenderBox?;
+      final RenderBox? overlay =
+          Overlay.of(context).context.findRenderObject() as RenderBox?;
+      if (button != null && overlay != null) {
+        final buttonPosition =
+            button.localToGlobal(Offset.zero, ancestor: overlay);
+        final buttonSize = button.size;
+        position = RelativeRect.fromLTRB(
+          buttonPosition.dx,
+          0,
+          overlay.size.width - buttonPosition.dx - buttonSize.width,
+          overlay.size.height - buttonPosition.dy + 4,
+        );
+      }
+    }
+    position ??= PromptEditorToolbar.getSettingsButtonPosition(context);
     if (position == null) return;
     final theme = Theme.of(context);
     final autocomplete = ref.read(autocompleteSettingsProvider);
@@ -496,7 +514,7 @@ class PromptInputBottomActions extends ConsumerWidget {
           ? commands.clearNegativePrompt
           : commands.clearPrompt,
       onSettingsPressed: () =>
-          PromptInputToolbar._showSettingsMenu(context, ref),
+          PromptInputToolbar.showSettingsMenu(context, ref),
     );
   }
 }

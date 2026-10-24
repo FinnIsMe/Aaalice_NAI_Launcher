@@ -286,7 +286,8 @@ class _FullPromptInput extends ConsumerWidget {
               fit: viewData.autoGrow ? FlexFit.loose : FlexFit.tight,
               child: editor,
             ),
-            buildFooter(includeBottomActions: true),
+            if (!viewData.autoGrow)
+              buildFooter(includeBottomActions: true),
           ],
         );
       },

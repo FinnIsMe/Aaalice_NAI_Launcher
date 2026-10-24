@@ -87,7 +87,13 @@ class ModelSection extends ConsumerWidget {
 
 /// 尺寸设置分节（标题 + 尺寸选择器）
 class SizeSection extends ConsumerWidget {
-  const SizeSection({super.key});
+  final bool showTitle;
+  final bool compact;
+  const SizeSection({
+    super.key,
+    this.showTitle = true,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -103,30 +109,36 @@ class SizeSection extends ConsumerWidget {
       ),
     );
     final theme = Theme.of(context);
+    final selector = SizeSelector(
+      leading: showTitle
+          ? ParamSectionTitle(context.l10n.generation_imageSize)
+          : null,
+      trailing: size.supportsE2eUpscale
+          ? GenerationToggleButton(
+              label: '×${E2eUpscale.factor}',
+              isEnabled: size.e2eUpscale,
+              onChanged: (value) {
+                ref
+                    .read(generationParamsNotifierProvider.notifier)
+                    .updateE2eUpscale(value);
+              },
+            )
+          : null,
+      width: size.width,
+      height: size.height,
+      onChanged: (width, height) {
+        ref
+            .read(generationParamsNotifierProvider.notifier)
+            .updateSize(width, height);
+      },
+    );
+    if (compact) {
+      return selector;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizeSelector(
-          leading: ParamSectionTitle(context.l10n.generation_imageSize),
-          trailing: size.supportsE2eUpscale
-              ? GenerationToggleButton(
-                  label: '×${E2eUpscale.factor}',
-                  isEnabled: size.e2eUpscale,
-                  onChanged: (value) {
-                    ref
-                        .read(generationParamsNotifierProvider.notifier)
-                        .updateE2eUpscale(value);
-                  },
-                )
-              : null,
-          width: size.width,
-          height: size.height,
-          onChanged: (width, height) {
-            ref
-                .read(generationParamsNotifierProvider.notifier)
-                .updateSize(width, height);
-          },
-        ),
+        selector,
         if (size.supportsE2eUpscale && size.e2eUpscale) ...[
           const SizedBox(height: 6),
           Text(

@@ -20,12 +20,14 @@ class FixedTagsButton extends ConsumerStatefulWidget {
     super.key,
     this.compact = false,
     this.iconOnly = false,
+    this.singleCharLabel = false,
     this.maxLabelWidth,
   });
 
   /// 经典桌面提示词工具栏使用紧凑外观；触屏和独立入口保留标准命中高度。
   final bool compact;
   final bool iconOnly;
+  final bool singleCharLabel;
   final double? maxLabelWidth;
 
   @override
@@ -78,7 +80,9 @@ class _FixedTagsButtonState extends ConsumerState<FixedTagsButton> {
                         maxWidth: widget.maxLabelWidth ?? double.infinity,
                       ),
                       child: Text(
-                        context.l10n.fixedTags_label,
+                        widget.singleCharLabel
+                            ? '固'
+                            : context.l10n.fixedTags_label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

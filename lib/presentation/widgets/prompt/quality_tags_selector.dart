@@ -26,11 +26,13 @@ class QualityTagsSelector extends ConsumerStatefulWidget {
     required this.model,
     this.compact = false,
     this.iconOnly = false,
+    this.singleCharLabel = false,
     this.maxLabelWidth,
   });
 
   final bool compact;
   final bool iconOnly;
+  final bool singleCharLabel;
   final double? maxLabelWidth;
 
   @override
@@ -80,7 +82,9 @@ class _QualityTagsSelectorState extends ConsumerState<QualityTagsSelector> {
                     maxWidth: widget.maxLabelWidth ?? double.infinity,
                   ),
                   child: Text(
-                    _getDisplayLabel(context, presetState, customEntries),
+                    widget.singleCharLabel
+                        ? '质'
+                        : _getDisplayLabel(context, presetState, customEntries),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

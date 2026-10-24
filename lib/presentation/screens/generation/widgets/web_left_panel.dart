@@ -19,11 +19,11 @@ import 'img2img_panel.dart';
 import 'model_option_controls.dart';
 import 'precise_reference_panel.dart';
 import 'prompt_input.dart';
+import 'prompt_input_toolbar.dart';
 import 'prompt_input_controller.dart';
 import 'reverse_prompt_panel.dart';
 import 'unified_reference_panel.dart';
 import '../../../providers/character_prompt_provider.dart';
-import '../../../providers/generation/image_workflow_controller.dart';
 import '../../../providers/reverse_prompt_provider.dart';
 import '../../../providers/generation/web_panel_modules_provider.dart';
 
@@ -426,10 +426,6 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // 尺寸设置置顶：不会被长提示词推走
-                        const SizeSection(),
-                        const SizedBox(height: 10),
-
                         // 提示词：内部首行已集成种子与快捷操作
                         PromptInputWidget(
                           key: widget.promptInputKey,
@@ -527,7 +523,23 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
           ),
         ),
 
-        // 参数与模型栏：固定在钉底控制条上方，解耦为左侧参数摘要与右侧独立模型切换
+        // 钉底生成控制条（调换至参数栏上方，并支持字数与快捷操作）
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.5),
+            border: Border(
+              top: BorderSide(color: theme.dividerColor, width: 1),
+            ),
+          ),
+          child: GenerationControls(
+            compact: true,
+            negativeModeNotifier: widget.negativeModeNotifier,
+            promptInputController: widget.promptInputController,
+          ),
+        ),
+
+        // 参数与模型栏：调至最底栏，解耦为左侧参数摘要、中间随机种子与右侧独立模型切换
         Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
@@ -535,7 +547,7 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
               top: BorderSide(color: theme.dividerColor, width: 1),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           child: Row(
             children: [
               // 左侧：参数摘要点击展开/收起参数抽屉 (按内容紧凑展示)
@@ -586,146 +598,136 @@ class WebLeftPanelState extends ConsumerState<WebLeftPanel>
                 ),
               ),
 
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
 
-              // 右侧：独立模型上拉框 (加宽至210px与生成按钮等宽，向上弹出，V5橙色高亮)
-              Expanded(
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: () {
-                    bool isV5Model(String m) {
-                      if (m.contains('4-5') || m.contains('4.5')) return false;
-                      return ImageModels.isV5Model(m) ||
-                          m.toLowerCase().contains('v5') ||
-                          m == 'custom';
+              // 中间：随机数种子 (Seed)
+              const Expanded(
+                child: CompactSeedInput(),
+              ),
+
+              const SizedBox(width: 6),
+
+              // 右侧：独立模型上拉框 (自适应宽度，向上弹出，V5橙色高亮)
+              () {
+                bool isV5Model(String m) {
+                  if (m.contains('4-5') || m.contains('4.5')) return false;
+                  return ImageModels.isV5Model(m) ||
+                      m.toLowerCase().contains('v5') ||
+                      m == 'custom';
+                }
+                const v5OrangeColor = Color(0xFFF59E0B);
+                final isCurrentV5 = isV5Model(selectorModel);
+                final currentTextColor =
+                    isCurrentV5 ? v5OrangeColor : theme.colorScheme.primary;
+
+                return PopupMenuButton<String>(
+                  tooltip: context.l10n.generation_model,
+                  initialValue: selectorModel,
+                  position: PopupMenuPosition.over,
+                  offset: const Offset(0, -380),
+                  onSelected: (value) {
+                    if (value != selectorModel) {
+                      ref
+                          .read(generationParamsNotifierProvider.notifier)
+                          .updateModel(value);
                     }
-                    const v5OrangeColor = Color(0xFFF59E0B);
-                    final isCurrentV5 = isV5Model(selectorModel);
-                    final currentTextColor =
-                        isCurrentV5 ? v5OrangeColor : theme.colorScheme.primary;
+                  },
+                  itemBuilder: (context) {
+                    // 倒过来排，越新的模型排越下面
+                    final orderedModels = ImageModels.visibleModels(
+                      current: selectorModel,
+                    ).reversed.toList();
 
-                    return PopupMenuButton<String>(
-                      tooltip: context.l10n.generation_model,
-                      initialValue: selectorModel,
-                      position: PopupMenuPosition.over,
-                      offset: const Offset(0, -380),
-                      onSelected: (value) {
-                        if (value != selectorModel) {
-                          ref
-                              .read(generationParamsNotifierProvider.notifier)
-                              .updateModel(value);
-                        }
-                      },
-                      itemBuilder: (context) {
-                        // 倒过来排，越新的模型排越下面
-                        final orderedModels = ImageModels.visibleModels(
-                          current: selectorModel,
-                        ).reversed.toList();
+                    return orderedModels.map((model) {
+                      final isCur = model == selectorModel;
+                      final isV5 = isV5Model(model);
+                      final itemColor = isCur
+                          ? (isV5 ? v5OrangeColor : theme.colorScheme.primary)
+                          : (isV5 ? v5OrangeColor : null);
 
-                        return orderedModels.map((model) {
-                          final isCur = model == selectorModel;
-                          final isV5 = isV5Model(model);
-                          final itemColor = isCur
-                              ? (isV5 ? v5OrangeColor : theme.colorScheme.primary)
-                              : (isV5 ? v5OrangeColor : null);
-
-                          return PopupMenuItem<String>(
-                            value: model,
-                            height: 36,
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                ModelFamilyIcon(
-                                  modelId: model,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    ImageModels.modelDisplayNames[model] ?? model,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
-                                      color: itemColor,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (isCur) ...[
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.check,
-                                    size: 16,
-                                    color: isV5 ? v5OrangeColor : theme.colorScheme.primary,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        }).toList();
-                      },
-                      child: Container(
-                        width: 210,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: isCurrentV5
-                                ? v5OrangeColor.withValues(alpha: 0.4)
-                                : theme.dividerColor,
-                            width: 1,
-                          ),
-                        ),
+                      return PopupMenuItem<String>(
+                        value: model,
+                        height: 36,
                         child: Row(
-                          mainAxisSize: MainAxisSize.max,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             ModelFamilyIcon(
-                              modelId: selectorModel,
-                              size: 15,
+                              modelId: model,
+                              size: 16,
                             ),
-                            const SizedBox(width: 5),
+                            const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                modelDisplayName,
+                                ImageModels.modelDisplayNames[model] ?? model,
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: currentTextColor,
+                                  fontSize: 13,
+                                  fontWeight: isCur ? FontWeight.w600 : FontWeight.normal,
+                                  color: itemColor,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(width: 3),
-                            Icon(
-                              Icons.unfold_more,
-                              size: 15,
-                              color: isCurrentV5
-                                  ? v5OrangeColor
-                                  : theme.colorScheme.onSurfaceVariant,
-                            ),
+                            if (isCur) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.check,
+                                size: 16,
+                                color: isV5 ? v5OrangeColor : theme.colorScheme.primary,
+                              ),
+                            ],
                           ],
                         ),
+                      );
+                    }).toList();
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 140, maxWidth: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isCurrentV5
+                            ? v5OrangeColor.withValues(alpha: 0.4)
+                            : theme.dividerColor,
+                        width: 1,
                       ),
-                    );
-                  }(),
-                ),
-              ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        ModelFamilyIcon(
+                          modelId: selectorModel,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            modelDisplayName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: currentTextColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(
+                          Icons.unfold_more,
+                          size: 15,
+                          color: isCurrentV5
+                              ? v5OrangeColor
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }(),
             ],
           ),
-        ),
-
-        // 钉底生成控制条（压扁）
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(alpha: 0.5),
-            border: Border(
-              top: BorderSide(color: theme.dividerColor, width: 1),
-            ),
-          ),
-          child: const GenerationControls(compact: true),
         ),
       ],
     );

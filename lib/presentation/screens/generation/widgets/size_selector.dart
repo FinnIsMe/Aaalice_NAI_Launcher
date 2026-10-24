@@ -677,6 +677,7 @@ class _SizeSelectorState extends State<SizeSelector> {
     final currentDisplayText = _resolveCurrentDisplayText(context);
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 单行合并尺寸控制行（左侧输入数值+互换+保存，右侧预设下拉按钮）

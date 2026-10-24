@@ -132,183 +132,174 @@ class MainNavRail extends ConsumerWidget {
         color: theme.colorScheme.surface,
         border: Border(right: BorderSide(color: theme.dividerColor, width: 1)),
       ),
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          // 账户头像区域
-          _AccountAvatarButton(ref: ref),
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          key: const Key('main-nav-primary-scroll'),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 16),
+                    // 账户头像区域
+                    _AccountAvatarButton(ref: ref),
 
-          Expanded(
-            child: SingleChildScrollView(
-              key: const Key('main-nav-primary-scroll'),
-              child: Column(
-                children: [
-                  // Navigation Items
-                  _NavIcon(
-                    key: const Key('nav-branch-0'),
-                    icon: Icons.brush, // Canvas/Edit
-                    label: context.l10n.nav_canvas,
-                    isSelected: selectedIndex == 0,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.generation.index),
-                  ),
-
-                  // 本地图库（App生成的图片）
-                  _NavIcon(
-                    key: const Key('nav-branch-1'),
-                    icon: Icons.folder, // Local Generated Images
-                    label: context.l10n.nav_localGallery,
-                    isSelected: selectedIndex == 1,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.localGallery.index),
-                  ),
-
-                  // 词库
-                  _NavIcon(
-                    key: const Key('nav-branch-6'),
-                    icon: Icons.book,
-                    label: context.l10n.nav_dictionary,
-                    isSelected: selectedIndex == 6,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.tagLibrary.index),
-                  ),
-
-                  // Vibe库
-                  _NavIcon(
-                    key: const Key('nav-branch-3'),
-                    icon: Icons.auto_awesome, // Vibe Library
-                    label: context.l10n.vibeLibrary_title,
-                    isSelected: selectedIndex == 3,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.vibeLibrary.index),
-                  ),
-
-                  // 精准参考库
-                  _NavIcon(
-                    key: const Key('nav-branch-4'),
-                    icon: Icons.center_focus_strong,
-                    label: context.l10n.nav_preciseRefLibrary,
-                    isSelected: selectedIndex == 4,
-                    onTap: () => navigationShell.goBranch(
-                      AppBranch.preciseRefLibrary.index,
+                    // Navigation Items (自然展开无截断)
+                    _NavIcon(
+                      key: const Key('nav-branch-0'),
+                      icon: Icons.brush, // Canvas/Edit
+                      label: context.l10n.nav_canvas,
+                      isSelected: selectedIndex == 0,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.generation.index),
                     ),
-                  ),
 
-                  // 在线画廊
-                  _NavIcon(
-                    key: const Key('nav-branch-2'),
-                    icon: Icons.photo_library, // Online Gallery
-                    label: context.l10n.nav_onlineGallery,
-                    isSelected: selectedIndex == 2,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.onlineGallery.index),
-                  ),
+                    // 本地图库（App生成的图片）
+                    _NavIcon(
+                      key: const Key('nav-branch-1'),
+                      icon: Icons.folder, // Local Generated Images
+                      label: context.l10n.nav_localGallery,
+                      isSelected: selectedIndex == 1,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.localGallery.index),
+                    ),
 
-                  // 随机配置
-                  _NavIcon(
-                    key: const Key('nav-branch-5'),
-                    icon: Icons.casino, // Random prompt config
-                    label: context.l10n.nav_randomConfig,
-                    isSelected: selectedIndex == 5,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.promptConfig.index),
-                  ),
+                    // 词库
+                    _NavIcon(
+                      key: const Key('nav-branch-6'),
+                      icon: Icons.book,
+                      label: context.l10n.nav_dictionary,
+                      isSelected: selectedIndex == 6,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.tagLibrary.index),
+                    ),
 
-                  // 统计
-                  _NavIcon(
-                    key: const Key('nav-branch-7'),
-                    icon: Icons.bar_chart, // Gallery Statistics
-                    label: context.l10n.nav_statistics,
-                    isSelected: selectedIndex == 7,
-                    onTap: () =>
-                        navigationShell.goBranch(AppBranch.statistics.index),
-                  ),
-                ],
-              ),
-            ),
-          ),
+                    // Vibe库
+                    _NavIcon(
+                      key: const Key('nav-branch-3'),
+                      icon: Icons.auto_awesome, // Vibe Library
+                      label: context.l10n.vibeLibrary_title,
+                      isSelected: selectedIndex == 3,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.vibeLibrary.index),
+                    ),
 
-          Flexible(
-            child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                key: const Key('main-nav-secondary-scroll'),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      // Discord 社群
-                      _ExternalLinkIcon(
-                        icon: Icons.discord,
-                        label: context.l10n.nav_discordCommunity,
-                        color: const Color(0xFF5865F2), // Discord 紫色
-                        url: CommunityLinks.discord,
+                    // 精准参考库
+                    _NavIcon(
+                      key: const Key('nav-branch-4'),
+                      icon: Icons.center_focus_strong,
+                      label: context.l10n.nav_preciseRefLibrary,
+                      isSelected: selectedIndex == 4,
+                      onTap: () => navigationShell.goBranch(
+                        AppBranch.preciseRefLibrary.index,
                       ),
+                    ),
 
-                      // GitHub 仓库
-                      _GitHubIcon(
-                        url: CommunityLinks.github,
-                        label: context.l10n.nav_githubRepo,
-                      ),
+                    // 在线画廊
+                    _NavIcon(
+                      key: const Key('nav-branch-2'),
+                      icon: Icons.photo_library, // Online Gallery
+                      label: context.l10n.nav_onlineGallery,
+                      isSelected: selectedIndex == 2,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.onlineGallery.index),
+                    ),
 
-                      _NavIcon(
-                        key: const Key('agent-nav-item'),
-                        focusNode: agentFocusNode,
-                        icon: isAgentRunning
-                            ? Icons.smart_toy_rounded
-                            : Icons.smart_toy_outlined,
-                        label: context.l10n.nav_agent,
-                        isSelected: isAgentVisible,
-                        showBadge: isAgentRunning,
-                        onTap: () => onAgentVisibilityChanged(!isAgentVisible),
-                      ),
+                    // 随机配置
+                    _NavIcon(
+                      key: const Key('nav-branch-5'),
+                      icon: Icons.casino, // Random prompt config
+                      label: context.l10n.nav_randomConfig,
+                      isSelected: selectedIndex == 5,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.promptConfig.index),
+                    ),
 
-                      _NavIcon(
-                        key: const Key('queue-nav-item'),
-                        focusNode: queueFocusNode,
-                        icon: switch (queueExecutionStatus) {
-                          QueueExecutionStatus.running =>
-                            Icons.play_arrow_rounded,
-                          QueueExecutionStatus.paused => Icons.pause_rounded,
-                          _ => Icons.playlist_play_rounded,
-                        },
-                        label: context.l10n.queue_management,
-                        isSelected: isQueueVisible,
-                        badgeLabel: queueCount > 0
-                            ? (queueCount > 99 ? '99+' : queueCount.toString())
-                            : null,
-                        onTap: () => onQueueVisibilityChanged(!isQueueVisible),
-                      ),
-
-                      // Bottom Settings
-                      _NavIcon(
-                        key: const Key('nav-branch-8'),
-                        icon: Icons.settings,
-                        label: context.l10n.nav_settings,
-                        isSelected: selectedIndex == 8,
-                        showBadge: showUpdateBadge,
-                        onTap: () =>
-                            navigationShell.goBranch(AppBranch.settings.index),
-                      ),
-                      if (allowExpansion) ...[
-                        const SizedBox(height: 2),
-                        _NavRailToggle(
-                          isExpanded: isExpanded,
-                          onTap: () {
-                            ref
-                                .read(layoutStateNotifierProvider.notifier)
-                                .toggleMainNavRail();
-                          },
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                    ],
-                  ),
+                    // 统计
+                    _NavIcon(
+                      key: const Key('nav-branch-7'),
+                      icon: Icons.bar_chart, // Gallery Statistics
+                      label: context.l10n.nav_statistics,
+                      isSelected: selectedIndex == 7,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.statistics.index),
+                    ),
+                  ],
                 ),
-              ),
+
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Discord 社群
+                    _ExternalLinkIcon(
+                      icon: Icons.discord,
+                      label: context.l10n.nav_discordCommunity,
+                      color: const Color(0xFF5865F2), // Discord 紫色
+                      url: CommunityLinks.discord,
+                    ),
+
+                    // GitHub 仓库已移除
+
+                    _NavIcon(
+                      key: const Key('agent-nav-item'),
+                      focusNode: agentFocusNode,
+                      icon: isAgentRunning
+                          ? Icons.smart_toy_rounded
+                          : Icons.smart_toy_outlined,
+                      label: context.l10n.nav_agent,
+                      isSelected: isAgentVisible,
+                      showBadge: isAgentRunning,
+                      onTap: () => onAgentVisibilityChanged(!isAgentVisible),
+                    ),
+
+                    _NavIcon(
+                      key: const Key('queue-nav-item'),
+                      focusNode: queueFocusNode,
+                      icon: switch (queueExecutionStatus) {
+                        QueueExecutionStatus.running =>
+                          Icons.play_arrow_rounded,
+                        QueueExecutionStatus.paused => Icons.pause_rounded,
+                        _ => Icons.playlist_play_rounded,
+                      },
+                      label: context.l10n.queue_management,
+                      isSelected: isQueueVisible,
+                      badgeLabel: queueCount > 0
+                          ? (queueCount > 99 ? '99+' : queueCount.toString())
+                          : null,
+                      onTap: () => onQueueVisibilityChanged(!isQueueVisible),
+                    ),
+
+                    // Bottom Settings
+                    _NavIcon(
+                      key: const Key('nav-branch-8'),
+                      icon: Icons.settings,
+                      label: context.l10n.nav_settings,
+                      isSelected: selectedIndex == 8,
+                      showBadge: showUpdateBadge,
+                      onTap: () =>
+                          navigationShell.goBranch(AppBranch.settings.index),
+                    ),
+                    if (allowExpansion) ...[
+                      const SizedBox(height: 2),
+                      _NavRailToggle(
+                        isExpanded: isExpanded,
+                        onTap: () {
+                          ref
+                              .read(layoutStateNotifierProvider.notifier)
+                              .toggleMainNavRail();
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                  ],
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

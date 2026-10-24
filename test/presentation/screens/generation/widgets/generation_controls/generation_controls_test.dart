@@ -110,7 +110,7 @@ void main() {
         (width: 320.0, textScale: 3.0, singleLine: false),
         (width: 475.0, textScale: 3.0, singleLine: false),
         (width: 590.0, textScale: 3.0, singleLine: false),
-        (width: 700.0, textScale: 3.0, singleLine: false),
+        (width: 700.0, textScale: 3.0, singleLine: true),
         (width: 840.0, textScale: 3.0, singleLine: true),
       ]) {
         await tester.pumpWidget(
@@ -170,7 +170,6 @@ void main() {
           find.byType(RandomModeToggle),
           find.byType(AutoSaveToggleChip),
           find.byType(DraggableNumberInput),
-          find.byType(BatchSettingsButton),
         ];
         final actionRects = actionFinders.map(tester.getRect).toList();
         final reason =
@@ -201,7 +200,6 @@ void main() {
           }
           final opusRect = tester.getRect(find.byType(OpusUsageChip));
           final anlasRect = tester.getRect(find.byType(AnlasBalanceChip));
-          final batchRect = tester.getRect(find.byType(BatchSettingsButton));
           final countRect = tester.getRect(find.byType(DraggableNumberInput));
           final randomRect = tester.getRect(find.byType(RandomModeToggle));
           final autoSaveRect = tester.getRect(find.byType(AutoSaveToggleChip));
@@ -211,25 +209,28 @@ void main() {
             lessThanOrEqualTo(anlasRect.left),
             reason: reason,
           );
-          expect(anlasRect.right, lessThan(primaryRect.left), reason: reason);
-          expect(primaryRect.right, lessThan(batchRect.left), reason: reason);
           expect(
-            batchRect.right,
-            lessThanOrEqualTo(countRect.left),
-            reason: reason,
-          );
-          expect(
-            countRect.right,
-            lessThanOrEqualTo(randomRect.left),
-            reason: reason,
-          );
-          expect(
-            randomRect.right,
+            anlasRect.right,
             lessThanOrEqualTo(autoSaveRect.left),
             reason: reason,
           );
           expect(
             autoSaveRect.right,
+            lessThanOrEqualTo(randomRect.left),
+            reason: reason,
+          );
+          expect(
+            randomRect.right,
+            lessThanOrEqualTo(countRect.left),
+            reason: reason,
+          );
+          expect(
+            countRect.right,
+            lessThanOrEqualTo(primaryRect.left),
+            reason: reason,
+          );
+          expect(
+            primaryRect.right,
             closeTo(footerRect.right, 0.01),
             reason: reason,
           );
@@ -774,7 +775,6 @@ void main() {
         find.byType(RandomModeToggle),
         find.byType(AutoSaveToggleChip),
         find.byType(DraggableNumberInput),
-        find.byType(BatchSettingsButton),
       ].map(tester.getRect).toList();
 
       for (final rect in actionRects) {
