@@ -6,6 +6,8 @@ $ErrorActionPreference = 'Stop'
 
 $src = 'D:\AI\nai\Aaalice_NAI_Launcher-main\build\windows\x64\runner\Release'
 $dst = 'D:\AI\nai\NAI_Launcher_Windows_4.3.0+45_Portable'
+$buildAppSo = 'D:\AI\nai\Aaalice_NAI_Launcher-main\build\windows\app.so'
+$buildAssets = 'D:\AI\nai\Aaalice_NAI_Launcher-main\build\flutter_assets'
 
 # Close existing launcher if running so files can be replaced cleanly
 $procs = Get-Process -Name 'nai_launcher' -ErrorAction SilentlyContinue
@@ -19,6 +21,16 @@ if ($procs) {
 # Ensure data directories exist
 New-Item -ItemType Directory -Force -Path (Join-Path $src 'data') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $dst 'data') | Out-Null
+
+# Fresh build sync if built via flutter assemble
+if (Test-Path -LiteralPath $buildAppSo) {
+  New-Item -ItemType Directory -Force -Path (Join-Path $src 'windows') | Out-Null
+  Copy-Item -LiteralPath $buildAppSo -Destination (Join-Path $src 'windows\app.so') -Force
+}
+if (Test-Path -LiteralPath $buildAssets) {
+  New-Item -ItemType Directory -Force -Path (Join-Path $src 'flutter_assets') | Out-Null
+  Copy-Item -Path (Join-Path $buildAssets '*') -Destination (Join-Path $src 'flutter_assets') -Recurse -Force
+}
 
 # Copy to Release/data
 Copy-Item -LiteralPath (Join-Path $src 'windows\app.so') -Destination (Join-Path $src 'data\app.so') -Force
@@ -52,7 +64,7 @@ $managedFiles = Get-ChildItem -LiteralPath $dst -File -Recurse |
 
 $manifest = [ordered]@{
   schemaVersion = 1
-  version = '4.3.0'
+  version = '4.3.1-safe'
   files = @($managedFiles)
 }
 
