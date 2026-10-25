@@ -13,6 +13,9 @@ MAX_V1_CANVAS_EDGE = 4096
 PREVIEW_LAYER_NAME = "NAI Preview"
 FOCUS_PREVIEW_LAYER_NAME = "NAI Focus Preview"
 MASK_SOURCE_SELECTION = "selection"
+# Write raw bytes: Grayscale8 setPixel reads 255 as QRgb 0x000000FF (39 or 0 by Qt build).
+SELECTED_MASK_VALUE = 255
+_SELECTION_TO_MASK = bytes([0]) + bytes([SELECTED_MASK_VALUE]) * 255
 # NovelAI web build d7e955f-production, verified 2026-07-14.
 FOCUS_DIMENSION_STEP = 64
 FOCUS_TARGET_AREA_PIXELS = 1048576
@@ -111,16 +114,8 @@ def export_active_selection_mask_png() -> bytes:
     if selection is None or selection.width() <= 0 or selection.height() <= 0:
         raise RuntimeError("Create a Krita selection before inpaint")
 
-    image = QImage(doc.width(), doc.height(), QImage.Format_Grayscale8)
-    image.fill(0)
-    has_repaint_pixels = False
-    for y in range(selection.y(), selection.y() + selection.height()):
-        for x in range(selection.x(), selection.x() + selection.width()):
-            if _selection_pixel_value(selection, x, y) > 0:
-                image.setPixel(x, y, 255)
-                has_repaint_pixels = True
-
-    if not has_repaint_pixels:
+    image = _selection_mask_image(selection, doc.width(), doc.height())
+    if image is None:
         raise RuntimeError("Inpaint mask is empty")
 
     buffer = QBuffer()
@@ -455,47 +450,61 @@ def _draw_rect_outline_bgra(
     y = max(0, min(canvas_height - 1, int(rect["y"])))
     right = max(x, min(canvas_width - 1, x + int(rect["w"]) - 1))
     bottom = max(y, min(canvas_height - 1, y + int(rect["h"]) - 1))
+    pixel = bytes(color)
     for offset in range(max(1, thickness)):
         top_y = y + offset
         bottom_y = bottom - offset
         left_x = x + offset
         right_x = right - offset
         if top_y <= bottom:
-            for px in range(left_x, right_x + 1):
-                _set_bgra(raw, canvas_width, px, top_y, color)
+            _fill_row_bgra(raw, canvas_width, top_y, left_x, right_x, pixel)
         if bottom_y >= y:
-            for px in range(left_x, right_x + 1):
-                _set_bgra(raw, canvas_width, px, bottom_y, color)
+            _fill_row_bgra(raw, canvas_width, bottom_y, left_x, right_x, pixel)
         if left_x <= right:
-            for py in range(top_y, bottom_y + 1):
-                _set_bgra(raw, canvas_width, left_x, py, color)
+            _fill_column_bgra(raw, canvas_width, left_x, top_y, bottom_y, pixel)
         if right_x >= x:
-            for py in range(top_y, bottom_y + 1):
-                _set_bgra(raw, canvas_width, right_x, py, color)
+            _fill_column_bgra(raw, canvas_width, right_x, top_y, bottom_y, pixel)
 
 
-def _set_bgra(
+def _fill_row_bgra(
+    raw: bytearray,
+    canvas_width: int,
+    y: int,
+    left_x: int,
+    right_x: int,
+    pixel: bytes,
+) -> None:
+    count = right_x - left_x + 1
+    if count <= 0:
+        return
+    start = (y * canvas_width + left_x) * 4
+    raw[start : start + count * 4] = pixel * count
+
+
+def _fill_column_bgra(
     raw: bytearray,
     canvas_width: int,
     x: int,
-    y: int,
-    color: tuple[int, int, int, int],
+    top_y: int,
+    bottom_y: int,
+    pixel: bytes,
 ) -> None:
-    offset = (y * canvas_width + x) * 4
-    raw[offset : offset + 4] = bytes(color)
+    count = bottom_y - top_y + 1
+    if count <= 0:
+        return
+    row_stride = canvas_width * 4
+    start = (top_y * canvas_width + x) * 4
+    stop = start + (count - 1) * row_stride + 4
+    for channel in range(4):
+        raw[start + channel : stop : row_stride] = pixel[channel : channel + 1] * count
 
 
 def _rgba8888_to_krita_bgra(raw: bytes) -> bytes:
-    converted = bytearray(len(raw))
-    for offset in range(0, len(raw), 4):
-        red = raw[offset]
-        green = raw[offset + 1]
-        blue = raw[offset + 2]
-        alpha = raw[offset + 3]
-        converted[offset] = blue
-        converted[offset + 1] = green
-        converted[offset + 2] = red
-        converted[offset + 3] = alpha
+    if len(raw) % 4:
+        raise IndexError("RGBA8888 buffer ends with a partial pixel")
+    converted = bytearray(raw)
+    converted[0::4] = raw[2::4]
+    converted[2::4] = raw[0::4]
     return bytes(converted)
 
 
@@ -513,14 +522,21 @@ def _selection_bounds_are_filled(selection, width: int, height: int) -> bool:
     required = width * height
     if len(raw) < required:
         return False
-    return all(value > 0 for value in raw[:required])
+    return 0 not in raw[:required]
 
 
-def _selection_pixel_value(selection, x: int, y: int) -> int:
-    raw = bytes(selection.pixelData(x, y, 1, 1))
-    if not raw:
-        return 0
-    return raw[0]
+def _selection_mask_image(selection, canvas_width: int, canvas_height: int):
+    x = selection.x()
+    y = selection.y()
+    width = selection.width()
+    height = selection.height()
+    required = width * height
+    coverage = bytes(selection.pixelData(x, y, width, height))[:required]
+    if coverage.count(0) == len(coverage):
+        return None
+    mask = coverage.ljust(required, b"\x00").translate(_SELECTION_TO_MASK)
+    selection_mask = QImage(mask, width, height, width, QImage.Format_Grayscale8)
+    return selection_mask.copy(-x, -y, canvas_width, canvas_height)
 
 
 def _remove_layers_named(doc, name: str) -> None:

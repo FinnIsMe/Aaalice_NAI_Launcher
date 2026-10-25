@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hive/hive.dart';
 
+import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/model_capabilities.dart';
 import '../../../core/enums/image_model_mode.dart';
 import '../../../core/utils/novelai_dataset_prefix.dart';
@@ -209,8 +210,19 @@ class NaiImageMetadata with _$NaiImageMetadata {
   String? get sourceModel =>
       NaiImageMetadataRawDecoder.modelIdFromSource(source);
 
-  /// 用于导入/展示的模型 ID。Source 是官方图片的模型来源，优先级高于旧缓存中的 model。
-  String? get effectiveModel => sourceModel ?? model;
+  /// 官网对认不出指纹的 Source 的家族归类。
+  String? get sourceDefaultModel =>
+      NaiImageMetadataRawDecoder.defaultModelIdFromSource(source);
+
+  /// 用于导入/展示的模型 ID。Source 是官方图片的模型来源，优先级高于旧缓存中的 model；
+  /// 旧版本缓存的 model 不含家族归类，最后再补。
+  String? get effectiveModel => sourceModel ?? model ?? sourceDefaultModel;
+
+  /// 可以直接用于生成的模型 ID，取值顺序同 [effectiveModel]；都无法识别时为 null。
+  String? get importableModel =>
+      ImageModels.importableModelId(sourceModel) ??
+      ImageModels.importableModelId(model) ??
+      ImageModels.importableModelId(sourceDefaultModel);
 
   /// 生成时使用的 Anime / Furry 模式，模型没有该模式或无法判断时为 null。
   ImageModelMode? get modelMode {
@@ -228,8 +240,15 @@ class NaiImageMetadata with _$NaiImageMetadata {
     final base = sourceResolvedModel != null && model != sourceResolvedModel
         ? copyWith(model: sourceResolvedModel)
         : this;
+    // Source 认不出具体模型时，缓存的 model 可能只是家族默认值，Comment 记录的模型要重解析才能取代它
+    final modelMayBeFallback =
+        base.model == null ||
+        (sourceResolvedModel == null && base.model == base.sourceDefaultModel);
     final raw = base.rawJson;
-    if (raw == null || raw.isEmpty || !_rawJsonMayContainUpgrade(raw)) {
+    if (raw == null ||
+        raw.isEmpty ||
+        !(_rawJsonMayContainUpgrade(raw) ||
+            (modelMayBeFallback && _rawJsonMayNameModel(raw)))) {
       return base;
     }
 
@@ -244,7 +263,7 @@ class NaiImageMetadata with _$NaiImageMetadata {
         prompt: _adoptsReparsedPrompt(base, reparsed)
             ? reparsed.prompt
             : base.prompt,
-        model: base.model ?? reparsed.model,
+        model: modelMayBeFallback ? reparsed.model ?? base.model : base.model,
         characterPrompts: base.characterPrompts.isEmpty
             ? reparsed.characterPrompts
             : base.characterPrompts,
@@ -261,6 +280,7 @@ class NaiImageMetadata with _$NaiImageMetadata {
             ? reparsed.vibeReferences
             : base.vibeReferences,
         varietyPlus: base.varietyPlus ?? reparsed.varietyPlus,
+        ucPreset: base.ucPreset ?? reparsed.ucPreset,
         qualityToggle: base.qualityToggle ?? reparsed.qualityToggle,
         qualityTier: base.qualityTier ?? reparsed.qualityTier,
         fixedPrefixTags: base.fixedPrefixTags.isEmpty
@@ -312,6 +332,38 @@ class NaiImageMetadata with _$NaiImageMetadata {
     NaiImageMetadataRawDecoder.decode(json, rawJson: rawJson),
   );
 
+  /// 信封自带的 Software/Source 优先于容器旁路字段：旧版 WebP 的 EXIF Software 只写了 "NovelAI"。
+  static ({String? software, String? source}) envelopeAttribution(
+    Map<String, dynamic> envelope, {
+    String? software,
+    String? source,
+  }) => (
+    software: _textField(envelope, 'Software') ?? software,
+    source: _textField(envelope, 'Source') ?? source,
+  );
+
+  /// 官网外层信封（EXIF UserComment 与 alpha 隐写的载荷）只把生成参数放在 Comment 里；
+  /// [raw] 是这种信封时返回其中 Comment 的 JSON 原文，否则原样返回。
+  static String unwrapEnvelopeComment(String raw) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } on FormatException {
+      return raw;
+    }
+    if (decoded is! Map || decoded.containsKey('prompt')) return raw;
+    return switch (decoded['Comment'] ?? decoded['comment']) {
+      final String comment when comment.isNotEmpty => comment,
+      final Map<dynamic, dynamic> comment => jsonEncode(comment),
+      _ => raw,
+    };
+  }
+
+  static String? _textField(Map<String, dynamic> json, String key) {
+    final value = json[key] ?? json[key.toLowerCase()];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
   bool get hasData => NaiMetadataPromptProjection(this).hasData;
 
   bool get hasRecordedTransparentBackgroundTag =>
@@ -330,8 +382,14 @@ class NaiImageMetadata with _$NaiImageMetadata {
   String get promptWithoutFixedTags =>
       NaiMetadataPromptProjection(this).promptWithoutFixedTags;
 
-  String get negativePromptWithoutFixedTags =>
-      NaiMetadataPromptProjection(this).negativePromptWithoutFixedTags;
+  UcPresetSplit get negativePresetSplit =>
+      NaiMetadataPromptProjection(this).negativePresetSplit;
+
+  String get mainNegativePrompt =>
+      NaiMetadataPromptProjection(this).mainNegativePrompt;
+
+  /// 兼容旧版调用方的命名
+  String get negativePromptWithoutFixedTags => mainNegativePrompt;
 
   String get fullPrompt => NaiMetadataPromptProjection(this).fullPrompt;
 
@@ -437,6 +495,7 @@ bool _rawJsonMayContainUpgrade(String raw) {
     'skip_cfg_above_sigma',
     'tag_hint_transparent_background',
     'tag_hint_qt',
+    'tag_hint_uc_preset',
     'quality_tier',
     'fixed_prefix',
     'fixed_suffix',
@@ -449,6 +508,10 @@ bool _rawJsonMayContainUpgrade(String raw) {
   return markers.any(text.contains);
 }
 
+// 旧版本缓存只从 Source 取 model，Comment 里记录的 model 要重解析才能补上；信封里的 Comment 是转义过的字符串
+bool _rawJsonMayNameModel(String raw) =>
+    raw.contains('"model"') || raw.contains(r'\"model\"');
+
 NaiImageMetadata? _decodeRawMetadata(
   String raw, {
   String? software,
@@ -458,19 +521,25 @@ NaiImageMetadata? _decodeRawMetadata(
   if (decoded is! Map) return null;
   final data = Map<String, dynamic>.from(decoded);
   final nestedComment = data['Comment'] ?? data['comment'];
-  final resolvedSoftware =
-      software ?? data['Software'] as String? ?? data['software'] as String?;
-  final resolvedSource =
-      source ?? data['Source'] as String? ?? data['source'] as String?;
-  final comment = nestedComment is String && nestedComment.isNotEmpty
+  final envelopeComment = nestedComment is String && nestedComment.isNotEmpty
       ? nestedComment
       : nestedComment is Map
       ? jsonEncode(nestedComment)
-      : raw;
+      : null;
+  final attribution = envelopeComment == null
+      ? (
+          software: software ?? NaiImageMetadata._textField(data, 'Software'),
+          source: source ?? NaiImageMetadata._textField(data, 'Source'),
+        )
+      : NaiImageMetadata.envelopeAttribution(
+          data,
+          software: software,
+          source: source,
+        );
   return NaiImageMetadata.fromNaiComment({
-    'Comment': comment,
-    'Software': resolvedSoftware,
-    'Source': resolvedSource,
+    'Comment': envelopeComment ?? raw,
+    'Software': attribution.software,
+    'Source': attribution.source,
   }, rawJson: raw);
 }
 

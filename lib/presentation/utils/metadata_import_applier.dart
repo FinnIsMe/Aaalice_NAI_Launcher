@@ -56,7 +56,7 @@ class MetadataImportApplier {
   static int applyPromptAndGenerationParams({
     required NaiImageMetadata metadata,
     required MetadataImportOptions options,
-    required String currentModel,
+    String currentModel = ImageModels.animeDiffusionV45Curated,
     required MetadataImportTarget target,
   }) {
     var count = 0;
@@ -171,7 +171,7 @@ class MetadataImportApplier {
   static String resolveImportedNegativePrompt(
     NaiImageMetadata metadata, {
     required bool importUcPreset,
-    required String currentModel,
+    String currentModel = ImageModels.animeDiffusionV45Curated,
   }) {
     final baseNegative = metadata.hasSeparatedFields
         ? metadata.negativePromptWithoutFixedTags

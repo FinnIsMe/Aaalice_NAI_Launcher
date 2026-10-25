@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../constants/storage_keys.dart';
 import '../storage/local_storage_service.dart';
+import '../utils/file_name_sanitizer.dart';
 
 class DerivativeLink {
   const DerivativeLink({
@@ -20,7 +21,7 @@ class DerivativeLink {
 
 /// Storage key and derivative file-name suffix of one editor family.
 class DerivativeKind {
-  DerivativeKind._(this.storageKey, String fileNameSuffix)
+  DerivativeKind._(this.storageKey, this.fileNameSuffix)
     : _derivativeFileName = RegExp(
         '${RegExp.escape(fileNameSuffix)}'
         r'(?:[-_]\d+)?$',
@@ -38,10 +39,22 @@ class DerivativeKind {
   );
 
   final String storageKey;
+  final String fileNameSuffix;
   final RegExp _derivativeFileName;
 
   bool matchesFileName(String path) =>
       _derivativeFileName.hasMatch(p.basenameWithoutExtension(path));
+
+  /// 来源文件名加本类后缀；超长时只截短来源部分，后缀是识别派生副本的依据。
+  String outputFileName(String sourceFileName) {
+    final base = p.basenameWithoutExtension(p.basename(sourceFileName.trim()));
+    final stem = FileNameSanitizer.segment(
+      '$base$fileNameSuffix',
+      fallback: 'image',
+      protectedSuffix: fileNameSuffix,
+    );
+    return '$stem.png';
+  }
 }
 
 /// App-private association between a derivative and its original.

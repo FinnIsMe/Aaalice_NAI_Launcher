@@ -106,7 +106,7 @@ void main() {
         metadata.displayNegativePrompt,
         equals('bad anatomy, plain_negative, text'),
       );
-      expect(metadata.negativePromptWithoutFixedTags, equals('plain_negative'));
+      expect(metadata.mainNegativePrompt, equals('plain_negative'));
     });
 
     test('copy-safe prompt should remove only fixed tags', () {
@@ -239,6 +239,40 @@ void main() {
         );
       },
     );
+
+    test('fromNaiComment reads the uc preset from the server tag hint', () {
+      final preset = UcPresets.getPresetContent(
+        ImageModels.animeDiffusionV5Full,
+        UcPresetType.heavy,
+      );
+      final metadata = NaiImageMetadata.fromNaiComment({
+        'Comment': jsonEncode({
+          'prompt': '1girl',
+          'uc': '$preset, custom_negative',
+          'tag_hint_uc_preset': 2,
+          'seed': 1,
+        }),
+        'Software': 'NovelAI',
+        'Source': 'NovelAI Diffusion V5 657484A5',
+      });
+
+      expect(metadata.ucPreset, UcPresets.heavyApiValue);
+      expect(metadata.negativePresetSplit.preset, preset);
+      expect(metadata.mainNegativePrompt, 'custom_negative');
+    });
+
+    test('fromNaiComment prefers the uc_preset field over the tag hint', () {
+      final metadata = NaiImageMetadata.fromNaiComment({
+        'Comment': jsonEncode({
+          'prompt': '1girl',
+          'uc': 'custom_negative',
+          'uc_preset': UcPresets.lightApiValue,
+          'tag_hint_uc_preset': 2,
+        }),
+      });
+
+      expect(metadata.ucPreset, UcPresets.lightApiValue);
+    });
 
     test(
       'fromNaiComment should prefer source over legacy Comment model field',
@@ -487,7 +521,6 @@ void main() {
           importQualityToggle: true,
           importTransparentBackground: true,
         ),
-        currentModel: ImageModels.animeDiffusionV5Curated,
         target: MetadataImportTarget(
           updatePrompt: (value) => applied['prompt'] = value,
           updateNegativePrompt: (_) {},
@@ -518,7 +551,7 @@ void main() {
     });
 
     test(
-      'fromNaiComment should not infer model from ambiguous V4.5 source',
+      'fromNaiComment should fall back to the official family default for an ambiguous V4.5 source',
       () {
         final metadata = NaiImageMetadata.fromNaiComment({
           'Comment': jsonEncode({'prompt': '1girl', 'uc': 'bad hands'}),
@@ -527,7 +560,8 @@ void main() {
         });
 
         expect(metadata.source, equals('NovelAI Diffusion V4.5'));
-        expect(metadata.model, isNull);
+        expect(metadata.sourceModel, isNull);
+        expect(metadata.model, equals(ImageModels.animeDiffusionV45Curated));
       },
     );
 
@@ -548,6 +582,85 @@ void main() {
       );
     });
 
+    test('envelope attribution wins over the passed-in fallback values', () {
+      expect(
+        NaiImageMetadata.envelopeAttribution(
+          {'Software': 'NovelAI', 'source': 'NovelAI Diffusion V4.5 4BDE2A90'},
+          software: 'Other',
+          source: 'NovelAI',
+        ),
+        (software: 'NovelAI', source: 'NovelAI Diffusion V4.5 4BDE2A90'),
+      );
+      expect(
+        NaiImageMetadata.envelopeAttribution(
+          {'Software': '', 'Source': 42},
+          software: 'NovelAI',
+          source: 'fallback',
+        ),
+        (software: 'NovelAI', source: 'fallback'),
+      );
+    });
+
+    test('unwrapping an envelope yields the generation Comment JSON', () {
+      const comment = '{"prompt":"1girl","seed":3}';
+
+      expect(
+        NaiImageMetadata.unwrapEnvelopeComment(
+          jsonEncode({'Software': 'NovelAI', 'Comment': comment}),
+        ),
+        comment,
+      );
+      expect(
+        jsonDecode(
+          NaiImageMetadata.unwrapEnvelopeComment(
+            jsonEncode({
+              'Source': 'NovelAI Diffusion V4.5 4BDE2A90',
+              'comment': {'prompt': '1girl', 'seed': 3},
+            }),
+          ),
+        ),
+        {'prompt': '1girl', 'seed': 3},
+      );
+    });
+
+    test('unwrapping leaves anything but an envelope untouched', () {
+      for (final raw in [
+        '{"prompt":"1girl","Comment":"kept as is"}',
+        '{"Software":"NovelAI","Comment":""}',
+        '{"Software":"NovelAI"}',
+        '["not", "an", "object"]',
+        'masterpiece, 1girl\nSteps: 28',
+      ]) {
+        expect(NaiImageMetadata.unwrapEnvelopeComment(raw), raw, reason: raw);
+      }
+    });
+
+    test('cached envelope rawJson resolves the model a stale Source hid', () {
+      final rawJson = jsonEncode({
+        'Software': 'NovelAI',
+        'Source': 'NovelAI Diffusion V4.5 4BDE2A90',
+        'Comment': jsonEncode({
+          'prompt': '1girl',
+          'uc': '',
+          'v4_prompt': {
+            'caption': {'base_caption': '1girl', 'char_captions': []},
+          },
+        }),
+      });
+      final stale = NaiImageMetadata(
+        prompt: '1girl',
+        rawJson: rawJson,
+        software: 'NovelAI',
+        source: 'NovelAI',
+      );
+
+      expect(stale.model, isNull);
+      expect(
+        stale.upgradeFromRawJsonIfNeeded().model,
+        ImageModels.animeDiffusionV45Full,
+      );
+    });
+
     test('source-only metadata should resolve model for import', () {
       const metadata = NaiImageMetadata(
         source: 'NovelAI Diffusion V4.5 4BDE2A90',
@@ -558,7 +671,6 @@ void main() {
       final count = MetadataImportApplier.applyPromptAndGenerationParams(
         metadata: metadata,
         options: const MetadataImportOptions(importModel: true),
-        currentModel: ImageModels.animeDiffusionV45Curated,
         target: MetadataImportTarget(
           updatePrompt: (_) {},
           updateNegativePrompt: (_) {},
@@ -604,7 +716,6 @@ void main() {
         final count = MetadataImportApplier.applyPromptAndGenerationParams(
           metadata: metadata,
           options: MetadataImportOptions.all(),
-          currentModel: ImageModels.animeDiffusionV45Curated,
           target: MetadataImportTarget(
             updatePrompt: (value) => applied['prompt'] = value,
             updateNegativePrompt: (value) => applied['negativePrompt'] = value,
@@ -868,6 +979,31 @@ void main() {
         equals(['very aesthetic', 'amazing quality', 'no text']),
       );
       expect(upgraded.mainPrompt, '1girl');
+    });
+
+    test('cached rawJson metadata should upgrade the uc preset tag hint', () {
+      final preset = UcPresets.getPresetContent(
+        ImageModels.animeDiffusionV5Full,
+        UcPresetType.heavy,
+      );
+      final negative = '$preset, custom_negative';
+      final rawJson = jsonEncode({
+        'prompt': '1girl',
+        'uc': negative,
+        'tag_hint_uc_preset': 2,
+      });
+      final stale = NaiImageMetadata(
+        prompt: '1girl',
+        negativePrompt: negative,
+        rawJson: rawJson,
+        software: 'NovelAI',
+        source: 'NovelAI Diffusion V5 657484A5',
+      );
+
+      final upgraded = stale.upgradeFromRawJsonIfNeeded();
+
+      expect(upgraded.ucPreset, UcPresets.heavyApiValue);
+      expect(upgraded.mainNegativePrompt, 'custom_negative');
     });
 
     test('cached rawJson metadata should upgrade V4 character prompts', () {
@@ -1215,7 +1351,6 @@ void main() {
       MetadataImportApplier.applyPromptAndGenerationParams(
         metadata: metadata,
         options: options,
-        currentModel: ImageModels.animeDiffusionV45Full,
         target: target,
       );
 
@@ -1272,7 +1407,6 @@ void main() {
     final count = MetadataImportApplier.applyPromptAndGenerationParams(
       metadata: metadata,
       options: const MetadataImportOptions(importTransparentBackground: true),
-      currentModel: ImageModels.animeDiffusionV5Curated,
       target: MetadataImportTarget(
         updatePrompt: (_) {},
         updateNegativePrompt: (_) {},
@@ -1376,7 +1510,6 @@ void main() {
       MetadataImportApplier.applyPromptAndGenerationParams(
         metadata: metadata,
         options: MetadataImportOptions.all(),
-        currentModel: ImageModels.animeDiffusionV45Full,
         target: _recordingTarget(
           onPrompt: (value) => appliedPrompt = value,
           onModelMode: (value) => appliedMode = value,
@@ -1393,11 +1526,149 @@ void main() {
       MetadataImportApplier.applyPromptAndGenerationParams(
         metadata: parse(prompt: 'fur dataset, wolf'),
         options: MetadataImportOptions.all().copyWith(importPrompt: false),
-        currentModel: ImageModels.animeDiffusionV45Full,
         target: _recordingTarget(onModelMode: (value) => appliedMode = value),
       );
 
       expect(appliedMode, isNull);
+    });
+  });
+
+  group('NaiImageMetadata model resolution order', () {
+    NaiImageMetadata parse({String? source, String? model}) =>
+        NaiImageMetadata.fromNaiComment({
+          'Comment': jsonEncode({
+            'prompt': '1girl',
+            'uc': '',
+            if (model != null) 'model': model,
+          }),
+          'Software': 'NovelAI',
+          if (source != null) 'Source': source,
+        });
+
+    test('a known fingerprint wins over the Comment model', () {
+      final metadata = parse(
+        source: 'NovelAI Diffusion V4.5 1229B44F',
+        model: ImageModels.animeDiffusionV45Curated,
+      );
+
+      expect(metadata.model, ImageModels.animeDiffusionV45Full);
+      expect(metadata.effectiveModel, ImageModels.animeDiffusionV45Full);
+    });
+
+    test('the Comment model wins over the family default', () {
+      final metadata = parse(
+        source: 'NovelAI Diffusion V4.5',
+        model: ImageModels.animeDiffusionV45Full,
+      );
+
+      expect(metadata.sourceModel, isNull);
+      expect(metadata.model, ImageModels.animeDiffusionV45Full);
+      expect(metadata.effectiveModel, ImageModels.animeDiffusionV45Full);
+      expect(
+        MetadataImportApplier.resolveImportableModel(metadata),
+        ImageModels.animeDiffusionV45Full,
+      );
+    });
+
+    test('an inpainting Comment model resolves to its base model', () {
+      final metadata = parse(
+        source: 'NovelAI Diffusion V4.5',
+        model: ImageModels.animeDiffusionV45FullInpainting,
+      );
+
+      expect(metadata.effectiveModel, ImageModels.animeDiffusionV45Full);
+    });
+
+    test('an unregistered Comment model is ignored', () {
+      final metadata = parse(
+        source: 'NovelAI Diffusion V4.5',
+        model: 'someone-elses-model',
+      );
+
+      expect(metadata.model, ImageModels.animeDiffusionV45Curated);
+      expect(metadata.effectiveModel, ImageModels.animeDiffusionV45Curated);
+    });
+
+    test('without a better source the family default applies', () {
+      final metadata = parse(source: 'NovelAI Diffusion V4.5 00000000');
+
+      expect(metadata.sourceModel, isNull);
+      expect(metadata.model, ImageModels.animeDiffusionV45Curated);
+      expect(metadata.sourceDefaultModel, ImageModels.animeDiffusionV45Curated);
+      expect(metadata.effectiveModel, ImageModels.animeDiffusionV45Curated);
+      expect(
+        MetadataImportApplier.resolveImportableModel(metadata),
+        ImageModels.animeDiffusionV45Curated,
+      );
+    });
+
+    test('Stable Diffusion XL fingerprints resolve to the V3 models', () {
+      expect(
+        parse(source: 'Stable Diffusion XL C1E1DE52').effectiveModel,
+        ImageModels.animeDiffusionV3,
+      );
+      expect(
+        parse(source: 'Stable Diffusion XL 9CC2F394').effectiveModel,
+        ImageModels.furryDiffusionV3,
+      );
+    });
+
+    test('text sources written by earlier launcher versions still resolve', () {
+      const expected = {
+        'NovelAI Diffusion V4.5 Full': ImageModels.animeDiffusionV45Full,
+        'NovelAI Diffusion V4.5 Curated': ImageModels.animeDiffusionV45Curated,
+        'NovelAI Diffusion V4 Full': ImageModels.animeDiffusionV4Full,
+        'NovelAI Diffusion V4 Curated': ImageModels.animeDiffusionV4Curated,
+        'NovelAI Furry Diffusion V3': ImageModels.furryDiffusionV3,
+        'NovelAI Diffusion V3': ImageModels.animeDiffusionV3,
+        'NovelAI Diffusion V2': ImageModels.animeV2,
+        'NovelAI Furry Diffusion': ImageModels.furryDiffusion,
+        'DiffusionModelMetaName.NAIv5 DE206BDA':
+            ImageModels.animeDiffusionV5Curated,
+      };
+
+      for (final entry in expected.entries) {
+        expect(parse(source: entry.key).model, entry.value, reason: entry.key);
+      }
+    });
+
+    test('cached records pick up the Comment model on read', () {
+      final comment = jsonEncode({
+        'prompt': '1girl',
+        'model': ImageModels.animeDiffusionV45Full,
+      });
+      final cached = NaiImageMetadata(
+        prompt: '1girl',
+        source: 'NovelAI Diffusion V4.5',
+        rawJson: jsonEncode({
+          'Comment': comment,
+          'Source': 'NovelAI Diffusion V4.5',
+        }),
+      );
+
+      expect(cached.effectiveModel, ImageModels.animeDiffusionV45Curated);
+      final upgraded = cached.upgradeFromRawJsonIfNeeded();
+      expect(upgraded.model, ImageModels.animeDiffusionV45Full);
+      expect(upgraded.effectiveModel, ImageModels.animeDiffusionV45Full);
+    });
+
+    test('a cached family default yields to the Comment model', () {
+      const source = 'NovelAI Diffusion V5';
+      final comment = jsonEncode({
+        'prompt': '1girl',
+        'model': ImageModels.animeDiffusionV5Full,
+      });
+      final cached = NaiImageMetadata(
+        prompt: '1girl',
+        model: ImageModels.animeDiffusionV5Curated,
+        source: source,
+        rawJson: jsonEncode({'Comment': comment, 'Source': source}),
+      );
+
+      expect(
+        cached.upgradeFromRawJsonIfNeeded().model,
+        parse(source: source, model: ImageModels.animeDiffusionV5Full).model,
+      );
     });
   });
 }
