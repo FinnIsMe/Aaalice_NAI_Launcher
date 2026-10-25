@@ -15306,6 +15306,658 @@ class AppLocalizationsZh extends AppLocalizations {
 
     return '会员到期日期：$dateString';
   }
+
+  @override
+  String get common_secureStorageUnavailable =>
+      '安全存储暂时无法访问，可能正被杀毒或同步软件占用，请稍后重试';
+
+  @override
+  String get settings_saveNaming => '文件夹与文件名';
+
+  @override
+  String settings_saveNamingSubtitle(Object example) {
+    return '示例：$example';
+  }
+
+  @override
+  String get settings_saveNamingFolderSection => '子文件夹';
+
+  @override
+  String get settings_saveNamingFileNameSection => '文件名';
+
+  @override
+  String get settings_saveNamingFolderByDate => '按日期';
+
+  @override
+  String get settings_saveNamingFolderByMonth => '按月份';
+
+  @override
+  String get settings_saveNamingFolderByYearMonth => '按年、月两级';
+
+  @override
+  String get settings_saveNamingFolderNone => '不建子文件夹';
+
+  @override
+  String get settings_saveNamingFolderNoneExample => '直接保存在图片保存位置';
+
+  @override
+  String get settings_saveNamingFileTimeSeed => '时间 + 种子';
+
+  @override
+  String get settings_saveNamingFileDateTimeSeed => '日期时间 + 种子';
+
+  @override
+  String get settings_saveNamingFilePromptSeed => '提示词 + 种子';
+
+  @override
+  String get settings_saveNamingCustom => '自定义';
+
+  @override
+  String get settings_saveNamingFolderTemplate => '子文件夹模板';
+
+  @override
+  String get settings_saveNamingFolderTemplateHelper => '用 / 分隔多级文件夹；留空则不建子文件夹';
+
+  @override
+  String get settings_saveNamingFileNameTemplate => '文件名模板';
+
+  @override
+  String get settings_saveNamingFileNameTemplateHelper => '自动添加 .png 扩展名';
+
+  @override
+  String get settings_saveNamingFileNameEmpty => '文件名模板不能为空';
+
+  @override
+  String get settings_saveNamingInsertField => '插入字段';
+
+  @override
+  String get settings_saveNamingPreview => '预览';
+
+  @override
+  String get settings_saveNamingPreviewLatest => '示例取自最近一张生成图';
+
+  @override
+  String get settings_saveNamingPreviewSample => '示例使用内置样例数据';
+
+  @override
+  String get settings_saveNamingOmitsDateHint =>
+      '路径里没有日期，不同日期的图片会混在一起；需要按日期区分时，请在子文件夹或文件名中加入日期。';
+
+  @override
+  String get settings_saveNamingAppliesToNewHint => '只影响之后保存的图片，已有文件不会重命名或移动。';
+
+  @override
+  String get settings_saveNamingRestoreDefaults => '恢复默认';
+
+  @override
+  String get settings_saveNamingSyntaxHelp => '模板语法';
+
+  @override
+  String get settings_saveNamingSyntaxIntro =>
+      '用字段插入图片信息，过滤器从左到右依次生效；字段没有值时，它的 pre 和 suf 也一并省略。连写两个左花括号可输出一个左花括号。';
+
+  @override
+  String get settings_saveNamingSyntaxFields => '字段';
+
+  @override
+  String get settings_saveNamingSyntaxFilters => '过滤器';
+
+  @override
+  String get settings_saveNamingSyntaxCharacterFilters =>
+      '角色过滤器（仅限 characters，写在其他过滤器之前）';
+
+  @override
+  String get settings_saveNamingSyntaxExamples => '示例';
+
+  @override
+  String get settings_saveNamingFieldPrompt => '提示词（未使用长度过滤器时截取前 80 个字符）';
+
+  @override
+  String get settings_saveNamingFieldSeed => '种子';
+
+  @override
+  String get settings_saveNamingFieldDate => '生成日期，如 2026-10-12';
+
+  @override
+  String get settings_saveNamingFieldTime => '生成时刻，如 14-30-05';
+
+  @override
+  String get settings_saveNamingFieldYear => '年份，如 2026';
+
+  @override
+  String get settings_saveNamingFieldMonth => '月份，如 10';
+
+  @override
+  String get settings_saveNamingFieldDay => '日，如 12';
+
+  @override
+  String get settings_saveNamingFieldModel => '模型 ID';
+
+  @override
+  String get settings_saveNamingFieldModelName => '模型名称';
+
+  @override
+  String get settings_saveNamingFieldResolution => '分辨率，如 832x1216';
+
+  @override
+  String get settings_saveNamingFieldWidth => '宽度';
+
+  @override
+  String get settings_saveNamingFieldHeight => '高度';
+
+  @override
+  String get settings_saveNamingFieldIndex => '同一次保存中的序号，从 1 开始';
+
+  @override
+  String get settings_saveNamingFieldId => '图片 ID';
+
+  @override
+  String get settings_saveNamingFieldType =>
+      '生成方式：inpaint、image2image 或 vibe-transfer，文生图为空';
+
+  @override
+  String get settings_saveNamingFieldCharacters => '角色名，默认取前 3 个并用 + 连接';
+
+  @override
+  String get settings_saveNamingFilterFirst => '保留前 N 个字符';
+
+  @override
+  String get settings_saveNamingFilterLast => '保留后 N 个字符';
+
+  @override
+  String get settings_saveNamingFilterWords => '保留前 N 个词，负数保留末尾几个';
+
+  @override
+  String get settings_saveNamingFilterTags => '保留前 N 个逗号分隔的标签，负数保留末尾几个';
+
+  @override
+  String get settings_saveNamingFilterPre => '值非空时在前面加上 X';
+
+  @override
+  String get settings_saveNamingFilterSuf => '值非空时在后面加上 X';
+
+  @override
+  String get settings_saveNamingFilterPad => '数字左侧补 0 到 N 位';
+
+  @override
+  String get settings_saveNamingFilterLower => '转为小写';
+
+  @override
+  String get settings_saveNamingFilterUpper => '转为大写';
+
+  @override
+  String get settings_saveNamingFilterMax => '最多取 N 个角色（默认 3）';
+
+  @override
+  String get settings_saveNamingFilterAt => '只取第 N 个角色';
+
+  @override
+  String get settings_saveNamingFilterEach => '每个角色名保留前 N 个字符';
+
+  @override
+  String get settings_saveNamingFilterJoin => '用 X 连接角色名（默认 +）';
+
+  @override
+  String get settings_saveNamingFilterFull => '使用完整角色提示词而不是角色名';
+
+  @override
+  String settings_saveNamingErrorUnclosedBrace(int position) {
+    return '第 $position 个字符处的左花括号没有闭合';
+  }
+
+  @override
+  String settings_saveNamingErrorUnknownField(Object name) {
+    return '未知字段“$name”';
+  }
+
+  @override
+  String settings_saveNamingErrorUnknownFilter(Object name) {
+    return '未知过滤器“$name”';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterOnlyForCharacters(Object name) {
+    return '过滤器“$name”只能用于 characters';
+  }
+
+  @override
+  String settings_saveNamingErrorCharacterFilterOrder(Object name) {
+    return '过滤器“$name”必须写在 first、pre 等过滤器之前';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterTakesNoValue(Object name) {
+    return '过滤器“$name”不需要参数';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsValue(Object name) {
+    return '过滤器“$name”需要参数，例如 $name:-';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsPositiveNumber(Object name) {
+    return '过滤器“$name”需要正整数';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsNonZeroNumber(Object name) {
+    return '过滤器“$name”需要非零整数';
+  }
+
+  @override
+  String get agentChat_toolUpscaleImage => '放大图像';
+
+  @override
+  String get agentChat_permissionAutopilot => '全自动';
+
+  @override
+  String get agentChat_permissionAutopilotDescription =>
+      '消耗 Anlas 不再询问，仅删除已存数据或达到高消耗阈值时询问';
+
+  @override
+  String get prompt_replaceUnderscores => '标签用空格代替下划线';
+
+  @override
+  String get prompt_replaceUnderscoresSubtitle => '补全插入与自动格式化共用此偏好，颜文字保留下划线';
+
+  @override
+  String get prompt_separateNumericWeightClosing => '数字结尾标签补空格';
+
+  @override
+  String get prompt_separateNumericWeightClosingSubtitle =>
+      '在 :: 前补空格，避免 year_2025:: 被读成新权重';
+
+  @override
+  String get prompt_detectMultiCharacterOnPaste => '粘贴时识别多角色';
+
+  @override
+  String get prompt_detectMultiCharacterOnPasteSubtitle =>
+      '粘贴含 | 或 COUPLE 等多角色语法时提示导入角色';
+
+  @override
+  String get prompt_numericWeightClosingSeparated => '已补权重空格';
+
+  @override
+  String get editor_cropNeedsSelection => '请先建立选区；裁剪会原位保留选区外接矩形内的像素。';
+
+  @override
+  String get onlineGallery_outputFilteredTagTooltipTouch =>
+      '此标签会在复制、发送和加入队列时被剔除；长按可管理';
+
+  @override
+  String get onlineGallery_tagContextMenuTooltipTouch => '长按可加入黑名单或输出过滤';
+
+  @override
+  String get generation_emptyInpaintMask => '重绘蒙版采样后为空';
+
+  @override
+  String generation_emptyInpaintMaskHint(int gridSize) {
+    return '蒙版太细或太小，按 $gridSize 像素网格采样后没有留下可重绘的区域。请加粗或扩大蒙版后重试。';
+  }
+
+  @override
+  String randomManager_branchOutputBadge(String name) {
+    return '由「$name」的条件分支输出';
+  }
+
+  @override
+  String randomManager_branchOutputBadgeMultiple(String name, int count) {
+    return '由「$name」等 $count 处条件分支输出';
+  }
+
+  @override
+  String get randomManager_branchOutputTooltip =>
+      '这个词组不参与类别的常规抽取，只在引用它的分支被选中时输出；停用或删除这些分支后恢复常规抽取。点按可跳转到该分支';
+
+  @override
+  String randomManager_deleteBranchTargetWarning(String names) {
+    return '「$names」的条件分支引用了这个词组，删除后这些分支里的这一项会显示为已失效';
+  }
+
+  @override
+  String get statistics_parameterDistribution => '参数分布';
+
+  @override
+  String get statistics_parameterOther => '其他';
+
+  @override
+  String get reversePrompt_taggerCategories => '输出分类';
+
+  @override
+  String get reversePrompt_keepOneTaggerCategory => '至少保留一个输出分类';
+
+  @override
+  String get settings_proxyAppliedHint => '代理设置已应用，新请求立即生效';
+
+  @override
+  String get shortcut_action_first_image => '第一张';
+
+  @override
+  String get shortcut_action_last_image => '最后一张';
+
+  @override
+  String get updateInstallErrorPackageNotFound =>
+      '未找到可自动安装的更新包，请前往 Release 页面手动下载。';
+
+  @override
+  String get updateInstallErrorIncompleteMetadata =>
+      '更新包缺少校验信息，无法安全安装，请前往 Release 页面手动下载。';
+
+  @override
+  String get updateInstallErrorDiskFull => '磁盘空间不足，无法保存更新包。请清理空间后重试。';
+
+  @override
+  String get updateInstallErrorFileSystem => '写入更新包失败，请检查磁盘后重试。';
+
+  @override
+  String get updateInstallErrorVerificationFailed => '更新包校验失败，请重新下载。';
+
+  @override
+  String get updateInstallErrorResumeRejected => '服务器拒绝了更新包续传请求，请稍后重试。';
+
+  @override
+  String get updateInstallErrorEmptyResponse => '更新服务器返回了空响应，请稍后重试。';
+
+  @override
+  String get updateInstallErrorDownloadFailed => '下载更新包失败，请稍后重试。';
+
+  @override
+  String get updateInstallErrorPackageMissing => '更新包已被清理，请重新下载。';
+
+  @override
+  String get updateInstallErrorPackageCorrupted => '更新包已损坏，请重新下载。';
+
+  @override
+  String get updateInstallErrorInvalidAndroidPackage =>
+      'Android 更新包格式不正确，请前往 Release 页面手动下载。';
+
+  @override
+  String get updateInstallErrorAndroidInstaller => '打开 Android 系统安装界面失败，请重试。';
+
+  @override
+  String get updateInstallErrorUpdaterLaunchFailed =>
+      '启动更新程序失败，当前版本保持不变；请重试或手动下载新版本。';
+
+  @override
+  String get updateInstallErrorUpdaterNotStarted =>
+      '更新程序未能启动，当前版本保持不变；请手动下载新版本完成更新。';
+
+  @override
+  String get updateInstallErrorInstallFailed => '上次更新没有安装成功，可以重试或手动下载新版本安装。';
+
+  @override
+  String get updateInstallErrorInterrupted => '上次更新安装没有执行完成，可以重试或手动下载新版本安装。';
+
+  @override
+  String get updateInstallErrorUnknown => '更新操作失败，请稍后重试。';
+
+  @override
+  String updateInstallLogPath(Object path) {
+    return '日志：$path';
+  }
+
+  @override
+  String get diy_sourceCharacterCount => '角色数量';
+
+  @override
+  String diy_categoryUnavailable(String reference) {
+    return '已失效：$reference';
+  }
+
+  @override
+  String get diy_dependencyCountCharacterCountDescription =>
+      '根据本次生成的角色数量决定结果数量';
+
+  @override
+  String get diy_dependencyExistsCharacterCountDescription =>
+      '仅在画面中有角色（角色数量大于 0）时生效';
+
+  @override
+  String get diy_dependencyValueCharacterCountDescription =>
+      '依赖本次生成的角色数量取值，如 1、2、3';
+
+  @override
+  String get diy_dependencyExcludesCharacterCountDescription =>
+      '仅在无人画面（角色数量为 0）时生效';
+
+  @override
+  String get diy_dependencyOverridesSelectionCount =>
+      '本词组的选择模式不是“多选数量”，依赖得出的数量会覆盖选择模式的数量：按权重不重复抽取这么多个，可选项不足时全部选取；没有匹配的映射且未设默认值时不抽取';
+
+  @override
+  String get diy_dependencyOverridesSequentialCount =>
+      '本词组的选择模式是顺序轮替，依赖得出的数量会覆盖选择模式的数量：按轮替顺序取这么多个，可选项不足时全部选取；没有匹配的映射且未设默认值时不抽取';
+
+  @override
+  String get diy_branchTargets => '输出的词组';
+
+  @override
+  String get diy_branchTargetsHint =>
+      '选中的词组只在该分支被选中时输出，并按本词组的选择模式从中抽取；不选时输出本词组自己的标签';
+
+  @override
+  String get diy_branchTargetsEmpty => '本类别没有其他词组';
+
+  @override
+  String diy_branchTargetChild(String name) {
+    return '子词组：$name';
+  }
+
+  @override
+  String get diy_branchTargetCycle => '会形成循环引用';
+
+  @override
+  String get diy_branchTargetCycleHint => '灰色的词组已经直接或间接输出本词组，选择会形成循环引用';
+
+  @override
+  String diy_branchTargetCount(int count) {
+    return '输出 $count 个词组';
+  }
+
+  @override
+  String get diy_branchConditions => '条件';
+
+  @override
+  String get diy_branchConditionsHint =>
+      '只能引用在本词组之前生成的类别和分支；条件值按标签比较，忽略大小写、下划线与权重写法。没有条件时分支总是可选';
+
+  @override
+  String get diy_addCondition => '添加条件';
+
+  @override
+  String get diy_deleteCondition => '删除条件';
+
+  @override
+  String get diy_conditionSource => '变量';
+
+  @override
+  String get diy_conditionValueRequired => '请填写条件值';
+
+  @override
+  String get diy_conditionLogicAll => '全部满足';
+
+  @override
+  String get diy_conditionLogicAny => '任一满足';
+
+  @override
+  String get diy_conditionSourceGender => '角色性别';
+
+  @override
+  String diy_conditionSourceBranch(String name) {
+    return '$name 的分支';
+  }
+
+  @override
+  String get diy_conditionValueHintCategory => '如 blue eyes';
+
+  @override
+  String get diy_conditionValueHintGender => '如 girl、boy';
+
+  @override
+  String get diy_conditionValueHintCount => '如 1、2、3';
+
+  @override
+  String get diy_conditionValueHintBranch => '填写分支名称';
+
+  @override
+  String diy_presetVersionTooNew(int version) {
+    return '该预设由更新版本的应用导出（数据版本 $version），请更新应用后再导入';
+  }
+
+  @override
+  String get diy_targetCurrentGroup => '本词组';
+
+  @override
+  String get diy_repeatOnceHint => '只在所选年份的日期范围内启用';
+
+  @override
+  String get diy_year => '年份';
+
+  @override
+  String get diy_yearUnsetHint => '尚未选择年份，目前每年都会启用';
+
+  @override
+  String get editor_toolbarFlyoutExpand => '展开同组工具';
+
+  @override
+  String get editor_toolbarFlyoutHint => '悬停、右键或长按可展开同组工具';
+
+  @override
+  String get editor_transformSection => '变换';
+
+  @override
+  String get editor_transformWidth => '宽度';
+
+  @override
+  String get editor_transformHeight => '高度';
+
+  @override
+  String get editor_transformAngle => '角度';
+
+  @override
+  String get editor_transformCenterX => '中心 X';
+
+  @override
+  String get editor_transformCenterY => '中心 Y';
+
+  @override
+  String get editor_transformKeepAspect => '锁定比例';
+
+  @override
+  String get editor_transformFlipHorizontal => '水平翻转';
+
+  @override
+  String get editor_transformFlipVertical => '垂直翻转';
+
+  @override
+  String get editor_transformApply => '应用变换';
+
+  @override
+  String get editor_transformCancel => '取消变换';
+
+  @override
+  String editor_transformSizeReadout(int width, int height) {
+    return '$width × $height 像素';
+  }
+
+  @override
+  String get editor_transformHandlesHint => '拖动四角或边缘缩放，拖动框上方的圆点旋转。';
+
+  @override
+  String get editor_transformKeysHint =>
+      'Shift 吸附 15° 或临时切换锁定比例，Alt 以中心为基准；Ctrl+T 开始变换，Enter 应用，Esc 取消。';
+
+  @override
+  String get editor_transformTouchHint => '变换时可用双指缩放、旋转和移动，完成后点「应用变换」。';
+
+  @override
+  String get editor_shortcutFreeTransform => '自由变换';
+
+  @override
+  String get editor_shortcutApplyTransform => '应用变换';
+
+  @override
+  String get layer_importImage => '导入图片';
+
+  @override
+  String settings_clearLocalOnnxModelsFailed(Object error) {
+    return '清除本地 ONNX 模型失败：$error';
+  }
+
+  @override
+  String get agentSettings_permissionAutopilot => '全自动';
+
+  @override
+  String get agentSettings_permissionAutopilotDescription =>
+      '包含完全访问的全部权限，生成等消耗 Anlas 的操作也直接执行；仅在单次消耗达到保护模式的高消耗阈值或删除已保存的数据时确认。适合无人值守的批量任务。';
+
+  @override
+  String get agentSettings_autopilotConfirmTitle => '开启全自动？';
+
+  @override
+  String agentSettings_autopilotConfirmThreshold(Object threshold) {
+    return '生成、重绘、启动队列等消耗 Anlas 的操作将直接执行，不再逐次确认。单次预计消耗达到 $threshold Anlas（保护模式的高消耗阈值）时仍会确认，删除已保存的数据也仍会确认。';
+  }
+
+  @override
+  String get agentSettings_autopilotConfirmUnlimited =>
+      '生成、重绘、启动队列等消耗 Anlas 的操作将直接执行，不再逐次确认。保护模式的高消耗警告当前未开启，任何金额都会直接扣除；删除已保存的数据仍会确认。';
+
+  @override
+  String get agentSettings_autopilotConfirmAction => '开启';
+
+  @override
+  String get watermark_autoPlacement => '自动选位';
+
+  @override
+  String get watermark_autoPlacementHint => '以设定的锚点为首选位置；其他角明显更干净时，整套水印镜像过去。';
+
+  @override
+  String get watermark_autoPlacementKept => '自动选位：保持首选位置';
+
+  @override
+  String get watermark_autoPlacementMirroredHorizontal => '自动选位：已左右镜像';
+
+  @override
+  String get watermark_autoPlacementMirroredVertical => '自动选位：已上下镜像';
+
+  @override
+  String get watermark_autoPlacementMirroredBoth => '自动选位：已镜像到对角';
+
+  @override
+  String get watermark_autoAnalyzing => '正在分析画面…';
+
+  @override
+  String get watermark_autoAnalysisFailed => '无法分析画面，预览未应用自动调整；保存时会重新分析。';
+
+  @override
+  String get watermark_autoTone => '自动灰阶';
+
+  @override
+  String get watermark_autoToneTextHint => '按文字下方的背景亮度取灰，描边和阴影向相反方向取灰。';
+
+  @override
+  String get watermark_autoToneLogoHint =>
+      '按 Logo 下方的背景亮度去色调灰，保留 Logo 自身的明暗层次。';
+
+  @override
+  String get watermark_toneContrast => '明暗差';
+
+  @override
+  String get watermark_colorFromAutoTone => '颜色由自动灰阶决定';
+
+  @override
+  String get editor_toolQuickSelection => '快速选择';
+
+  @override
+  String get editor_quickSelectionTolerance => '容差 / 边缘敏感度';
+
+  @override
+  String get editor_quickSelectionBrushSize => '画笔大小';
+
+  @override
+  String get editor_quickSelectionHint => '拖动涂抹自动选区，按住 Alt 减去选区。';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).
@@ -30611,4 +31263,658 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
     return '會員到期日期：$dateString';
   }
+
+  @override
+  String get common_secureStorageUnavailable =>
+      '安全儲存暫時無法存取，可能正被防毒或同步軟體佔用，請稍後重試';
+
+  @override
+  String get settings_saveNaming => '資料夾與檔案名稱';
+
+  @override
+  String settings_saveNamingSubtitle(Object example) {
+    return '範例：$example';
+  }
+
+  @override
+  String get settings_saveNamingFolderSection => '子資料夾';
+
+  @override
+  String get settings_saveNamingFileNameSection => '檔案名稱';
+
+  @override
+  String get settings_saveNamingFolderByDate => '按日期';
+
+  @override
+  String get settings_saveNamingFolderByMonth => '按月份';
+
+  @override
+  String get settings_saveNamingFolderByYearMonth => '按年、月兩層';
+
+  @override
+  String get settings_saveNamingFolderNone => '不建立子資料夾';
+
+  @override
+  String get settings_saveNamingFolderNoneExample => '直接儲存在圖片儲存位置';
+
+  @override
+  String get settings_saveNamingFileTimeSeed => '時間 + 種子';
+
+  @override
+  String get settings_saveNamingFileDateTimeSeed => '日期時間 + 種子';
+
+  @override
+  String get settings_saveNamingFilePromptSeed => '提示詞 + 種子';
+
+  @override
+  String get settings_saveNamingCustom => '自訂';
+
+  @override
+  String get settings_saveNamingFolderTemplate => '子資料夾範本';
+
+  @override
+  String get settings_saveNamingFolderTemplateHelper =>
+      '以 / 分隔多層資料夾；留空則不建立子資料夾';
+
+  @override
+  String get settings_saveNamingFileNameTemplate => '檔案名稱範本';
+
+  @override
+  String get settings_saveNamingFileNameTemplateHelper => '自動加上 .png 副檔名';
+
+  @override
+  String get settings_saveNamingFileNameEmpty => '檔案名稱範本不能為空';
+
+  @override
+  String get settings_saveNamingInsertField => '插入欄位';
+
+  @override
+  String get settings_saveNamingPreview => '預覽';
+
+  @override
+  String get settings_saveNamingPreviewLatest => '範例取自最近一張生成圖';
+
+  @override
+  String get settings_saveNamingPreviewSample => '範例使用內建樣本資料';
+
+  @override
+  String get settings_saveNamingOmitsDateHint =>
+      '路徑中沒有日期，不同日期的圖片會混在一起；需要依日期區分時，請在子資料夾或檔案名稱中加入日期。';
+
+  @override
+  String get settings_saveNamingAppliesToNewHint => '只影響之後儲存的圖片，既有檔案不會重新命名或移動。';
+
+  @override
+  String get settings_saveNamingRestoreDefaults => '恢復預設';
+
+  @override
+  String get settings_saveNamingSyntaxHelp => '範本語法';
+
+  @override
+  String get settings_saveNamingSyntaxIntro =>
+      '用欄位插入圖片資訊，過濾器由左至右依序生效；欄位沒有值時，它的 pre 和 suf 也一併省略。連寫兩個左大括號可輸出一個左大括號。';
+
+  @override
+  String get settings_saveNamingSyntaxFields => '欄位';
+
+  @override
+  String get settings_saveNamingSyntaxFilters => '過濾器';
+
+  @override
+  String get settings_saveNamingSyntaxCharacterFilters =>
+      '角色過濾器（僅限 characters，寫在其他過濾器之前）';
+
+  @override
+  String get settings_saveNamingSyntaxExamples => '範例';
+
+  @override
+  String get settings_saveNamingFieldPrompt => '提示詞（未使用長度過濾器時擷取前 80 個字元）';
+
+  @override
+  String get settings_saveNamingFieldSeed => '種子';
+
+  @override
+  String get settings_saveNamingFieldDate => '生成日期，如 2026-10-12';
+
+  @override
+  String get settings_saveNamingFieldTime => '生成時刻，如 14-30-05';
+
+  @override
+  String get settings_saveNamingFieldYear => '年份，如 2026';
+
+  @override
+  String get settings_saveNamingFieldMonth => '月份，如 10';
+
+  @override
+  String get settings_saveNamingFieldDay => '日，如 12';
+
+  @override
+  String get settings_saveNamingFieldModel => '模型 ID';
+
+  @override
+  String get settings_saveNamingFieldModelName => '模型名稱';
+
+  @override
+  String get settings_saveNamingFieldResolution => '解析度，如 832x1216';
+
+  @override
+  String get settings_saveNamingFieldWidth => '寬度';
+
+  @override
+  String get settings_saveNamingFieldHeight => '高度';
+
+  @override
+  String get settings_saveNamingFieldIndex => '同一次儲存中的序號，從 1 開始';
+
+  @override
+  String get settings_saveNamingFieldId => '圖片 ID';
+
+  @override
+  String get settings_saveNamingFieldType =>
+      '生成方式：inpaint、image2image 或 vibe-transfer，文生圖為空';
+
+  @override
+  String get settings_saveNamingFieldCharacters => '角色名稱，預設取前 3 個並以 + 連接';
+
+  @override
+  String get settings_saveNamingFilterFirst => '保留前 N 個字元';
+
+  @override
+  String get settings_saveNamingFilterLast => '保留後 N 個字元';
+
+  @override
+  String get settings_saveNamingFilterWords => '保留前 N 個詞，負數保留末尾幾個';
+
+  @override
+  String get settings_saveNamingFilterTags => '保留前 N 個以逗號分隔的標籤，負數保留末尾幾個';
+
+  @override
+  String get settings_saveNamingFilterPre => '值非空時在前面加上 X';
+
+  @override
+  String get settings_saveNamingFilterSuf => '值非空時在後面加上 X';
+
+  @override
+  String get settings_saveNamingFilterPad => '數字左側補 0 至 N 位';
+
+  @override
+  String get settings_saveNamingFilterLower => '轉為小寫';
+
+  @override
+  String get settings_saveNamingFilterUpper => '轉為大寫';
+
+  @override
+  String get settings_saveNamingFilterMax => '最多取 N 個角色（預設 3）';
+
+  @override
+  String get settings_saveNamingFilterAt => '只取第 N 個角色';
+
+  @override
+  String get settings_saveNamingFilterEach => '每個角色名稱保留前 N 個字元';
+
+  @override
+  String get settings_saveNamingFilterJoin => '以 X 連接角色名稱（預設 +）';
+
+  @override
+  String get settings_saveNamingFilterFull => '使用完整角色提示詞而非角色名稱';
+
+  @override
+  String settings_saveNamingErrorUnclosedBrace(int position) {
+    return '第 $position 個字元處的左大括號沒有閉合';
+  }
+
+  @override
+  String settings_saveNamingErrorUnknownField(Object name) {
+    return '未知欄位「$name」';
+  }
+
+  @override
+  String settings_saveNamingErrorUnknownFilter(Object name) {
+    return '未知過濾器「$name」';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterOnlyForCharacters(Object name) {
+    return '過濾器「$name」只能用於 characters';
+  }
+
+  @override
+  String settings_saveNamingErrorCharacterFilterOrder(Object name) {
+    return '過濾器「$name」必須寫在 first、pre 等過濾器之前';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterTakesNoValue(Object name) {
+    return '過濾器「$name」不需要參數';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsValue(Object name) {
+    return '過濾器「$name」需要參數，例如 $name:-';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsPositiveNumber(Object name) {
+    return '過濾器「$name」需要正整數';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsNonZeroNumber(Object name) {
+    return '過濾器「$name」需要非零整數';
+  }
+
+  @override
+  String get agentChat_toolUpscaleImage => '放大圖像';
+
+  @override
+  String get agentChat_permissionAutopilot => '全自動';
+
+  @override
+  String get agentChat_permissionAutopilotDescription =>
+      '消耗 Anlas 不再詢問，僅刪除已存資料或達到高消耗閾值時詢問';
+
+  @override
+  String get prompt_replaceUnderscores => '標籤用空格代替下劃線';
+
+  @override
+  String get prompt_replaceUnderscoresSubtitle => '補全插入與自動格式化共用此偏好，顏文字保留下劃線';
+
+  @override
+  String get prompt_separateNumericWeightClosing => '數字結尾標籤補空格';
+
+  @override
+  String get prompt_separateNumericWeightClosingSubtitle =>
+      '在 :: 前補空格，避免 year_2025:: 被讀成新權重';
+
+  @override
+  String get prompt_detectMultiCharacterOnPaste => '貼上時識別多角色';
+
+  @override
+  String get prompt_detectMultiCharacterOnPasteSubtitle =>
+      '貼上含 | 或 COUPLE 等多角色語法時提示匯入角色';
+
+  @override
+  String get prompt_numericWeightClosingSeparated => '已補權重空格';
+
+  @override
+  String get editor_cropNeedsSelection => '請先建立選區；裁剪會原位保留選區外接矩形內的像素。';
+
+  @override
+  String get onlineGallery_outputFilteredTagTooltipTouch =>
+      '此標籤會在複製、傳送和加入佇列時被剔除；長按可管理';
+
+  @override
+  String get onlineGallery_tagContextMenuTooltipTouch => '長按可加入黑名單或輸出過濾';
+
+  @override
+  String get generation_emptyInpaintMask => '重繪蒙版取樣後為空';
+
+  @override
+  String generation_emptyInpaintMaskHint(int gridSize) {
+    return '蒙版太細或太小，按 $gridSize 像素網格取樣後沒有留下可重繪的區域。請加粗或擴大蒙版後重試。';
+  }
+
+  @override
+  String randomManager_branchOutputBadge(String name) {
+    return '由「$name」的條件分支輸出';
+  }
+
+  @override
+  String randomManager_branchOutputBadgeMultiple(String name, int count) {
+    return '由「$name」等 $count 處條件分支輸出';
+  }
+
+  @override
+  String get randomManager_branchOutputTooltip =>
+      '這個片語不參與類別的常規抽取，只在參照它的分支被選中時輸出；停用或刪除這些分支後恢復常規抽取。點按可跳轉到該分支';
+
+  @override
+  String randomManager_deleteBranchTargetWarning(String names) {
+    return '「$names」的條件分支參照了這個片語，刪除後這些分支裡的這一項會顯示為已失效';
+  }
+
+  @override
+  String get statistics_parameterDistribution => '參數分佈';
+
+  @override
+  String get statistics_parameterOther => '其他';
+
+  @override
+  String get reversePrompt_taggerCategories => '輸出分類';
+
+  @override
+  String get reversePrompt_keepOneTaggerCategory => '至少保留一個輸出分類';
+
+  @override
+  String get settings_proxyAppliedHint => '代理設定已套用，新請求立即生效';
+
+  @override
+  String get shortcut_action_first_image => '第一張';
+
+  @override
+  String get shortcut_action_last_image => '最後一張';
+
+  @override
+  String get updateInstallErrorPackageNotFound =>
+      '未找到可自動安裝的更新包，請前往 Release 頁面手動下載。';
+
+  @override
+  String get updateInstallErrorIncompleteMetadata =>
+      '更新包缺少校驗資訊，無法安全安裝，請前往 Release 頁面手動下載。';
+
+  @override
+  String get updateInstallErrorDiskFull => '磁碟空間不足，無法儲存更新包。請清理空間後重試。';
+
+  @override
+  String get updateInstallErrorFileSystem => '寫入更新包失敗，請檢查磁碟後重試。';
+
+  @override
+  String get updateInstallErrorVerificationFailed => '更新包校驗失敗，請重新下載。';
+
+  @override
+  String get updateInstallErrorResumeRejected => '伺服器拒絕了更新包續傳請求，請稍後重試。';
+
+  @override
+  String get updateInstallErrorEmptyResponse => '更新伺服器回傳了空回應，請稍後重試。';
+
+  @override
+  String get updateInstallErrorDownloadFailed => '下載更新包失敗，請稍後重試。';
+
+  @override
+  String get updateInstallErrorPackageMissing => '更新包已被清理，請重新下載。';
+
+  @override
+  String get updateInstallErrorPackageCorrupted => '更新包已損壞，請重新下載。';
+
+  @override
+  String get updateInstallErrorInvalidAndroidPackage =>
+      'Android 更新包格式不正確，請前往 Release 頁面手動下載。';
+
+  @override
+  String get updateInstallErrorAndroidInstaller => '開啟 Android 系統安裝介面失敗，請重試。';
+
+  @override
+  String get updateInstallErrorUpdaterLaunchFailed =>
+      '啟動更新程式失敗，當前版本保持不變；請重試或手動下載新版本。';
+
+  @override
+  String get updateInstallErrorUpdaterNotStarted =>
+      '更新程式未能啟動，當前版本保持不變；請手動下載新版本完成更新。';
+
+  @override
+  String get updateInstallErrorInstallFailed => '上次更新沒有安裝成功，可以重試或手動下載新版本安裝。';
+
+  @override
+  String get updateInstallErrorInterrupted => '上次更新安裝沒有執行完成，可以重試或手動下載新版本安裝。';
+
+  @override
+  String get updateInstallErrorUnknown => '更新操作失敗，請稍後重試。';
+
+  @override
+  String updateInstallLogPath(Object path) {
+    return '日誌：$path';
+  }
+
+  @override
+  String get diy_sourceCharacterCount => '角色數量';
+
+  @override
+  String diy_categoryUnavailable(String reference) {
+    return '已失效：$reference';
+  }
+
+  @override
+  String get diy_dependencyCountCharacterCountDescription =>
+      '根據本次生成的角色數量決定結果數量';
+
+  @override
+  String get diy_dependencyExistsCharacterCountDescription =>
+      '僅在畫面中有角色（角色數量大於 0）時生效';
+
+  @override
+  String get diy_dependencyValueCharacterCountDescription =>
+      '依賴本次生成的角色數量取值，如 1、2、3';
+
+  @override
+  String get diy_dependencyExcludesCharacterCountDescription =>
+      '僅在無人畫面（角色數量為 0）時生效';
+
+  @override
+  String get diy_dependencyOverridesSelectionCount =>
+      '本片語的選擇模式不是「多選數量」，依賴得出的數量會覆蓋選擇模式的數量：按權重不重複抽取這麼多個，可選項不足時全部選取；沒有符合的對應且未設預設值時不抽取';
+
+  @override
+  String get diy_dependencyOverridesSequentialCount =>
+      '本片語的選擇模式是順序輪替，依賴得出的數量會覆蓋選擇模式的數量：按輪替順序取這麼多個，可選項不足時全部選取；沒有符合的對應且未設預設值時不抽取';
+
+  @override
+  String get diy_branchTargets => '輸出的片語';
+
+  @override
+  String get diy_branchTargetsHint =>
+      '選中的片語只在該分支被選中時輸出，並按本片語的選擇模式從中抽取；不選時輸出本片語自己的標籤';
+
+  @override
+  String get diy_branchTargetsEmpty => '本類別沒有其他片語';
+
+  @override
+  String diy_branchTargetChild(String name) {
+    return '子片語：$name';
+  }
+
+  @override
+  String get diy_branchTargetCycle => '會形成循環參照';
+
+  @override
+  String get diy_branchTargetCycleHint => '灰色的片語已經直接或間接輸出本片語，選擇會形成循環參照';
+
+  @override
+  String diy_branchTargetCount(int count) {
+    return '輸出 $count 個片語';
+  }
+
+  @override
+  String get diy_branchConditions => '條件';
+
+  @override
+  String get diy_branchConditionsHint =>
+      '只能參照在本片語之前生成的類別和分支；條件值按標籤比較，忽略大小寫、底線與權重寫法。沒有條件時分支總是可選';
+
+  @override
+  String get diy_addCondition => '新增條件';
+
+  @override
+  String get diy_deleteCondition => '刪除條件';
+
+  @override
+  String get diy_conditionSource => '變數';
+
+  @override
+  String get diy_conditionValueRequired => '請填寫條件值';
+
+  @override
+  String get diy_conditionLogicAll => '全部滿足';
+
+  @override
+  String get diy_conditionLogicAny => '任一滿足';
+
+  @override
+  String get diy_conditionSourceGender => '角色性別';
+
+  @override
+  String diy_conditionSourceBranch(String name) {
+    return '$name 的分支';
+  }
+
+  @override
+  String get diy_conditionValueHintCategory => '如 blue eyes';
+
+  @override
+  String get diy_conditionValueHintGender => '如 girl、boy';
+
+  @override
+  String get diy_conditionValueHintCount => '如 1、2、3';
+
+  @override
+  String get diy_conditionValueHintBranch => '填寫分支名稱';
+
+  @override
+  String diy_presetVersionTooNew(int version) {
+    return '此預設由較新版本的應用程式匯出（資料版本 $version），請更新應用程式後再匯入';
+  }
+
+  @override
+  String get diy_targetCurrentGroup => '本片語';
+
+  @override
+  String get diy_repeatOnceHint => '只在所選年份的日期範圍內啟用';
+
+  @override
+  String get diy_year => '年份';
+
+  @override
+  String get diy_yearUnsetHint => '尚未選擇年份，目前每年都會啟用';
+
+  @override
+  String get editor_toolbarFlyoutExpand => '展開同組工具';
+
+  @override
+  String get editor_toolbarFlyoutHint => '懸停、按右鍵或長按可展開同組工具';
+
+  @override
+  String get editor_transformSection => '變換';
+
+  @override
+  String get editor_transformWidth => '寬度';
+
+  @override
+  String get editor_transformHeight => '高度';
+
+  @override
+  String get editor_transformAngle => '角度';
+
+  @override
+  String get editor_transformCenterX => '中心 X';
+
+  @override
+  String get editor_transformCenterY => '中心 Y';
+
+  @override
+  String get editor_transformKeepAspect => '鎖定比例';
+
+  @override
+  String get editor_transformFlipHorizontal => '水平翻轉';
+
+  @override
+  String get editor_transformFlipVertical => '垂直翻轉';
+
+  @override
+  String get editor_transformApply => '套用變換';
+
+  @override
+  String get editor_transformCancel => '取消變換';
+
+  @override
+  String editor_transformSizeReadout(int width, int height) {
+    return '$width × $height 像素';
+  }
+
+  @override
+  String get editor_transformHandlesHint => '拖曳四角或邊緣縮放，拖曳框上方的圓點旋轉。';
+
+  @override
+  String get editor_transformKeysHint =>
+      'Shift 吸附 15° 或暫時切換鎖定比例，Alt 以中心為基準；Ctrl+T 開始變換，Enter 套用，Esc 取消。';
+
+  @override
+  String get editor_transformTouchHint => '變換時可用雙指縮放、旋轉和移動，完成後點「套用變換」。';
+
+  @override
+  String get editor_shortcutFreeTransform => '自由變換';
+
+  @override
+  String get editor_shortcutApplyTransform => '套用變換';
+
+  @override
+  String get layer_importImage => '匯入圖片';
+
+  @override
+  String settings_clearLocalOnnxModelsFailed(Object error) {
+    return '清除本機 ONNX 模型失敗：$error';
+  }
+
+  @override
+  String get agentSettings_permissionAutopilot => '全自動';
+
+  @override
+  String get agentSettings_permissionAutopilotDescription =>
+      '包含完全存取的全部權限，生成等消耗 Anlas 的操作也直接執行；僅在單次消耗達到保護模式的高消耗閾值或刪除已儲存的資料時確認。適合無人值守的批次任務。';
+
+  @override
+  String get agentSettings_autopilotConfirmTitle => '開啟全自動？';
+
+  @override
+  String agentSettings_autopilotConfirmThreshold(Object threshold) {
+    return '生成、重繪、啟動佇列等消耗 Anlas 的操作將直接執行，不再逐次確認。單次預計消耗達到 $threshold Anlas（保護模式的高消耗閾值）時仍會確認，刪除已儲存的資料也仍會確認。';
+  }
+
+  @override
+  String get agentSettings_autopilotConfirmUnlimited =>
+      '生成、重繪、啟動佇列等消耗 Anlas 的操作將直接執行，不再逐次確認。保護模式的高消耗警告目前未開啟，任何金額都會直接扣除；刪除已儲存的資料仍會確認。';
+
+  @override
+  String get agentSettings_autopilotConfirmAction => '開啟';
+
+  @override
+  String get watermark_autoPlacement => '自動選位';
+
+  @override
+  String get watermark_autoPlacementHint =>
+      '以設定的錨點為首選位置；其他角落明顯更乾淨時，整套浮水印會鏡像過去。';
+
+  @override
+  String get watermark_autoPlacementKept => '自動選位：保持首選位置';
+
+  @override
+  String get watermark_autoPlacementMirroredHorizontal => '自動選位：已左右鏡像';
+
+  @override
+  String get watermark_autoPlacementMirroredVertical => '自動選位：已上下鏡像';
+
+  @override
+  String get watermark_autoPlacementMirroredBoth => '自動選位：已鏡像到對角';
+
+  @override
+  String get watermark_autoAnalyzing => '正在分析畫面…';
+
+  @override
+  String get watermark_autoAnalysisFailed => '無法分析畫面，預覽未套用自動調整；儲存時會重新分析。';
+
+  @override
+  String get watermark_autoTone => '自動灰階';
+
+  @override
+  String get watermark_autoToneTextHint => '依文字下方的背景亮度取灰，描邊與陰影朝相反方向取灰。';
+
+  @override
+  String get watermark_autoToneLogoHint =>
+      '依 Logo 下方的背景亮度去色調灰，保留 Logo 本身的明暗層次。';
+
+  @override
+  String get watermark_toneContrast => '明暗差';
+
+  @override
+  String get watermark_colorFromAutoTone => '顏色由自動灰階決定';
+
+  @override
+  String get editor_toolQuickSelection => '快速選取';
+
+  @override
+  String get editor_quickSelectionTolerance => '容許度 / 邊緣敏感度';
+
+  @override
+  String get editor_quickSelectionBrushSize => '筆刷大小';
+
+  @override
+  String get editor_quickSelectionHint => '拖動塗抹自動選取，按住 Alt 減去選取。';
 }

@@ -16014,4 +16014,703 @@ class AppLocalizationsEn extends AppLocalizations {
 
     return 'Subscription expiry: $dateString';
   }
+
+  @override
+  String get common_secureStorageUnavailable =>
+      'Secure storage is temporarily unavailable. Antivirus or sync software may be using it; please try again shortly.';
+
+  @override
+  String get settings_saveNaming => 'Folders & File Names';
+
+  @override
+  String settings_saveNamingSubtitle(Object example) {
+    return 'Example: $example';
+  }
+
+  @override
+  String get settings_saveNamingFolderSection => 'Subfolder';
+
+  @override
+  String get settings_saveNamingFileNameSection => 'File Name';
+
+  @override
+  String get settings_saveNamingFolderByDate => 'By date';
+
+  @override
+  String get settings_saveNamingFolderByMonth => 'By month';
+
+  @override
+  String get settings_saveNamingFolderByYearMonth => 'By year, then month';
+
+  @override
+  String get settings_saveNamingFolderNone => 'No subfolder';
+
+  @override
+  String get settings_saveNamingFolderNoneExample =>
+      'Saved directly in the image save location';
+
+  @override
+  String get settings_saveNamingFileTimeSeed => 'Time + seed';
+
+  @override
+  String get settings_saveNamingFileDateTimeSeed => 'Date and time + seed';
+
+  @override
+  String get settings_saveNamingFilePromptSeed => 'Prompt + seed';
+
+  @override
+  String get settings_saveNamingCustom => 'Custom';
+
+  @override
+  String get settings_saveNamingFolderTemplate => 'Subfolder template';
+
+  @override
+  String get settings_saveNamingFolderTemplateHelper =>
+      'Separate nested folders with /. Leave empty to save without a subfolder.';
+
+  @override
+  String get settings_saveNamingFileNameTemplate => 'File name template';
+
+  @override
+  String get settings_saveNamingFileNameTemplateHelper =>
+      'The .png extension is added automatically.';
+
+  @override
+  String get settings_saveNamingFileNameEmpty =>
+      'File name template can\'t be empty';
+
+  @override
+  String get settings_saveNamingInsertField => 'Insert field';
+
+  @override
+  String get settings_saveNamingPreview => 'Preview';
+
+  @override
+  String get settings_saveNamingPreviewLatest =>
+      'Based on your latest generated image';
+
+  @override
+  String get settings_saveNamingPreviewSample => 'Based on sample data';
+
+  @override
+  String get settings_saveNamingOmitsDateHint =>
+      'The path has no date, so images from different days end up together. Add a date to the subfolder or file name if you need to tell days apart.';
+
+  @override
+  String get settings_saveNamingAppliesToNewHint =>
+      'Applies to images saved from now on. Existing files are not renamed or moved.';
+
+  @override
+  String get settings_saveNamingRestoreDefaults => 'Restore defaults';
+
+  @override
+  String get settings_saveNamingSyntaxHelp => 'Template syntax';
+
+  @override
+  String get settings_saveNamingSyntaxIntro =>
+      'Insert image details with fields. Filters run from left to right; when a field is empty, its pre and suf are skipped too. Type two opening braces for a literal one.';
+
+  @override
+  String get settings_saveNamingSyntaxFields => 'Fields';
+
+  @override
+  String get settings_saveNamingSyntaxFilters => 'Filters';
+
+  @override
+  String get settings_saveNamingSyntaxCharacterFilters =>
+      'Character filters (characters only, before other filters)';
+
+  @override
+  String get settings_saveNamingSyntaxExamples => 'Examples';
+
+  @override
+  String get settings_saveNamingFieldPrompt =>
+      'Prompt (first 80 characters unless a length filter is used)';
+
+  @override
+  String get settings_saveNamingFieldSeed => 'Seed';
+
+  @override
+  String get settings_saveNamingFieldDate => 'Generation date, e.g. 2026-10-12';
+
+  @override
+  String get settings_saveNamingFieldTime => 'Generation time, e.g. 14-30-05';
+
+  @override
+  String get settings_saveNamingFieldYear => 'Year, e.g. 2026';
+
+  @override
+  String get settings_saveNamingFieldMonth => 'Month, e.g. 10';
+
+  @override
+  String get settings_saveNamingFieldDay => 'Day, e.g. 12';
+
+  @override
+  String get settings_saveNamingFieldModel => 'Model ID';
+
+  @override
+  String get settings_saveNamingFieldModelName => 'Model name';
+
+  @override
+  String get settings_saveNamingFieldResolution => 'Resolution, e.g. 832x1216';
+
+  @override
+  String get settings_saveNamingFieldWidth => 'Width';
+
+  @override
+  String get settings_saveNamingFieldHeight => 'Height';
+
+  @override
+  String get settings_saveNamingFieldIndex =>
+      'Position within one save, starting at 1';
+
+  @override
+  String get settings_saveNamingFieldId => 'Image ID';
+
+  @override
+  String get settings_saveNamingFieldType =>
+      'Generation method: inpaint, image2image or vibe-transfer; empty for text-to-image';
+
+  @override
+  String get settings_saveNamingFieldCharacters =>
+      'Character names, first 3 joined with +';
+
+  @override
+  String get settings_saveNamingFilterFirst => 'Keep the first N characters';
+
+  @override
+  String get settings_saveNamingFilterLast => 'Keep the last N characters';
+
+  @override
+  String get settings_saveNamingFilterWords =>
+      'Keep the first N words; a negative number keeps the last ones';
+
+  @override
+  String get settings_saveNamingFilterTags =>
+      'Keep the first N comma-separated tags; a negative number keeps the last ones';
+
+  @override
+  String get settings_saveNamingFilterPre => 'Add X before a non-empty value';
+
+  @override
+  String get settings_saveNamingFilterSuf => 'Add X after a non-empty value';
+
+  @override
+  String get settings_saveNamingFilterPad =>
+      'Pad numbers with leading zeros to N digits';
+
+  @override
+  String get settings_saveNamingFilterLower => 'Lowercase';
+
+  @override
+  String get settings_saveNamingFilterUpper => 'Uppercase';
+
+  @override
+  String get settings_saveNamingFilterMax =>
+      'Use up to N characters (default 3)';
+
+  @override
+  String get settings_saveNamingFilterAt => 'Use only character N';
+
+  @override
+  String get settings_saveNamingFilterEach =>
+      'Keep the first N characters of each name';
+
+  @override
+  String get settings_saveNamingFilterJoin => 'Join names with X (default +)';
+
+  @override
+  String get settings_saveNamingFilterFull =>
+      'Use full character prompts instead of names';
+
+  @override
+  String settings_saveNamingErrorUnclosedBrace(int position) {
+    return 'Unclosed opening brace at character $position';
+  }
+
+  @override
+  String settings_saveNamingErrorUnknownField(Object name) {
+    return 'Unknown field \"$name\"';
+  }
+
+  @override
+  String settings_saveNamingErrorUnknownFilter(Object name) {
+    return 'Unknown filter \"$name\"';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterOnlyForCharacters(Object name) {
+    return 'Filter \"$name\" only works with characters';
+  }
+
+  @override
+  String settings_saveNamingErrorCharacterFilterOrder(Object name) {
+    return 'Filter \"$name\" must come before filters like first or pre';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterTakesNoValue(Object name) {
+    return 'Filter \"$name\" doesn\'t take a value';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsValue(Object name) {
+    return 'Filter \"$name\" needs a value, e.g. $name:-';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsPositiveNumber(Object name) {
+    return 'Filter \"$name\" needs a positive whole number';
+  }
+
+  @override
+  String settings_saveNamingErrorFilterNeedsNonZeroNumber(Object name) {
+    return 'Filter \"$name\" needs a non-zero whole number';
+  }
+
+  @override
+  String get agentChat_toolUpscaleImage => 'Upscale image';
+
+  @override
+  String get agentChat_permissionAutopilot => 'Autopilot';
+
+  @override
+  String get agentChat_permissionAutopilotDescription =>
+      'Spend Anlas without asking; ask only to delete saved data or at the high-cost threshold';
+
+  @override
+  String get prompt_replaceUnderscores => 'Use Spaces Instead of Underscores';
+
+  @override
+  String get prompt_replaceUnderscoresSubtitle =>
+      'Shared by autocomplete and auto format; kaomoji keep their underscores';
+
+  @override
+  String get prompt_separateNumericWeightClosing => 'Space After Numeric Tags';
+
+  @override
+  String get prompt_separateNumericWeightClosingSubtitle =>
+      'Add a space before :: so year_2025:: is not read as a new weight';
+
+  @override
+  String get prompt_detectMultiCharacterOnPaste => 'Detect Characters On Paste';
+
+  @override
+  String get prompt_detectMultiCharacterOnPasteSubtitle =>
+      'Offer to import characters when pasting | or COUPLE multi-character syntax';
+
+  @override
+  String get prompt_numericWeightClosingSeparated => 'Weight closings spaced';
+
+  @override
+  String get editor_cropNeedsSelection =>
+      'Make a selection first; only the pixels inside its bounding box are kept, in place.';
+
+  @override
+  String get onlineGallery_outputFilteredTagTooltipTouch =>
+      'Removed when copying, sending, or adding to queue; long-press to manage';
+
+  @override
+  String get onlineGallery_tagContextMenuTooltipTouch =>
+      'Long-press to add to the blacklist or output filter';
+
+  @override
+  String get generation_emptyInpaintMask =>
+      'Inpaint mask is empty after sampling';
+
+  @override
+  String generation_emptyInpaintMaskHint(int gridSize) {
+    return 'The mask is too thin or too small: nothing is left to repaint after sampling it on the $gridSize-pixel grid. Make the mask thicker or larger and try again.';
+  }
+
+  @override
+  String randomManager_branchOutputBadge(String name) {
+    return 'Output by a branch of “$name”';
+  }
+
+  @override
+  String randomManager_branchOutputBadgeMultiple(String name, int count) {
+    return 'Output by $count branches, including “$name”';
+  }
+
+  @override
+  String get randomManager_branchOutputTooltip =>
+      'This group is not drawn on its own; it is output only when a branch that references it is chosen. It returns to normal drawing once those branches are disabled or deleted. Tap to open the branch.';
+
+  @override
+  String randomManager_deleteBranchTargetWarning(String names) {
+    return 'Branches of “$names” reference this group. After deletion, that entry in those branches will show as unavailable.';
+  }
+
+  @override
+  String get statistics_parameterDistribution => 'Parameter Distribution';
+
+  @override
+  String get statistics_parameterOther => 'Other';
+
+  @override
+  String get reversePrompt_taggerCategories => 'Output categories';
+
+  @override
+  String get reversePrompt_keepOneTaggerCategory =>
+      'Keep at least one output category selected';
+
+  @override
+  String get settings_proxyAppliedHint =>
+      'Proxy settings applied to new requests';
+
+  @override
+  String get shortcut_action_first_image => 'First Image';
+
+  @override
+  String get shortcut_action_last_image => 'Last Image';
+
+  @override
+  String get updateInstallErrorPackageNotFound =>
+      'No update package that can be installed automatically was found. Please download it manually from the Release page.';
+
+  @override
+  String get updateInstallErrorIncompleteMetadata =>
+      'The update package is missing verification information and cannot be installed safely. Please download it manually from the Release page.';
+
+  @override
+  String get updateInstallErrorDiskFull =>
+      'Not enough disk space to save the update package. Free up some space and try again.';
+
+  @override
+  String get updateInstallErrorFileSystem =>
+      'Failed to write the update package. Check your disk and try again.';
+
+  @override
+  String get updateInstallErrorVerificationFailed =>
+      'The update package failed verification. Please download it again.';
+
+  @override
+  String get updateInstallErrorResumeRejected =>
+      'The server rejected the request to resume the download. Please try again later.';
+
+  @override
+  String get updateInstallErrorEmptyResponse =>
+      'The update server returned an empty response. Please try again later.';
+
+  @override
+  String get updateInstallErrorDownloadFailed =>
+      'Failed to download the update package. Please try again later.';
+
+  @override
+  String get updateInstallErrorPackageMissing =>
+      'The update package has been cleaned up. Please download it again.';
+
+  @override
+  String get updateInstallErrorPackageCorrupted =>
+      'The update package is damaged. Please download it again.';
+
+  @override
+  String get updateInstallErrorInvalidAndroidPackage =>
+      'The Android update package has an invalid format. Please download it manually from the Release page.';
+
+  @override
+  String get updateInstallErrorAndroidInstaller =>
+      'Could not open Android\'s system installer. Please try again.';
+
+  @override
+  String get updateInstallErrorUpdaterLaunchFailed =>
+      'Could not launch the updater. The current version is unchanged; try again or download the new version manually.';
+
+  @override
+  String get updateInstallErrorUpdaterNotStarted =>
+      'The updater did not start. The current version is unchanged; please download the new version manually to update.';
+
+  @override
+  String get updateInstallErrorInstallFailed =>
+      'The previous update was not installed. You can try again or download and install the new version manually.';
+
+  @override
+  String get updateInstallErrorInterrupted =>
+      'The previous update did not finish installing. You can try again or download and install the new version manually.';
+
+  @override
+  String get updateInstallErrorUnknown =>
+      'The update could not be completed. Please try again later.';
+
+  @override
+  String updateInstallLogPath(Object path) {
+    return 'Log: $path';
+  }
+
+  @override
+  String get diy_sourceCharacterCount => 'Character count';
+
+  @override
+  String diy_categoryUnavailable(String reference) {
+    return 'Unavailable: $reference';
+  }
+
+  @override
+  String get diy_dependencyCountCharacterCountDescription =>
+      'Use the number of characters in this generation to determine the result count';
+
+  @override
+  String get diy_dependencyExistsCharacterCountDescription =>
+      'Apply only when the image has characters (character count above 0)';
+
+  @override
+  String get diy_dependencyValueCharacterCountDescription =>
+      'Depend on the character count in this generation, such as 1, 2, or 3';
+
+  @override
+  String get diy_dependencyExcludesCharacterCountDescription =>
+      'Apply only when the image has no characters (character count is 0)';
+
+  @override
+  String get diy_dependencyOverridesSelectionCount =>
+      'This group does not use Multiple Count mode. The count from this dependency overrides the selection mode: that many items are drawn by weight without repeats, or all of them if there are fewer. Nothing is drawn when no mapping matches and no default is set.';
+
+  @override
+  String get diy_dependencyOverridesSequentialCount =>
+      'This group uses Sequential mode. The count from this dependency overrides the selection mode: that many items are taken in rotation order, or all of them if there are fewer. Nothing is drawn when no mapping matches and no default is set.';
+
+  @override
+  String get diy_branchTargets => 'Output tag groups';
+
+  @override
+  String get diy_branchTargetsHint =>
+      'Selected groups are output only when this branch is chosen, drawn with this group\'s selection mode. With none selected, this group\'s own tags are output.';
+
+  @override
+  String get diy_branchTargetsEmpty => 'No other tag groups in this category';
+
+  @override
+  String diy_branchTargetChild(String name) {
+    return 'Child: $name';
+  }
+
+  @override
+  String get diy_branchTargetCycle => 'Would create a loop';
+
+  @override
+  String get diy_branchTargetCycleHint =>
+      'Greyed-out groups already output this group directly or indirectly; selecting them would create a loop';
+
+  @override
+  String diy_branchTargetCount(int count) {
+    return 'Outputs $count groups';
+  }
+
+  @override
+  String get diy_branchConditions => 'Conditions';
+
+  @override
+  String get diy_branchConditionsHint =>
+      'Only categories and branches generated before this group can be referenced. Values are compared as tags, ignoring case, underscores, and weight syntax. A branch without conditions is always eligible.';
+
+  @override
+  String get diy_addCondition => 'Add condition';
+
+  @override
+  String get diy_deleteCondition => 'Delete condition';
+
+  @override
+  String get diy_conditionSource => 'Variable';
+
+  @override
+  String get diy_conditionValueRequired => 'Enter a value';
+
+  @override
+  String get diy_conditionLogicAll => 'Match all';
+
+  @override
+  String get diy_conditionLogicAny => 'Match any';
+
+  @override
+  String get diy_conditionSourceGender => 'Character gender';
+
+  @override
+  String diy_conditionSourceBranch(String name) {
+    return 'Branch of $name';
+  }
+
+  @override
+  String get diy_conditionValueHintCategory => 'e.g. blue eyes';
+
+  @override
+  String get diy_conditionValueHintGender => 'e.g. girl, boy';
+
+  @override
+  String get diy_conditionValueHintCount => 'e.g. 1, 2, 3';
+
+  @override
+  String get diy_conditionValueHintBranch => 'Enter a branch name';
+
+  @override
+  String diy_presetVersionTooNew(int version) {
+    return 'This preset was exported by a newer app version (data version $version). Update the app, then import it again';
+  }
+
+  @override
+  String get diy_targetCurrentGroup => 'This tag group';
+
+  @override
+  String get diy_repeatOnceHint =>
+      'Activate only during the date range of the selected year';
+
+  @override
+  String get diy_year => 'Year';
+
+  @override
+  String get diy_yearUnsetHint =>
+      'No year selected yet, so it currently activates every year';
+
+  @override
+  String get editor_toolbarFlyoutExpand => 'Show related tools';
+
+  @override
+  String get editor_toolbarFlyoutHint =>
+      'Hover, right-click or long-press for related tools';
+
+  @override
+  String get editor_transformSection => 'Transform';
+
+  @override
+  String get editor_transformWidth => 'Width';
+
+  @override
+  String get editor_transformHeight => 'Height';
+
+  @override
+  String get editor_transformAngle => 'Angle';
+
+  @override
+  String get editor_transformCenterX => 'Center X';
+
+  @override
+  String get editor_transformCenterY => 'Center Y';
+
+  @override
+  String get editor_transformKeepAspect => 'Lock Aspect Ratio';
+
+  @override
+  String get editor_transformFlipHorizontal => 'Flip Horizontal';
+
+  @override
+  String get editor_transformFlipVertical => 'Flip Vertical';
+
+  @override
+  String get editor_transformApply => 'Apply Transform';
+
+  @override
+  String get editor_transformCancel => 'Cancel Transform';
+
+  @override
+  String editor_transformSizeReadout(int width, int height) {
+    return '$width × $height px';
+  }
+
+  @override
+  String get editor_transformHandlesHint =>
+      'Drag a corner or edge to scale; drag the dot above the box to rotate.';
+
+  @override
+  String get editor_transformKeysHint =>
+      'Shift snaps to 15° or toggles the aspect lock; Alt scales from the center. Ctrl+T starts a transform, Enter applies it and Esc cancels it.';
+
+  @override
+  String get editor_transformTouchHint =>
+      'While transforming, use two fingers to scale, rotate and move; tap Apply Transform when done.';
+
+  @override
+  String get editor_shortcutFreeTransform => 'Free transform';
+
+  @override
+  String get editor_shortcutApplyTransform => 'Apply transform';
+
+  @override
+  String get layer_importImage => 'Import Image';
+
+  @override
+  String settings_clearLocalOnnxModelsFailed(Object error) {
+    return 'Failed to clear local ONNX models: $error';
+  }
+
+  @override
+  String get agentSettings_permissionAutopilot => 'Autopilot';
+
+  @override
+  String get agentSettings_permissionAutopilotDescription =>
+      'Everything in Full access, plus generations and other Anlas spending run directly. Only a single request reaching the Protection Mode high-cost threshold, or deleting saved data, still asks first. For unattended batch work.';
+
+  @override
+  String get agentSettings_autopilotConfirmTitle => 'Turn on Autopilot?';
+
+  @override
+  String agentSettings_autopilotConfirmThreshold(Object threshold) {
+    return 'Generations, inpainting, queue runs and other Anlas spending will run without asking each time. A single request estimated at $threshold Anlas or more (the Protection Mode high-cost threshold) still asks first, and so does deleting saved data.';
+  }
+
+  @override
+  String get agentSettings_autopilotConfirmUnlimited =>
+      'Generations, inpainting, queue runs and other Anlas spending will run without asking each time. The Protection Mode high-cost warning is off, so any amount is spent directly; deleting saved data still asks first.';
+
+  @override
+  String get agentSettings_autopilotConfirmAction => 'Turn on';
+
+  @override
+  String get watermark_autoPlacement => 'Auto placement';
+
+  @override
+  String get watermark_autoPlacementHint =>
+      'The anchor you set is preferred; when another corner is clearly cleaner, the whole watermark is mirrored there.';
+
+  @override
+  String get watermark_autoPlacementKept =>
+      'Auto placement: kept at the preferred position';
+
+  @override
+  String get watermark_autoPlacementMirroredHorizontal =>
+      'Auto placement: mirrored left to right';
+
+  @override
+  String get watermark_autoPlacementMirroredVertical =>
+      'Auto placement: mirrored top to bottom';
+
+  @override
+  String get watermark_autoPlacementMirroredBoth =>
+      'Auto placement: moved to the opposite corner';
+
+  @override
+  String get watermark_autoAnalyzing => 'Analyzing image…';
+
+  @override
+  String get watermark_autoAnalysisFailed =>
+      'The image could not be analyzed, so the preview shows no automatic adjustments. Saving analyzes it again.';
+
+  @override
+  String get watermark_autoTone => 'Auto grayscale';
+
+  @override
+  String get watermark_autoToneTextHint =>
+      'Picks a gray from the background under the text; the outline and shadow take the opposite side.';
+
+  @override
+  String get watermark_autoToneLogoHint =>
+      'Converts the logo to a gray matched to the background beneath it, keeping the logo’s own shading.';
+
+  @override
+  String get watermark_toneContrast => 'Tone difference';
+
+  @override
+  String get watermark_colorFromAutoTone => 'Color is set by auto grayscale';
+
+  @override
+  String get editor_toolQuickSelection => 'Quick Selection';
+
+  @override
+  String get editor_quickSelectionTolerance => 'Sample Tolerance';
+
+  @override
+  String get editor_quickSelectionBrushSize => 'Brush Size';
+
+  @override
+  String get editor_quickSelectionHint =>
+      'Drag to paint selection; hold Alt to subtract.';
 }

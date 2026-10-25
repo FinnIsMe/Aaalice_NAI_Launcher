@@ -9,6 +9,7 @@ import '../tools/eraser_tool.dart';
 import '../tools/fill_tool.dart';
 import '../tools/frame_tool.dart';
 import '../tools/magic_wand_tool.dart';
+import '../tools/quick_selection_tool.dart';
 import '../tools/move_tool.dart';
 import '../tools/selection/ellipse_selection_tool.dart';
 import '../tools/selection/lasso_selection_tool.dart';
@@ -256,6 +257,7 @@ class ToolManager extends ChangeNotifier {
       ClosedRegionFillTool(),
       FillTool(),
       MagicWandTool(),
+      QuickSelectionTool(),
       BlurTool(),
       CloneStampTool(),
       MoveTool(),

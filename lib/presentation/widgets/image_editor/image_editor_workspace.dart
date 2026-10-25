@@ -39,6 +39,8 @@ import 'tools/closed_region_fill_tool.dart';
 import 'tools/frame_tool.dart';
 import 'tools/tool_base.dart';
 import 'canvas/editor_canvas.dart';
+import 'widgets/editor_image_import.dart';
+import 'widgets/transform_session_bar.dart';
 import 'widgets/toolbar/desktop_toolbar.dart';
 import 'liquify/liquify_dialog.dart';
 
@@ -97,7 +99,6 @@ class ImageEditorWorkspace extends StatefulWidget {
 }
 
 class ImageEditorWorkspaceState extends State<ImageEditorWorkspace> {
-  static const int _maxImportedImageBytes = 50 * 1024 * 1024;
 
   ImageEditorController get _controller => widget.controller;
   EditorState get _state => _controller.editorState;
@@ -1457,116 +1458,23 @@ class ImageEditorWorkspaceState extends State<ImageEditorWorkspace> {
       AppToast.error(context, l10n.editor_emptyImageFile);
       return;
     }
-    if (imageBytes.length > _maxImportedImageBytes) {
-      final sizeMB = (imageBytes.length / (1024 * 1024)).toStringAsFixed(1);
-      AppLogger.w(
-        'Dropped image too large: ${imageBytes.length} bytes',
-        'ImageEditorDrop',
-      );
-      AppToast.error(context, l10n.editor_fileTooLarge(sizeMB));
+
+    // 保留原图作为图片层插在当前图层上方，并带着变换框等待摆放
+    final placed = await importImageAsLayer(
+      context,
+      _state,
+      bytes: imageBytes,
+      layerName: _droppedImageLayerName(fileName),
+    );
+    if (!placed || !mounted) {
       return;
     }
 
-    try {
-      final layerBytes = await _coverDroppedImageToCanvas(imageBytes);
-      if (!mounted) {
-        return;
-      }
-
-      // 铺满当前取景框，作为图片层插在当前图层上方
-      final layer = await _state.layerCommands.addImageLayer(
-        layerBytes,
-        name: _droppedImageLayerName(fileName),
-        offset: _state.frame.topLeft,
-      );
-      if (!mounted) {
-        return;
-      }
-      if (layer == null) {
-        AppToast.error(context, l10n.editor_parseImageFailed);
-        return;
-      }
-
-      _state.clearSelection(saveHistory: false);
-      _state.clearPreview();
-      _state.requestUiUpdate();
-      setState(() {});
-    } catch (e) {
-      AppLogger.w(
-        'Failed to import dropped image layer: $fileName, error=$e',
-        'ImageEditorDrop',
-      );
-      if (mounted) {
-        AppToast.error(context, l10n.editor_parseImageFailed);
-      }
-    }
+    _state.clearPreview();
+    _state.requestUiUpdate();
+    setState(() {});
   }
 
-  Future<Uint8List> _coverDroppedImageToCanvas(Uint8List imageBytes) async {
-    final canvasWidth = _state.canvasSize.width.round();
-    final canvasHeight = _state.canvasSize.height.round();
-    final targetWidth = canvasWidth < 1 ? 1 : canvasWidth;
-    final targetHeight = canvasHeight < 1 ? 1 : canvasHeight;
-
-    ui.Codec? codec;
-    ui.Image? sourceImage;
-    ui.Image? targetImage;
-    try {
-      codec = await ui.instantiateImageCodec(imageBytes);
-      final frame = await codec.getNextFrame();
-      sourceImage = frame.image;
-
-      if (sourceImage.width == targetWidth &&
-          sourceImage.height == targetHeight) {
-        return imageBytes;
-      }
-
-      final sourceAspect = sourceImage.width / sourceImage.height;
-      final targetAspect = targetWidth / targetHeight;
-      final Rect sourceRect;
-      if (sourceAspect > targetAspect) {
-        final cropWidth = sourceImage.height * targetAspect;
-        sourceRect = Rect.fromLTWH(
-          (sourceImage.width - cropWidth) / 2,
-          0,
-          cropWidth,
-          sourceImage.height.toDouble(),
-        );
-      } else {
-        final cropHeight = sourceImage.width / targetAspect;
-        sourceRect = Rect.fromLTWH(
-          0,
-          (sourceImage.height - cropHeight) / 2,
-          sourceImage.width.toDouble(),
-          cropHeight,
-        );
-      }
-
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      canvas.drawImageRect(
-        sourceImage,
-        sourceRect,
-        Rect.fromLTWH(0, 0, targetWidth.toDouble(), targetHeight.toDouble()),
-        Paint()..filterQuality = FilterQuality.high,
-      );
-      targetImage = await recorder.endRecording().toImage(
-        targetWidth,
-        targetHeight,
-      );
-      final byteData = await targetImage.toByteData(
-        format: ui.ImageByteFormat.png,
-      );
-      if (byteData == null) {
-        throw StateError('Failed to encode dropped image layer');
-      }
-      return byteData.buffer.asUint8List();
-    } finally {
-      targetImage?.dispose();
-      sourceImage?.dispose();
-      codec?.dispose();
-    }
-  }
 
   String _droppedImageLayerName(String fileName) {
     final trimmed = fileName.trim();
@@ -1660,6 +1568,12 @@ class ImageEditorWorkspaceState extends State<ImageEditorWorkspace> {
           Positioned(top: 16, left: 16, child: _buildFocusedSelectionCard()),
         Positioned.fill(
           child: MagicWandProgressOverlay(controller: _magicWandController),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: Center(child: TransformSessionBar(state: _state)),
         ),
       ],
     );

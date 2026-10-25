@@ -1,352 +1,598 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../../core/utils/app_logger.dart';
 import '../layers/layer.dart';
 import '../layers/layer_patch_baker.dart';
+import '../layers/layer_role.dart';
+import '../layers/transform_source.dart';
 import 'editor_state.dart';
-import 'history_manager.dart';
+import 'transform_actions.dart';
+import 'transform_geometry.dart';
 
-enum TransformHandleType {
-  topLeft,
-  topCenter,
-  topRight,
-  centerRight,
-  bottomRight,
-  bottomCenter,
-  bottomLeft,
-  centerLeft,
-  move,
-  rotate,
-}
-
-/// 自由变换会话（Ctrl+T / Free Transform）：
-/// 对标 Photoshop 自由变换，支持 8 点定界框缩放、中心旋转、平移移动，
-/// 拖动时实时 GPU 矩阵渲染，按 Enter 提交烘焙至图层撤销栈，按 Esc 撤销取消。
-class LayerTransformController {
-  LayerTransformController(this._state);
+/// 移动工具上的自由变换。没有会话时显示当前目标的外接框，拖缩放或旋转手柄即进入会话；
+/// 会话里每次松手都从会话开始时截下的像素重新计算并立即写回图层，
+/// 所以其他功能随时读到的都是最终像素，撤销栈里整次会话只占一条
+class LayerTransformController extends ChangeNotifier {
+  LayerTransformController(this._state) {
+    _state.historyManager.addListener(_onHistoryChanged);
+    _state.layerManager.activeLayerNotifier.addListener(_onActiveLayerChanged);
+    _state.selectionManager.selectionNotifier.addListener(_onSelectionChanged);
+  }
 
   final EditorState _state;
+  _TransformSession? _session;
+  _TransformDrag? _drag;
+  _TransformPinch? _pinch;
+  int _mutating = 0;
+  bool _keepAspect = true;
 
-  bool _isTransforming = false;
-  bool get isTransforming => _isTransforming;
+  /// 悬停与拖动时的鼠标样式
+  final ValueNotifier<MouseCursor> cursor = ValueNotifier(
+    SystemMouseCursors.move,
+  );
 
-  String? _layerId;
-  Rect _originalBounds = Rect.zero;
-  Path? _region;
-  Offset _pivot = Offset.zero;
+  /// 画布按当前交互方式设置，变换框的绘制与命中共用
+  TransformHandleMetrics handleMetrics = TransformHandleMetrics.pointer;
 
-  Offset _translation = Offset.zero;
-  double _scaleX = 1.0;
-  double _scaleY = 1.0;
-  double _rotation = 0.0;
+  bool get isActive => _session != null;
+  bool get isTransforming => isActive;
+  Rect? get originalBounds => _session?.source.sourceRect;
 
-  TransformHandleType? _activeHandle;
-  Offset? _dragStartPoint;
-  Offset _startTranslation = Offset.zero;
-  double _startScaleX = 1.0;
-  double _startScaleY = 1.0;
-  double _startRotation = 0.0;
-  double _startAngle = 0.0;
+  bool get isDragging => _drag != null || _pinch != null;
 
-  Rect get originalBounds => _originalBounds;
-  Offset get pivot => _pivot;
-  Offset get translation => _translation;
-  double get scaleX => _scaleX;
-  double get scaleY => _scaleY;
-  double get rotation => _rotation;
+  /// 角点拖动与数值输入是否保持宽高比；拖动时按住 Shift 临时取反
+  bool get keepAspect => _keepAspect;
 
-  /// 当前综合变换矩阵
-  Matrix4 get matrix {
-    final currentPivot = _pivot + _translation;
-    // ignore: deprecated_member_use
-    return Matrix4.identity()
-      // ignore: deprecated_member_use
-      ..translate(currentPivot.dx, currentPivot.dy)
-      ..rotateZ(_rotation)
-      // ignore: deprecated_member_use
-      ..scale(_scaleX, _scaleY)
-      // ignore: deprecated_member_use
-      ..translate(-_pivot.dx, -_pivot.dy);
+  set keepAspect(bool value) {
+    if (_keepAspect == value) return;
+    _keepAspect = value;
+    notifyListeners();
   }
 
-  /// 启动自由变换（Ctrl+T）
+  /// 变换框当前显示的参数：会话中含拖动预览，否则为目标的外接框
+  TransformParams? get params {
+    final session = _session;
+    if (session == null) {
+      final target = _resolveTarget();
+      return target == null ? null : TransformParams.identity(target.bounds);
+    }
+    return _pinch?.current ?? _drag?.current ?? session.params;
+  }
+
+  /// 进入会话；Ctrl+T 与数值输入从这里开始。已在会话中时直接返回 true
   bool begin() {
-    if (_isTransforming) return true;
-    final layer = _state.layerManager.activeLayer;
-    if (layer == null || layer.locked || !layer.hasContent) {
-      return false;
+    final current = _session;
+    if (current != null) {
+      if (!_isStale(current)) return true;
+      _end();
     }
-
-    final selection = _state.selectionPath;
-    _region = selection;
-    _layerId = layer.id;
-
-    if (selection != null) {
-      _originalBounds = layer.contentBounds.intersect(selection.getBounds());
-    } else {
-      _originalBounds = layer.contentBounds;
-    }
-
-    if (_originalBounds.isEmpty || _originalBounds.width <= 0 || _originalBounds.height <= 0) {
-      return false;
-    }
-
-    _pivot = _originalBounds.center;
-    _translation = Offset.zero;
-    _scaleX = 1.0;
-    _scaleY = 1.0;
-    _rotation = 0.0;
-    _isTransforming = true;
-    _activeHandle = null;
-
-    _updateLayerPreview();
-    _state.notifyRenderChange();
-    _state.requestUiUpdate();
+    final target = _resolveTarget();
+    if (target == null) return false;
+    final layer = target.layer;
+    final source = _capture(target);
+    if (source == null) return false;
+    _session = _TransformSession(
+      layerId: layer.id,
+      source: source,
+      params: source.identity,
+      revision: layer.contentRevision,
+    );
+    _changed();
     return true;
   }
 
-  void _updateLayerPreview() {
-    if (_layerId == null) return;
-    final layer = _state.layerManager.getLayerById(_layerId!);
-    if (layer == null) return;
-
-    if (_region != null) {
-      layer.setMovePreview(
-        LayerMovePreview.region(
-          _region!,
-          _translation,
-          layer.contentBounds,
-          matrix,
-        ),
+  /// 导入的图片作为新图层落地并立即进入会话：放进取景框中央，放不下时等比缩小。
+  /// [image] 的所有权移交给控制器；无法光栅化时返回 false
+  bool placeImage(ui.Image image, {required String name}) {
+    apply();
+    final source = TransformSource.placed(image, clip: _resultLimit());
+    final params = TransformParams.fitInside(source.sourceRect, _state.frame);
+    final BakedLayerImage? pixels;
+    try {
+      pixels = source.bake(params);
+    } on Object catch (error, stackTrace) {
+      AppLogger.e(
+        'Failed to place imported image',
+        error,
+        stackTrace,
+        'ImageEditor',
       );
-    } else {
-      layer.setMovePreview(
-        LayerMovePreview.whole(
-          _translation,
-          matrix,
-        ),
-      );
+      source.dispose();
+      return false;
     }
-  }
-
-  /// 获取当前 8 个控制把手在画布坐标系中的位置
-  Map<TransformHandleType, Offset> getHandlePositions() {
-    final m = matrix;
-    final b = _originalBounds;
-    final points = <TransformHandleType, Offset>{
-      TransformHandleType.topLeft: b.topLeft,
-      TransformHandleType.topCenter: Offset(b.center.dx, b.top),
-      TransformHandleType.topRight: b.topRight,
-      TransformHandleType.centerRight: Offset(b.right, b.center.dy),
-      TransformHandleType.bottomRight: b.bottomRight,
-      TransformHandleType.bottomCenter: Offset(b.center.dx, b.bottom),
-      TransformHandleType.bottomLeft: b.bottomLeft,
-      TransformHandleType.centerLeft: Offset(b.left, b.center.dy),
-    };
-
-    return points.map((key, pt) {
-      final transformed = MatrixUtils.transformPoint(m, pt);
-      return MapEntry(key, transformed);
-    });
-  }
-
-  /// 命中检测（根据当前画布坐标判断鼠标悬停/点中的把手）
-  TransformHandleType? hitTest(Offset canvasPoint, {double tolerance = 12.0}) {
-    if (!_isTransforming) return null;
-
-    final handles = getHandlePositions();
-    for (final entry in handles.entries) {
-      if ((canvasPoint - entry.value).distance <= tolerance) {
-        return entry.key;
-      }
-    }
-
-    // 旋转检测：四角把手外围 12~30px 范围判定为旋转
-    for (final corner in [
-      TransformHandleType.topLeft,
-      TransformHandleType.topRight,
-      TransformHandleType.bottomRight,
-      TransformHandleType.bottomLeft,
-    ]) {
-      final pt = handles[corner]!;
-      final dist = (canvasPoint - pt).distance;
-      if (dist > tolerance && dist <= tolerance * 2.5) {
-        return TransformHandleType.rotate;
-      }
-    }
-
-    // 内部平移检测：将 canvasPoint 逆变换回原矩形空间判断是否在内
-    final inv = Matrix4.tryInvert(matrix);
-    if (inv != null) {
-      final localPt = MatrixUtils.transformPoint(inv, canvasPoint);
-      if (_originalBounds.contains(localPt)) {
-        return TransformHandleType.move;
-      }
-    }
-
-    return null;
-  }
-
-  /// 按下指针
-  bool onPointerDown(Offset canvasPoint) {
-    if (!_isTransforming) return false;
-    final hit = hitTest(canvasPoint);
-    if (hit == null) return false;
-
-    _activeHandle = hit;
-    _dragStartPoint = canvasPoint;
-    _startTranslation = _translation;
-    _startScaleX = _scaleX;
-    _startScaleY = _scaleY;
-    _startRotation = _rotation;
-
-    final currentPivot = _pivot + _translation;
-    _startAngle = math.atan2(
-      canvasPoint.dy - currentPivot.dy,
-      canvasPoint.dx - currentPivot.dx,
-    );
-
-    return true;
-  }
-
-  /// 拖动更新
-  void onPointerMove(Offset canvasPoint) {
-    if (!_isTransforming || _activeHandle == null || _dragStartPoint == null) {
-      return;
-    }
-
-    final delta = canvasPoint - _dragStartPoint!;
-
-    if (_activeHandle == TransformHandleType.move) {
-      _translation = _startTranslation + delta;
-    } else if (_activeHandle == TransformHandleType.rotate) {
-      final currentPivot = _pivot + _translation;
-      final currentAngle = math.atan2(
-        canvasPoint.dy - currentPivot.dy,
-        canvasPoint.dx - currentPivot.dx,
-      );
-      _rotation = _startRotation + (currentAngle - _startAngle);
-    } else {
-      // 缩放逻辑
-      final w = _originalBounds.width;
-      final h = _originalBounds.height;
-      if (w <= 0 || h <= 0) return;
-
-      final signX = switch (_activeHandle) {
-        TransformHandleType.topLeft ||
-        TransformHandleType.bottomLeft ||
-        TransformHandleType.centerLeft => -1.0,
-        TransformHandleType.topRight ||
-        TransformHandleType.bottomRight ||
-        TransformHandleType.centerRight => 1.0,
-        _ => 0.0,
-      };
-
-      final signY = switch (_activeHandle) {
-        TransformHandleType.topLeft ||
-        TransformHandleType.topCenter ||
-        TransformHandleType.topRight => -1.0,
-        TransformHandleType.bottomLeft ||
-        TransformHandleType.bottomCenter ||
-        TransformHandleType.bottomRight => 1.0,
-        _ => 0.0,
-      };
-
-      // 投影到位移方向
-      final factorX = signX != 0 ? (delta.dx * signX / (w / 2)) : 0.0;
-      final factorY = signY != 0 ? (delta.dy * signY / (h / 2)) : 0.0;
-
-      // 等比缩放（角点默认保持比例）
-      final isCorner = signX != 0 && signY != 0;
-      if (isCorner) {
-        final avg = (factorX + factorY) / 2;
-        _scaleX = (_startScaleX + avg).clamp(0.05, 20.0);
-        _scaleY = (_startScaleY + avg).clamp(0.05, 20.0);
-      } else {
-        if (signX != 0) _scaleX = (_startScaleX + factorX).clamp(0.05, 20.0);
-        if (signY != 0) _scaleY = (_startScaleY + factorY).clamp(0.05, 20.0);
-      }
-    }
-
-    _updateLayerPreview();
-    _state.notifyRenderChange();
-  }
-
-  /// 释放指针
-  void onPointerUp() {
-    _activeHandle = null;
-    _dragStartPoint = null;
-  }
-
-  /// 确认变换（Enter 键提交）
-  void commit() {
-    if (!_isTransforming || _layerId == null) return;
-    final layer = _state.layerManager.getLayerById(_layerId!);
-    if (layer == null) {
-      cancel();
-      return;
-    }
-
-    if (_translation == Offset.zero && _scaleX == 1.0 && _scaleY == 1.0 && _rotation == 0.0) {
-      cancel();
-      return;
-    }
-
-    final m = matrix;
-    final transformedQuad = [
-      MatrixUtils.transformPoint(m, _originalBounds.topLeft),
-      MatrixUtils.transformPoint(m, _originalBounds.topRight),
-      MatrixUtils.transformPoint(m, _originalBounds.bottomRight),
-      MatrixUtils.transformPoint(m, _originalBounds.bottomLeft),
-    ];
-
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = -double.infinity;
-    var maxY = -double.infinity;
-    for (final pt in transformedQuad) {
-      minX = math.min(minX, pt.dx);
-      minY = math.min(minY, pt.dy);
-      maxX = math.max(maxX, pt.dx);
-      maxY = math.max(maxY, pt.dy);
-    }
-    final extent = Rect.fromLTRB(minX - 2, minY - 2, maxX + 2, maxY + 2);
-
-    layer.setMovePreview(null);
-
-    final baked = LayerPatchBaker.transformRegion(
-      layer,
-      matrix: m,
-      extent: extent,
-      region: _region,
-    );
-
-    _state.historyManager.execute(
-      ReplaceLayerImageAction.baked(
-        layerId: layer.id,
-        pixels: baked,
-        actionDescription: 'Free Transform',
+    final action = PlaceImageLayerAction(
+      layerId: const Uuid().v4(),
+      pixels: pixels,
+      name: name,
+      index: _state.rolePolicy.insertIndexFor(
+        _state.layerManager,
+        LayerRole.image,
       ),
-      _state,
     );
-
-    _isTransforming = false;
-    _activeHandle = null;
-    _state.notifyRenderChange();
-    _state.requestUiUpdate();
+    _mutate(() {
+      _state.clearSelection(saveHistory: false);
+      _state.historyManager.execute(action, _state, tentative: true);
+    });
+    final layer = _state.layerManager.getLayerById(action.layerId);
+    _session = _TransformSession(
+      layerId: action.layerId,
+      source: source,
+      params: params,
+      revision: layer?.contentRevision ?? 0,
+      action: action,
+    );
+    _changed();
+    return true;
   }
 
-  /// 取消变换（Esc 键退出）
+  /// 确认：保留已写入的结果，结束会话
+  void apply() {
+    if (_session == null) return;
+    _finishGestures(commit: true);
+    _end();
+  }
+
+  /// 取消：整次会话撤回到开始之前；导入的图片随之移除
   void cancel() {
-    if (!_isTransforming) return;
-    if (_layerId != null) {
-      final layer = _state.layerManager.getLayerById(_layerId!);
-      layer?.setMovePreview(null);
+    final session = _session;
+    if (session == null) return;
+    _finishGestures(commit: false);
+    final action = session.action;
+    if (action != null) {
+      _mutate(() => _state.historyManager.discardLatest(action, _state));
     }
-    _isTransforming = false;
-    _activeHandle = null;
-    _dragStartPoint = null;
-    _state.notifyRenderChange();
-    _state.requestUiUpdate();
+    _end();
   }
+
+  /// 以当前参数为基础做一次调整并写回；不在会话中时先进入会话
+  bool update(TransformParams Function(TransformParams current) change) {
+    if (isDragging || !begin()) return false;
+    final session = _session!;
+    _commit(session, change(session.params));
+    return true;
+  }
+
+  /// 按 [change] 算出结果但不写回，供预览；没有可变换的内容时返回 null，调用方负责释放
+  BakedLayerImage? bakePreview(
+    TransformParams Function(TransformParams current) change,
+  ) {
+    final session = _session;
+    if (session != null && !_isStale(session)) {
+      return session.source.bake(change(session.params).pixelAligned());
+    }
+    final target = _resolveTarget();
+    final source = target == null ? null : _capture(target);
+    if (source == null) return null;
+    try {
+      return source.bake(change(source.identity).pixelAligned());
+    } finally {
+      source.dispose();
+    }
+  }
+
+  void nudge(Offset delta) => update((params) => params.translated(delta));
+
+  void flip({required bool horizontal}) =>
+      update((params) => params.flipped(horizontal: horizontal));
+
+  // ===== 指针 =====
+
+  /// 落在缩放或旋转手柄上、或已在会话中时接管拖动；返回 false 时交给普通移动
+  bool pointerDown(Offset point, PointerDeviceKind kind) {
+    final current = _session;
+    if (current != null && _isStale(current)) _end();
+    final params = this.params;
+    if (params == null || isDragging) return false;
+    final hit = params.hitTest(
+      point,
+      _metricsFor(kind),
+      rotateOutside: isActive,
+    );
+    if (hit == null) return false;
+    if (!isActive && hit.grip == TransformGrip.move) return false;
+    if (!begin()) return false;
+    final session = _session!;
+    _drag = _TransformDrag(hit: hit, origin: point, start: session.params);
+    cursor.value = _cursorFor(hit, session.params, dragging: true);
+    _showPreview(session, session.params);
+    return true;
+  }
+
+  void pointerMove(Offset point, {required bool shift, required bool alt}) {
+    final drag = _drag;
+    final session = _session;
+    if (drag == null || session == null) return;
+    final next = switch (drag.hit.grip) {
+      TransformGrip.move => drag.start.translated(point - drag.origin),
+      TransformGrip.scale => drag.start.scaledBy(
+        drag.hit.handle!,
+        point,
+        keepAspect: _keepAspect != shift,
+        fromCenter: alt,
+      ),
+      TransformGrip.rotate => drag.start.rotatedTowards(
+        drag.origin,
+        point,
+        snap: shift,
+      ),
+    };
+    if (next == drag.current) return;
+    drag.current = next;
+    _showPreview(session, next);
+  }
+
+  void pointerUp() {
+    final drag = _drag;
+    _drag = null;
+    final session = _session;
+    if (drag == null || session == null) return;
+    _commit(session, drag.current);
+  }
+
+  /// 放弃进行中的拖动或双指手势，会话保持在手势开始前
+  void pointerCancel() {
+    if (!isDragging) return;
+    _drag = null;
+    _pinch = null;
+    final session = _session;
+    if (session != null) _clearPreview(session);
+  }
+
+  void hover(Offset point, PointerDeviceKind kind) {
+    if (isDragging) return;
+    final params = this.params;
+    cursor.value = params == null
+        ? SystemMouseCursors.move
+        : _cursorFor(
+            params.hitTest(point, _metricsFor(kind), rotateOutside: isActive),
+            params,
+            dragging: false,
+          );
+  }
+
+  // ===== 双指 =====
+
+  /// 只在会话中接管双指，其余时候双指照常平移缩放画布
+  bool pinchStart(Offset focal) {
+    final session = _session;
+    if (session == null) return false;
+    if (_isStale(session)) {
+      _end();
+      return false;
+    }
+    _drag = null;
+    _pinch = _TransformPinch(focal: focal, start: session.params);
+    return true;
+  }
+
+  /// [focal] 为文档坐标；[scale] 与 [turn] 相对手势开始时
+  void pinchUpdate(Offset focal, double scale, double turn) {
+    final pinch = _pinch;
+    final session = _session;
+    if (pinch == null || session == null) return;
+    final next = pinch.start.pinched(
+      from: pinch.focal,
+      to: focal,
+      scale: scale,
+      turn: turn,
+    );
+    if (next == pinch.current) return;
+    pinch.current = next;
+    _showPreview(session, next);
+  }
+
+  void pinchEnd() {
+    final pinch = _pinch;
+    _pinch = null;
+    final session = _session;
+    if (pinch == null || session == null) return;
+    _commit(session, pinch.current);
+  }
+
+  // ===== 内部 =====
+
+  /// 有选区时是当前图层选区内的像素，否则是整个当前图层；原图层只能变换选区内的像素
+  _TransformTarget? _resolveTarget() {
+    final layer = _state.layerMover.movableActiveLayer();
+    if (layer == null) return null;
+    final selection = _state.selectionPath;
+    if (selection != null) {
+      final bounds = selection.getBounds();
+      if (bounds.width < 1 || bounds.height < 1) return null;
+      return (layer: layer, selection: selection, bounds: bounds);
+    }
+    if (!_state.layerMover.canMoveWholeLayer(layer)) return null;
+    final bounds = layer.contentBounds;
+    if (bounds.width < 1 || bounds.height < 1) return null;
+    return (layer: layer, selection: null, bounds: bounds);
+  }
+
+  TransformSource? _capture(_TransformTarget target) {
+    final layer = target.layer;
+    final selection = target.selection;
+    try {
+      return selection == null
+          ? TransformSource.captureLayer(layer, clip: _resultLimit())
+          : TransformSource.captureRegion(
+              layer,
+              selection,
+              clip: _resultLimit(),
+              extentLock: _state.rolePolicy.extentLockFor(layer),
+            );
+    } on Object catch (error, stackTrace) {
+      AppLogger.e(
+        'Failed to capture pixels for free transform',
+        error,
+        stackTrace,
+        'ImageEditor',
+      );
+      return null;
+    }
+  }
+
+  /// 变换结果保留的范围：取景框与所有图层已有内容，四周再留出半条长边，
+  /// 内容绕中心任意旋转都不会被裁掉；同时防止反复放大让图层无限变大
+  Rect _resultLimit() {
+    var bounds = _state.frame;
+    for (final layer in _state.layerManager.layers) {
+      final content = layer.contentBounds;
+      if (!content.isEmpty) bounds = bounds.expandToInclude(content);
+    }
+    return bounds.inflate(bounds.longestSide / 2);
+  }
+
+  /// 图层被会话以外的操作改过，截下的像素已不再对应图层内容
+  bool _isStale(_TransformSession session) {
+    final layer = _state.layerManager.getLayerById(session.layerId);
+    return layer == null ||
+        layer.locked ||
+        layer.contentRevision != session.revision;
+  }
+
+  void _commit(_TransformSession session, TransformParams requested) {
+    final next = requested.pixelAligned();
+    if (next == session.params) {
+      _clearPreview(session);
+      return;
+    }
+    final layer = _state.layerManager.getLayerById(session.layerId);
+    if (layer == null) {
+      _end();
+      return;
+    }
+    final BakedLayerImage? pixels;
+    try {
+      pixels = session.source.bake(next);
+    } on Object catch (error, stackTrace) {
+      AppLogger.e(
+        'Failed to bake free transform',
+        error,
+        stackTrace,
+        'ImageEditor',
+      );
+      _clearPreview(session);
+      return;
+    }
+    final selection = session.source.selectionFor(next);
+    var written = true;
+    _mutate(() {
+      final action = session.action;
+      if (action == null) {
+        final created = TransformLayerAction(
+          layerId: session.layerId,
+          pixels: pixels,
+          selectionBefore: session.source.selection,
+          selectionAfter: selection,
+        );
+        session.action = created;
+        _state.historyManager.execute(created, _state, tentative: true);
+      } else {
+        written = _state.historyManager.amendLatest(
+          action,
+          () => action.amend(_state, pixels, selection),
+        );
+      }
+    });
+    if (!written) {
+      pixels?.dispose();
+      _end();
+      return;
+    }
+    session
+      ..params = next
+      ..revision = layer.contentRevision;
+    // 结果与撤掉预览落在同一帧，画面不会跳回原位
+    _clearPreview(session);
+  }
+
+  void _showPreview(_TransformSession session, TransformParams params) {
+    _state.layerManager
+        .getLayerById(session.layerId)
+        ?.setPreview(session.source.previewFor(params));
+    _state.selectionManager.previewOutline(session.source.selectionFor(params));
+    _changed();
+  }
+
+  void _clearPreview(_TransformSession session) {
+    _state.layerManager.getLayerById(session.layerId)?.setPreview(null);
+    _state.selectionManager.previewOutline(null);
+    _changed();
+  }
+
+  void _finishGestures({required bool commit}) {
+    final session = _session;
+    final pending = _pinch?.current ?? _drag?.current;
+    _drag = null;
+    _pinch = null;
+    if (session == null || pending == null) return;
+    if (commit) {
+      _commit(session, pending);
+    } else {
+      _clearPreview(session);
+    }
+  }
+
+  void _end() {
+    final session = _session;
+    if (session == null) return;
+    _drag = null;
+    _pinch = null;
+    _session = null;
+    final action = session.action;
+    if (action != null) _state.historyManager.settle(action);
+    _clearPreview(session);
+    session.dispose();
+    cursor.value = SystemMouseCursors.move;
+  }
+
+  void _mutate(void Function() change) {
+    _mutating++;
+    try {
+      change();
+    } finally {
+      _mutating--;
+    }
+  }
+
+  void _changed() {
+    _state.notifyRenderChange();
+    notifyListeners();
+  }
+
+  /// 撤销、重做或别的操作改动了撤销栈：会话的结果已不在栈顶，截下的像素随之作废
+  void _onHistoryChanged() {
+    final session = _session;
+    if (_mutating > 0 || session == null) return;
+    final action = session.action;
+    if (action == null || !_state.historyManager.isLatest(action)) _end();
+  }
+
+  void _onActiveLayerChanged() {
+    final session = _session;
+    if (_mutating > 0 || session == null) return;
+    if (_state.layerManager.activeLayer?.id != session.layerId) apply();
+  }
+
+  void _onSelectionChanged() {
+    if (_mutating > 0 || _session == null) return;
+    apply();
+  }
+
+  /// 手柄位置跟随画布的交互方式；触摸输入另把命中半径放大到触屏标准
+  TransformHandleMetrics _metricsFor(PointerDeviceKind kind) {
+    final touch = switch (kind) {
+      PointerDeviceKind.touch ||
+      PointerDeviceKind.stylus ||
+      PointerDeviceKind.invertedStylus => true,
+      _ => false,
+    };
+    final radius = touch
+        ? math.max(
+            handleMetrics.hitRadius,
+            TransformHandleMetrics.touch.hitRadius,
+          )
+        : handleMetrics.hitRadius;
+    return TransformHandleMetrics(
+      hitRadius: radius,
+      rotateHandleOffset: handleMetrics.rotateHandleOffset,
+    ).inDocument(_state.canvasController.scale);
+  }
+
+  MouseCursor _cursorFor(
+    TransformHit? hit,
+    TransformParams params, {
+    required bool dragging,
+  }) {
+    if (hit == null) return SystemMouseCursors.move;
+    return switch (hit.grip) {
+      TransformGrip.move => SystemMouseCursors.move,
+      TransformGrip.rotate =>
+        dragging ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
+      TransformGrip.scale => _resizeCursor(params, hit.handle!),
+    };
+  }
+
+  /// 按手柄在屏幕上相对中心的方向选箭头，视图旋转、镜像后依然指向拖动方向
+  MouseCursor _resizeCursor(TransformParams params, TransformHandle handle) {
+    final controller = _state.canvasController;
+    final frame = _state.frame;
+    final center = controller.canvasToScreen(params.center, frame: frame);
+    final grip = controller.canvasToScreen(
+      params.pointAt(handle.unit),
+      frame: frame,
+    );
+    final degrees = (grip - center).direction * 180 / math.pi;
+    final octant = ((degrees % 180) / 45).round() % 4;
+    return const [
+      SystemMouseCursors.resizeLeftRight,
+      SystemMouseCursors.resizeUpLeftDownRight,
+      SystemMouseCursors.resizeUpDown,
+      SystemMouseCursors.resizeUpRightDownLeft,
+    ][octant];
+  }
+
+  @override
+  void dispose() {
+    _state.historyManager.removeListener(_onHistoryChanged);
+    _state.layerManager.activeLayerNotifier.removeListener(
+      _onActiveLayerChanged,
+    );
+    _state.selectionManager.selectionNotifier.removeListener(
+      _onSelectionChanged,
+    );
+    final session = _session;
+    _session = null;
+    session?.dispose();
+    cursor.dispose();
+    super.dispose();
+  }
+}
+
+typedef _TransformTarget = ({Layer layer, Path? selection, Rect bounds});
+
+class _TransformSession {
+  _TransformSession({
+    required this.layerId,
+    required this.source,
+    required this.params,
+    required this.revision,
+    this.action,
+  });
+
+  final String layerId;
+  final TransformSource source;
+
+  /// 已写回图层的参数
+  TransformParams params;
+
+  /// 会话最后一次写回后图层的内容版本
+  int revision;
+
+  /// 第一次写回前为 null；导入图片时创建即有
+  TransformCommitAction? action;
+
+  void dispose() => source.dispose();
+}
+
+class _TransformDrag {
+  _TransformDrag({required this.hit, required this.origin, required this.start})
+    : current = start;
+
+  final TransformHit hit;
+  final Offset origin;
+  final TransformParams start;
+  TransformParams current;
+}
+
+class _TransformPinch {
+  _TransformPinch({required this.focal, required this.start}) : current = start;
+
+  final Offset focal;
+  final TransformParams start;
+  TransformParams current;
 }

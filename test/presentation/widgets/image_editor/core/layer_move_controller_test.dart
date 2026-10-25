@@ -60,7 +60,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final (state, layer) = await _stateWithLayer();
-      state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)));
+      state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)), saveHistory: false);
 
       state.layerMover.begin(const Offset(1, 1));
       state.layerMover.update(const Offset(9, 1));
@@ -80,7 +80,7 @@ void main() {
     (tester) async {
       await tester.runAsync(() async {
         final (state, layer) = await _stateWithLayer();
-        state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)));
+        state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)), saveHistory: false);
         final mover = state.layerMover;
 
         expect(mover.begin(const Offset(2, 2)), isTrue);
@@ -163,7 +163,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final (state, layer) = await _stateWithLayer();
-      state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)));
+      state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)), saveHistory: false);
 
       state.layerMover.nudge(const Offset(1, 0));
       state.layerMover.nudge(const Offset(1, 0));
@@ -187,7 +187,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final (state, layer) = await _stateWithLayer();
-      state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)));
+      state.setSelection(Path()..addRect(const Rect.fromLTWH(0, 0, 4, 4)), saveHistory: false);
       final mover = state.layerMover;
 
       expect(mover.begin(const Offset(1, 1)), isTrue);

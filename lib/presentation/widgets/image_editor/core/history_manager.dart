@@ -39,6 +39,10 @@ class HistoryManager extends ChangeNotifier {
   /// 重做栈
   final List<EditorAction> _redoStack = [];
 
+  /// 暂定操作及被它顶掉的重做记录
+  EditorAction? _tentative;
+  final List<EditorAction> _stashedRedo = [];
+
   /// 最大历史记录数
   static const int maxHistorySize = 100;
 
@@ -54,12 +58,21 @@ class HistoryManager extends ChangeNotifier {
   /// 重做栈大小
   int get redoStackSize => _redoStack.length;
 
-  /// 执行操作
-  void execute(EditorAction action, EditorState state) {
+  /// 执行操作。[tentative] 为 true 时被清掉的重做记录先暂存：
+  /// [discardLatest] 撤回该操作时原样恢复，[settle] 或撤销栈另有变动时才释放
+  void execute(
+    EditorAction action,
+    EditorState state, {
+    bool tentative = false,
+  }) {
+    _releaseStashedRedo();
     action.execute(state);
     _undoStack.add(action);
-    for (final a in _redoStack) {
-      a.dispose();
+    if (tentative) {
+      _tentative = action;
+      _stashedRedo.addAll(_redoStack);
+    } else {
+      _disposeAll(_redoStack);
     }
     _redoStack.clear();
 
@@ -69,10 +82,42 @@ class HistoryManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool isLatest(EditorAction action) =>
+      _undoStack.isNotEmpty && identical(_undoStack.last, action);
+
+  /// [action] 仍在栈顶时就地改写它的结果，不新增记录
+  bool amendLatest(EditorAction action, void Function() amend) {
+    if (!isLatest(action)) return false;
+    amend();
+    notifyListeners();
+    return true;
+  }
+
+  /// [action] 仍在栈顶时撤回并丢弃，不进入重做栈；它是暂定操作时恢复被顶掉的重做记录
+  bool discardLatest(EditorAction action, EditorState state) {
+    if (!isLatest(action)) return false;
+    _undoStack.removeLast();
+    action.undo(state);
+    action.dispose();
+    if (identical(action, _tentative)) {
+      _redoStack.addAll(_stashedRedo);
+      _stashedRedo.clear();
+      _tentative = null;
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// 暂定操作 [action] 已确认，释放它暂存的重做记录
+  void settle(EditorAction action) {
+    if (identical(action, _tentative)) _releaseStashedRedo();
+  }
+
   /// 撤销
   bool undo(EditorState state) {
     if (_undoStack.isEmpty) return false;
 
+    _releaseStashedRedo();
     final action = _undoStack.removeLast();
     action.undo(state);
     _redoStack.add(action);
@@ -84,6 +129,7 @@ class HistoryManager extends ChangeNotifier {
   bool redo(EditorState state) {
     if (_redoStack.isEmpty) return false;
 
+    _releaseStashedRedo();
     final action = _redoStack.removeLast();
     action.execute(state);
     _undoStack.add(action);
@@ -93,15 +139,24 @@ class HistoryManager extends ChangeNotifier {
 
   /// 清空历史
   void clear() {
-    for (final a in _undoStack) {
-      a.dispose();
-    }
-    for (final a in _redoStack) {
-      a.dispose();
-    }
+    _releaseStashedRedo();
+    _disposeAll(_undoStack);
+    _disposeAll(_redoStack);
     _undoStack.clear();
     _redoStack.clear();
     notifyListeners();
+  }
+
+  void _releaseStashedRedo() {
+    _disposeAll(_stashedRedo);
+    _stashedRedo.clear();
+    _tentative = null;
+  }
+
+  static void _disposeAll(List<EditorAction> actions) {
+    for (final action in actions) {
+      action.dispose();
+    }
   }
 
   /// 获取撤销操作描述
@@ -232,6 +287,8 @@ class ResizeCanvasAction extends EditorAction {
   String get description => 'Resize Canvas (${mode.label})';
 }
 
+/// 选区随像素一起变化时，撤销/重做要把选区一并换回
+
 /// 设置/变更选区操作（对标 PS 选区历史记录，纳入统一历史栈支持 Ctrl+Z 撤销/重做）
 class SetSelectionAction extends EditorAction {
   final Path? previousPath;
@@ -261,8 +318,6 @@ class SetSelectionAction extends EditorAction {
   @override
   String get description => actionDescription;
 }
-
-/// 选区随像素一起变化时，撤销/重做要把选区一并换回
 class SelectionChange {
   const SelectionChange({required this.before, required this.after});
 

@@ -7,6 +7,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart'
 
 import '../../../common/checkerboard_pattern.dart';
 import '../../../common/image_viewport_surface.dart';
+import '../../../common/inline_rename_field.dart';
+import '../../../common/menu_action_label.dart';
 import '../../../../../core/platform/platform_capabilities.dart';
 import '../../../../../core/utils/app_logger.dart';
 import '../../../../adaptive/interaction_policy.dart';
@@ -15,15 +17,18 @@ import '../../core/editor_state.dart';
 import '../../layers/layer.dart';
 import '../../layers/layer_role.dart';
 import '../../layers/model3d_layer_data.dart';
+import '../editor_image_import.dart';
 import '../../../../widgets/common/themed_divider.dart';
-import 'package:nai_launcher/presentation/widgets/common/themed_input.dart';
 import '../../../model3d_editor/model3d_editor_screen.dart';
 
 /// 图层面板
 class LayerPanel extends StatefulWidget {
   final EditorState state;
 
-  const LayerPanel({super.key, required this.state});
+  /// 导入图片后调用；面板以底部弹层呈现时由调用方收起，露出变换框
+  final VoidCallback? onImageImported;
+
+  const LayerPanel({super.key, required this.state, this.onImageImported});
 
   @override
   State<LayerPanel> createState() => _LayerPanelState();
@@ -133,6 +138,18 @@ class _LayerPanelState extends State<LayerPanel> {
     return false;
   }
 
+  Future<void> _onImportImage() async {
+    final picked = await pickEditorImageFile(context);
+    if (picked == null || !mounted) return;
+    final placed = await importImageAsLayer(
+      context,
+      widget.state,
+      bytes: picked.bytes,
+      layerName: picked.name,
+    );
+    if (placed && mounted) widget.onImageImported?.call();
+  }
+
   Future<void> _onAdd3dLayer() async {
     if (!await _ensureWebView2Available()) return;
     if (!mounted) return;
@@ -220,6 +237,7 @@ class _LayerPanelState extends State<LayerPanel> {
                     role: role,
                   );
                 },
+                onImportImage: _onImportImage,
                 onAdd3dLayer: _onAdd3dLayer,
                 onMergeDown: active != null && commands.canMergeDown(active)
                     ? () => commands.mergeDown(active)
@@ -318,12 +336,14 @@ class _LayerPanelState extends State<LayerPanel> {
 class _LayerPanelHeader extends StatelessWidget {
   final bool rolesEnabled;
   final ValueChanged<LayerRole> onAddLayer;
+  final VoidCallback onImportImage;
   final VoidCallback onAdd3dLayer;
   final VoidCallback? onMergeDown;
 
   const _LayerPanelHeader({
     required this.rolesEnabled,
     required this.onAddLayer,
+    required this.onImportImage,
     required this.onAdd3dLayer,
     this.onMergeDown,
   });
@@ -373,6 +393,13 @@ class _LayerPanelHeader extends StatelessWidget {
               onPressed: () => onAddLayer(LayerRole.image),
               visualDensity: VisualDensity.compact,
             ),
+          // 从文件导入图片，导入后直接带着变换框摆放
+          IconButton(
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+            tooltip: context.l10n.layer_importImage,
+            onPressed: onImportImage,
+            visualDensity: VisualDensity.compact,
+          ),
           // 添加 3D 模型图层
           IconButton(
             icon: const Icon(Icons.view_in_ar, size: 20),
@@ -434,31 +461,18 @@ class _LayerTile extends StatefulWidget {
 class _LayerTileState extends State<_LayerTile>
     with AutomaticKeepAliveClientMixin {
   bool _isEditing = false;
-  late TextEditingController _nameController;
 
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.layer.name);
+  void _startEditing() => setState(() => _isEditing = true);
+
+  void _commitEditing(String name) {
+    widget.onRename(name);
+    _stopEditing();
   }
 
-  @override
-  void didUpdateWidget(_LayerTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 图层名称变化时同步更新控制器（非编辑状态下）
-    if (oldWidget.layer.name != widget.layer.name && !_isEditing) {
-      _nameController.text = widget.layer.name;
-    }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
+  void _stopEditing() => setState(() => _isEditing = false);
 
   @override
   Widget build(BuildContext context) {
@@ -515,9 +529,8 @@ class _LayerTileState extends State<_LayerTile>
                 // 图层名称
                 Expanded(
                   child: _isEditing
-                      ? ThemedInput(
-                          controller: _nameController,
-                          autofocus: true,
+                      ? InlineRenameField(
+                          name: widget.layer.name,
                           style: theme.textTheme.bodySmall,
                           decoration: const InputDecoration(
                             isDense: true,
@@ -525,23 +538,14 @@ class _LayerTileState extends State<_LayerTile>
                               horizontal: 8,
                               vertical: 4,
                             ),
-                            border: OutlineInputBorder(),
                           ),
-                          onSubmitted: (value) {
-                            widget.onRename(value);
-                            setState(() => _isEditing = false);
-                          },
-                          onEditingComplete: () {
-                            widget.onRename(_nameController.text);
-                            setState(() => _isEditing = false);
-                          },
+                          onSubmit: _commitEditing,
+                          onCancel: _stopEditing,
                         )
                       : GestureDetector(
                           // 3D 图层(onDoubleTap 非空)双击名字进入 3D 编辑器;
                           // 普通图层保留双击重命名。3D 图层仍可经右键菜单重命名。
-                          onDoubleTap:
-                              widget.onDoubleTap ??
-                              () => setState(() => _isEditing = true),
+                          onDoubleTap: widget.onDoubleTap ?? _startEditing,
                           child: Text(
                             widget.layer.name,
                             style: theme.textTheme.bodySmall?.copyWith(
@@ -604,13 +608,25 @@ class _LayerTileState extends State<_LayerTile>
   }
 
   void _showContextMenu(BuildContext context) async {
-    final theme = Theme.of(context);
     final commands = widget.state.layerCommands;
 
     final canMoveUp = commands.canMoveUp(widget.layer);
     final canMoveDown = commands.canMoveDown(widget.layer);
     final canMergeDown = commands.canMergeDown(widget.layer);
     final canDelete = widget.onDelete != null;
+
+    Widget menuLabel({
+      required IconData icon,
+      required String label,
+      bool enabled = true,
+      bool destructive = false,
+    }) => MenuActionLabel(
+      leading: Icon(icon),
+      label: label,
+      enabled: enabled,
+      destructive: destructive,
+      gap: 12,
+    );
 
     // 获取按钮位置用于定位菜单
     final RenderBox button = context.findRenderObject() as RenderBox;
@@ -633,12 +649,9 @@ class _LayerTileState extends State<_LayerTile>
         // 复制图层
         PopupMenuItem<String>(
           value: 'duplicate',
-          child: Row(
-            children: [
-              const Icon(Icons.copy_outlined, size: 18),
-              const SizedBox(width: 12),
-              Text(context.l10n.layer_duplicate),
-            ],
+          child: menuLabel(
+            icon: Icons.copy_outlined,
+            label: context.l10n.layer_duplicate,
           ),
         ),
 
@@ -646,19 +659,11 @@ class _LayerTileState extends State<_LayerTile>
         PopupMenuItem<String>(
           value: 'delete',
           enabled: canDelete,
-          child: Row(
-            children: [
-              Icon(
-                Icons.delete_outlined,
-                size: 18,
-                color: theme.colorScheme.error,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                context.l10n.layer_delete,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ],
+          child: menuLabel(
+            icon: Icons.delete_outlined,
+            label: context.l10n.layer_delete,
+            enabled: canDelete,
+            destructive: true,
           ),
         ),
 
@@ -666,12 +671,10 @@ class _LayerTileState extends State<_LayerTile>
         PopupMenuItem<String>(
           value: 'merge_down',
           enabled: canMergeDown,
-          child: Row(
-            children: [
-              const Icon(Icons.merge_type, size: 18),
-              const SizedBox(width: 12),
-              Text(context.l10n.layer_merge),
-            ],
+          child: menuLabel(
+            icon: Icons.merge_type,
+            label: context.l10n.layer_merge,
+            enabled: canMergeDown,
           ),
         ),
 
@@ -680,50 +683,29 @@ class _LayerTileState extends State<_LayerTile>
         // 切换可见性
         PopupMenuItem<String>(
           value: 'toggle_visibility',
-          child: Row(
-            children: [
-              Icon(
-                widget.layer.visible ? Icons.visibility_off : Icons.visibility,
-                size: 18,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                widget.layer.visible
-                    ? context.l10n.layer_visibility
-                    : context.l10n.layer_visibility,
-              ),
-            ],
+          child: menuLabel(
+            icon: widget.layer.visible
+                ? Icons.visibility_off
+                : Icons.visibility,
+            label: context.l10n.layer_visibility,
           ),
         ),
 
         // 切换锁定
         PopupMenuItem<String>(
           value: 'toggle_lock',
-          child: Row(
-            children: [
-              Icon(
-                widget.layer.locked ? Icons.lock_open : Icons.lock,
-                size: 18,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                widget.layer.locked
-                    ? context.l10n.layer_lock
-                    : context.l10n.layer_lock,
-              ),
-            ],
+          child: menuLabel(
+            icon: widget.layer.locked ? Icons.lock_open : Icons.lock,
+            label: context.l10n.layer_lock,
           ),
         ),
 
         // 重命名
         PopupMenuItem<String>(
           value: 'rename',
-          child: Row(
-            children: [
-              const Icon(Icons.edit_outlined, size: 18),
-              const SizedBox(width: 12),
-              Text(context.l10n.layer_rename),
-            ],
+          child: menuLabel(
+            icon: Icons.edit_outlined,
+            label: context.l10n.layer_rename,
           ),
         ),
 
@@ -733,12 +715,10 @@ class _LayerTileState extends State<_LayerTile>
         PopupMenuItem<String>(
           value: 'move_up',
           enabled: canMoveUp,
-          child: Row(
-            children: [
-              const Icon(Icons.arrow_upward, size: 18),
-              const SizedBox(width: 12),
-              Text(context.l10n.layer_moveUp),
-            ],
+          child: menuLabel(
+            icon: Icons.arrow_upward,
+            label: context.l10n.layer_moveUp,
+            enabled: canMoveUp,
           ),
         ),
 
@@ -746,12 +726,10 @@ class _LayerTileState extends State<_LayerTile>
         PopupMenuItem<String>(
           value: 'move_down',
           enabled: canMoveDown,
-          child: Row(
-            children: [
-              const Icon(Icons.arrow_downward, size: 18),
-              const SizedBox(width: 12),
-              Text(context.l10n.layer_moveDown),
-            ],
+          child: menuLabel(
+            icon: Icons.arrow_downward,
+            label: context.l10n.layer_moveDown,
+            enabled: canMoveDown,
           ),
         ),
       ],
@@ -776,7 +754,7 @@ class _LayerTileState extends State<_LayerTile>
         widget.onLockToggle();
         break;
       case 'rename':
-        setState(() => _isEditing = true);
+        _startEditing();
         break;
       case 'move_up':
         commands.moveUp(widget.layer);

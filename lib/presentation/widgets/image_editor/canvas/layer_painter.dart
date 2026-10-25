@@ -1,3 +1,4 @@
+import '../tools/quick_selection_tool.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -276,8 +277,8 @@ class CursorPainter extends CustomPainter {
     final scale = state.canvasController.scale;
     Offset iconPosition;
 
-    // 绘画工具：绘制圆圈光标
-    if (tool.isPaintTool) {
+    // 绘画工具或快速选择工具：绘制圆圈光标
+    if (tool.isPaintTool || tool.id == 'quick_selection') {
       final radius = tool.getCursorRadius(state);
       final scaledRadius = radius * scale;
 
@@ -300,8 +301,44 @@ class CursorPainter extends CustomPainter {
           ..strokeWidth = 0.5,
       );
 
-      // 中心点
-      canvas.drawCircle(cursorPosition, 2, Paint()..color = Colors.black);
+      // 快速选择工具：在圆圈中心绘制 PS 风格的 '+' 或 '-' 指示符
+      if (tool.id == 'quick_selection') {
+        final isSubtract = tool is QuickSelectionTool && tool.isSubtract(state);
+        final linePaint = Paint()
+          ..color = Colors.black
+          ..strokeWidth = 1.5
+          ..strokeCap = StrokeCap.round;
+        final whitePaint = Paint()
+          ..color = Colors.white
+          ..strokeWidth = 0.8
+          ..strokeCap = StrokeCap.round;
+
+        canvas.drawLine(
+          cursorPosition - const Offset(3.5, 0),
+          cursorPosition + const Offset(3.5, 0),
+          linePaint,
+        );
+        canvas.drawLine(
+          cursorPosition - const Offset(3.5, 0),
+          cursorPosition + const Offset(3.5, 0),
+          whitePaint,
+        );
+        if (!isSubtract) {
+          canvas.drawLine(
+            cursorPosition - const Offset(0, 3.5),
+            cursorPosition + const Offset(0, 3.5),
+            linePaint,
+          );
+          canvas.drawLine(
+            cursorPosition - const Offset(0, 3.5),
+            cursorPosition + const Offset(0, 3.5),
+            whitePaint,
+          );
+        }
+      } else {
+        // 中心点
+        canvas.drawCircle(cursorPosition, 2, Paint()..color = Colors.black);
+      }
 
       // 图标位置：圆圈右下角
       iconPosition = cursorPosition + Offset(scaledRadius, scaledRadius);

@@ -139,8 +139,16 @@ class LayerContentSnapshot {
   }
 }
 
+/// 拖动中的预览，只影响屏幕绘制，提交前不改动图层数据
+sealed class LayerPreview {
+  const LayerPreview();
+
+  /// 预览时屏幕上的绘制范围
+  Rect affectedBounds(Rect contentBounds);
+}
+
 /// 拖动中的平移预览，只影响屏幕绘制，松手提交前不改动图层数据
-class LayerMovePreview {
+final class LayerMovePreview extends LayerPreview {
   /// 整层平移或矩阵变换
   LayerMovePreview.whole(this.offset, [this.matrix]) : region = null, _remainder = null;
 
@@ -171,11 +179,26 @@ class LayerMovePreview {
 
   LayerMovePreview._(this.region, this.offset, this._remainder, [this.matrix]);
 
+  @override
   Rect affectedBounds(Rect contentBounds) {
     final selected = region;
     if (selected == null) return contentBounds.shift(offset);
     return contentBounds.expandToInclude(selected.getBounds().shift(offset));
   }
+}
+
+/// 自由变换预览：图层现有像素不参与绘制，由 [paintPixels] 画出变换后的像素
+final class LayerTransformPreview extends LayerPreview {
+  const LayerTransformPreview({
+    required this.bounds,
+    required this.paintPixels,
+  });
+
+  final Rect bounds;
+  final void Function(Canvas canvas, Paint paint) paintPixels;
+
+  @override
+  Rect affectedBounds(Rect contentBounds) => bounds;
 }
 
 /// 图层类
@@ -209,8 +232,9 @@ class Layer {
   int _contentRevision = 0;
   int get contentRevision => _contentRevision;
 
-  LayerMovePreview? _movePreview;
-  LayerMovePreview? get movePreview => _movePreview;
+  LayerPreview? _preview;
+  LayerPreview? get preview => _preview;
+  LayerMovePreview? get movePreview => _preview is LayerMovePreview ? _preview as LayerMovePreview : null;
 
   /// 笔画列表
   final List<StrokeData> _strokes = [];
@@ -474,8 +498,12 @@ class Layer {
     _needsThumbnailUpdate = true;
   }
 
+  void setPreview(LayerPreview? preview) {
+    _preview = preview;
+  }
+
   void setMovePreview(LayerMovePreview? preview) {
-    _movePreview = preview;
+    _preview = preview;
   }
 
   void _invalidateRasterState() {
@@ -688,7 +716,7 @@ class Layer {
   }) {
     if (!visible) return;
 
-    final preview = _movePreview;
+    final preview = _preview;
     final bounds = preview == null
         ? contentBounds
         : preview.affectedBounds(contentBounds);
@@ -715,28 +743,32 @@ class Layer {
         _layerPaint(filterQuality),
       );
     }
-    final region = preview.region;
-    if (region == null) {
-      if (preview.matrix != null) {
-        canvas.transform(preview.matrix!.storage);
+    if (preview is LayerTransformPreview) {
+      preview.paintPixels(canvas, _layerPaint(filterQuality));
+    } else if (preview is LayerMovePreview) {
+      final region = preview.region;
+      if (region == null) {
+        if (preview.matrix != null) {
+          canvas.transform(preview.matrix!.storage);
+        } else {
+          canvas.translate(preview.offset.dx, preview.offset.dy);
+        }
+        _drawCachedOrRender(canvas, filterQuality: filterQuality);
       } else {
-        canvas.translate(preview.offset.dx, preview.offset.dy);
+        canvas.save();
+        canvas.clipPath(preview._remainder!);
+        _drawCachedOrRender(canvas, filterQuality: filterQuality);
+        canvas.restore();
+        canvas.save();
+        if (preview.matrix != null) {
+          canvas.transform(preview.matrix!.storage);
+        } else {
+          canvas.translate(preview.offset.dx, preview.offset.dy);
+        }
+        canvas.clipPath(region);
+        _drawCachedOrRender(canvas, filterQuality: filterQuality);
+        canvas.restore();
       }
-      _drawCachedOrRender(canvas, filterQuality: filterQuality);
-    } else {
-      canvas.save();
-      canvas.clipPath(preview._remainder!);
-      _drawCachedOrRender(canvas, filterQuality: filterQuality);
-      canvas.restore();
-      canvas.save();
-      if (preview.matrix != null) {
-        canvas.transform(preview.matrix!.storage);
-      } else {
-        canvas.translate(preview.offset.dx, preview.offset.dy);
-      }
-      canvas.clipPath(region);
-      _drawCachedOrRender(canvas, filterQuality: filterQuality);
-      canvas.restore();
     }
     if (isolated) {
       canvas.restore();
@@ -1241,7 +1273,7 @@ class Layer {
 
   /// 释放资源
   void dispose() {
-    _movePreview = null;
+    _preview = null;
 
     // 释放通知器
     isActiveNotifier.dispose();

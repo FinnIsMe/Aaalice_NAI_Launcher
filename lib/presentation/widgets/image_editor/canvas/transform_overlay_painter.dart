@@ -1,81 +1,76 @@
 import 'package:flutter/material.dart';
 
 import '../core/editor_state.dart';
-import '../core/layer_transform_controller.dart';
+import '../core/transform_geometry.dart';
 
-/// 自由变换遮罩覆盖层绘制器（绘制 8 控制点定界框与枢轴点）
+/// 移动工具的变换框：外框、八个缩放手柄与旋转手柄，按屏幕像素定尺寸，缩放视图时大小不变
 class TransformOverlayPainter extends CustomPainter {
-  TransformOverlayPainter({required this.state})
-      : super(repaint: state.renderNotifier);
+  TransformOverlayPainter({required this.state, required this.metrics})
+    : super(
+        repaint: Listenable.merge([
+          state.renderNotifier,
+          state.layerTransformer,
+          state.canvasController,
+          state.frameNotifier,
+        ]),
+      );
 
   final EditorState state;
 
+  /// 与命中判定使用同一套尺寸，画出来的手柄就是能按住的位置
+  final TransformHandleMetrics metrics;
+
+  // 黑色宽线垫底、白色细线在上，深浅图像上都可辨
+  static final Paint _outline = Paint()
+    ..color = Colors.black
+    ..strokeWidth = 3
+    ..style = PaintingStyle.stroke;
+  static final Paint _line = Paint()
+    ..color = Colors.white
+    ..strokeWidth = 1
+    ..style = PaintingStyle.stroke;
+  static final Paint _handleFill = Paint()..color = Colors.white;
+  static final Paint _handleBorder = Paint()
+    ..color = Colors.black
+    ..strokeWidth = 1
+    ..style = PaintingStyle.stroke;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final transform = state.transformController;
-    if (!transform.isTransforming) return;
-
+    final params = state.layerTransformer.params;
+    if (params == null) return;
     final controller = state.canvasController;
-    canvas.save();
-    controller.applyViewTransform(canvas, state.frame);
+    final frame = state.frame;
+    Offset toScreen(Offset point) =>
+        controller.canvasToScreen(point, frame: frame);
 
-    final handles = transform.getHandlePositions();
-    if (handles.isEmpty) {
-      canvas.restore();
-      return;
+    final outline = Path()
+      ..addPolygon(params.corners.map(toScreen).toList(), true);
+    final top = toScreen(params.pointAt(const Offset(0, -1)));
+    final rotate = toScreen(
+      params.rotateHandle(metrics.rotateHandleOffset / controller.scale),
+    );
+    for (final paint in [_outline, _line]) {
+      canvas.drawPath(outline, paint);
+      canvas.drawLine(top, rotate, paint);
     }
 
-    final tl = handles[TransformHandleType.topLeft]!;
-    final tr = handles[TransformHandleType.topRight]!;
-    final br = handles[TransformHandleType.bottomRight]!;
-    final bl = handles[TransformHandleType.bottomLeft]!;
-
-    // 绘制定界框轮廓
-    final boxPaint = Paint()
-      ..color = const Color(0xFF007ACC)
-      ..strokeWidth = 1.5 / controller.scale
-      ..style = PaintingStyle.stroke;
-
-    final boxPath = Path()
-      ..moveTo(tl.dx, tl.dy)
-      ..lineTo(tr.dx, tr.dy)
-      ..lineTo(br.dx, br.dy)
-      ..lineTo(bl.dx, bl.dy)
-      ..close();
-    canvas.drawPath(boxPath, boxPaint);
-
-    // 绘制 8 个把手
-    final handleFill = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final handleStroke = Paint()
-      ..color = const Color(0xFF007ACC)
-      ..strokeWidth = 1.5 / controller.scale
-      ..style = PaintingStyle.stroke;
-
-    final handleHalfSize = 5.0 / controller.scale;
-
-    for (final pt in handles.values) {
+    // 触屏命中区比可见手柄大，手柄只画到便于辨认的尺寸
+    final side = (metrics.hitRadius * 2 / 3).clamp(8.0, 14.0);
+    canvas.drawCircle(rotate, side / 2, _handleFill);
+    canvas.drawCircle(rotate, side / 2, _handleBorder);
+    for (final handle in TransformHandle.values) {
       final rect = Rect.fromCenter(
-        center: pt,
-        width: handleHalfSize * 2,
-        height: handleHalfSize * 2,
+        center: toScreen(params.pointAt(handle.unit)),
+        width: side,
+        height: side,
       );
-      canvas.drawRect(rect, handleFill);
-      canvas.drawRect(rect, handleStroke);
+      canvas.drawRect(rect, _handleFill);
+      canvas.drawRect(rect, _handleBorder);
     }
-
-    // 绘制中心枢轴点
-    final pivotPt = transform.pivot + transform.translation;
-    final pivotPaint = Paint()
-      ..color = const Color(0xFF007ACC)
-      ..strokeWidth = 1.0 / controller.scale
-      ..style = PaintingStyle.stroke;
-    canvas.drawCircle(pivotPt, 4.0 / controller.scale, pivotPaint);
-
-    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant TransformOverlayPainter oldDelegate) => true;
+  bool shouldRepaint(TransformOverlayPainter oldDelegate) =>
+      oldDelegate.state != state || oldDelegate.metrics != metrics;
 }

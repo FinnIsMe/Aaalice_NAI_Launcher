@@ -11,6 +11,7 @@ import '../layers/layer_role.dart';
 import '../tools/tool_base.dart';
 import '../tools/brush_tool.dart';
 import '../tools/eraser_tool.dart';
+import '../tools/move_tool.dart';
 import 'canvas_controller.dart';
 import 'color_manager.dart';
 import 'history_manager.dart';
@@ -67,8 +68,24 @@ class EditorState extends ChangeNotifier {
 
   /// 移动工具的拖动与微移
   late final LayerMoveController layerMover = LayerMoveController(this);
-  late final LayerTransformController transformController = LayerTransformController(this);
-  bool enterFreeTransform() => transformController.begin();
+
+  LayerTransformController? _layerTransformer;
+
+  /// 移动工具上的自由变换
+  LayerTransformController get layerTransformer =>
+      _layerTransformer ??= LayerTransformController(this);
+
+  /// 保持向后兼容别名
+  LayerTransformController get transformController => layerTransformer;
+  bool enterFreeTransform() => beginFreeTransform();
+
+  /// 切到移动工具并进入自由变换；没有可变换的内容时返回 false
+  bool beginFreeTransform() {
+    final move = toolManager.getToolById(MoveTool.toolId);
+    if (move == null || !move.isAvailableIn(this)) return false;
+    setTool(move);
+    return layerTransformer.begin();
+  }
 
   /// 填充等需要先回读像素的编辑；导出与撤销前须等它清空
   final PixelReadbackQueue pixelReadbacks = PixelReadbackQueue();
@@ -772,6 +789,7 @@ class EditorState extends ChangeNotifier {
     _magicWandHandler = null;
     _closedRegionFillHandler = null;
     _frameCommands = null;
+    _layerTransformer?.dispose();
 
     // 移除监听器
     layerManager.removeListener(_onLayerChanged);

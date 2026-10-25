@@ -216,6 +216,7 @@ class _EditorCanvasState extends State<EditorCanvas>
                               child: CustomPaint(
                                 painter: TransformOverlayPainter(
                                   state: widget.state,
+                                  metrics: widget.state.layerTransformer.handleMetrics,
                                 ),
                               ),
                             ),

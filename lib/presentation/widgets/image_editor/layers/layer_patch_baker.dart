@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/painting.dart';
+import 'package:flutter/rendering.dart' show Matrix4;
 
 import 'layer.dart';
 import 'layer_raster.dart';
@@ -121,38 +122,57 @@ class LayerPatchBaker {
     });
   }
 
-  /// 把 [upper]（带自身不透明度与混合模式）合并进 [lower] 的像素
-  /// 矩阵自由变换（Ctrl+T）：将图层或选区应用 [matrix] 并烘焙为新光栅
-  static BakedLayerImage transformRegion(
-    Layer layer, {
-    required Matrix4 matrix,
-    required Rect extent,
-    Path? region,
+  /// 把 [floating] 按 [transform] 摆到 [remainder] 之上，整幅只采样一次；结果限制在 [clip] 内，
+  /// [extentLock] 非空时输出严格等于该矩形。没有任何像素落在范围内时返回 null
+  static BakedLayerImage? composeTransformed({
+    BakedLayerImage? remainder,
+    required BakedLayerImage floating,
+    required Matrix4 transform,
+    required FilterQuality sampling,
+    required Rect clip,
+    Rect? extentLock,
   }) {
+    final placed = MatrixUtils.transformRect(transform, floating.bounds);
+    final content = remainder == null
+        ? placed
+        : remainder.bounds.expandToInclude(placed);
+    final extent = extentLock ?? content.intersect(clip);
+    if (_roundOut(extent).isEmpty) return null;
     return _bake(extent, (canvas) {
-      if (region == null) {
-        canvas.transform(matrix.storage);
-        layer.renderPixels(canvas);
-      } else {
-        final remainder = Path.combine(
-          PathOperation.difference,
-          Path()..addRect(extent.expandToInclude(layer.contentBounds)),
-          region,
-        );
-        canvas.save();
-        canvas.clipPath(remainder);
-        layer.renderPixels(canvas);
-        canvas.restore();
-
-        canvas.save();
-        canvas.transform(matrix.storage);
-        canvas.clipPath(region);
-        layer.renderPixels(canvas);
-        canvas.restore();
-      }
+      paintTransformed(
+        canvas,
+        remainder: remainder,
+        floating: floating,
+        transform: transform,
+        clip: clip,
+        // 原位像素只是照搬，不能被采样滤波碰到
+        remainderPaint: Paint(),
+        floatingPaint: Paint()..filterQuality = sampling,
+      );
     });
   }
 
+  /// 预览与 [composeTransformed] 共用的绘制，保证拖动中看到的就是松手后的结果
+  static void paintTransformed(
+    Canvas canvas, {
+    required BakedLayerImage? remainder,
+    required BakedLayerImage floating,
+    required Matrix4 transform,
+    required Rect clip,
+    required Paint remainderPaint,
+    required Paint floatingPaint,
+  }) {
+    canvas.save();
+    canvas.clipRect(clip);
+    if (remainder != null) {
+      canvas.drawImage(remainder.image, remainder.offset, remainderPaint);
+    }
+    canvas.transform(transform.storage);
+    canvas.drawImage(floating.image, floating.offset, floatingPaint);
+    canvas.restore();
+  }
+
+  /// 把 [upper]（带自身不透明度与混合模式）合并进 [lower] 的像素
   static BakedLayerImage mergeDown({
     required Layer upper,
     required Layer lower,
@@ -166,11 +186,14 @@ class LayerPatchBaker {
     });
   }
 
-  /// 只保留 [keep] 内的像素
-  static BakedLayerImage? cropTo(Layer layer, Rect keep) {
-    final extent = layer.contentBounds.intersect(keep);
+  /// 只保留 [keep] 内的像素；没有 [extentLock] 且无像素留下时返回 null
+  static BakedLayerImage? cropTo(Layer layer, Rect keep, {Rect? extentLock}) {
+    final extent = extentLock ?? layer.contentBounds.intersect(keep);
     if (_roundOut(extent).isEmpty) return null;
-    return _bake(extent, layer.renderPixels);
+    return _bake(extent, (canvas) {
+      canvas.clipRect(keep);
+      layer.renderPixels(canvas);
+    });
   }
 
   static Rect _roundOut(Rect rect) {

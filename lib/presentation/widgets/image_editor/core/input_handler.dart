@@ -14,7 +14,6 @@ import '../../../../core/utils/keyboard_modifier_utils.dart';
 import 'editor_state.dart';
 
 import 'editor_view_action.dart';
-import 'layer_transform_controller.dart';
 
 
 
@@ -521,7 +520,7 @@ class InputHandler {
           }
           return KeyEventResult.handled;
         case LogicalKeyboardKey.keyT:
-          state.enterFreeTransform();
+          state.beginFreeTransform();
           return KeyEventResult.handled;
 
         case LogicalKeyboardKey.digit0:
@@ -599,14 +598,12 @@ class InputHandler {
           return KeyEventResult.handled;
 
         case LogicalKeyboardKey.enter:
-        if (state.transformController.isTransforming) {
-          state.transformController.commit();
+        if (state.currentTool?.onConfirm(state) == true) {
           return KeyEventResult.handled;
         }
         break;
       case LogicalKeyboardKey.escape:
-        if (state.transformController.isTransforming) {
-          state.transformController.cancel();
+        if (state.currentTool?.onEscape(state) == true) {
           return KeyEventResult.handled;
         }
 
@@ -794,15 +791,6 @@ class InputHandler {
   }
 
   void handlePointerDown(PointerDownEvent event) {
-    if (state.transformController.isTransforming) {
-      final canvasPosition = state.canvasController.screenToCanvas(
-        event.localPosition,
-        frame: state.frame,
-      );
-      if (state.transformController.onPointerDown(canvasPosition)) {
-        return;
-      }
-    }
 
     keyboard.syncFromHardware();
 
@@ -959,10 +947,6 @@ class InputHandler {
   /// 处理指针抬起
 
   void handlePointerUp(PointerUpEvent event) {
-    if (state.transformController.isTransforming) {
-      state.transformController.onPointerUp();
-      return;
-    }
 
     if (event.kind == PointerDeviceKind.touch) {
 
@@ -1105,14 +1089,6 @@ class InputHandler {
   /// 处理指针移动
 
   void handlePointerMove(PointerMoveEvent event) {
-    if (state.transformController.isTransforming) {
-      final canvasPosition = state.canvasController.screenToCanvas(
-        event.localPosition,
-        frame: state.frame,
-      );
-      state.transformController.onPointerMove(canvasPosition);
-      return;
-    }
 
     // 中键平移
 
@@ -1473,30 +1449,6 @@ class InputHandler {
   /// 获取当前光标样式
 
   MouseCursor getCursor() {
-    if (state.transformController.isTransforming) {
-      if (cursorPosition != null) {
-        final canvasPos = state.canvasController.screenToCanvas(
-          cursorPosition!,
-          frame: state.frame,
-        );
-        final hit = state.transformController.hitTest(canvasPos);
-        return switch (hit) {
-          TransformHandleType.topLeft || TransformHandleType.bottomRight =>
-            SystemMouseCursors.resizeUpLeftDownRight,
-          TransformHandleType.topRight || TransformHandleType.bottomLeft =>
-            SystemMouseCursors.resizeUpRightDownLeft,
-          TransformHandleType.topCenter || TransformHandleType.bottomCenter =>
-            SystemMouseCursors.resizeUpDown,
-          TransformHandleType.centerLeft || TransformHandleType.centerRight =>
-            SystemMouseCursors.resizeLeftRight,
-          TransformHandleType.rotate => SystemMouseCursors.grab,
-          TransformHandleType.move => SystemMouseCursors.move,
-          null => SystemMouseCursors.basic,
-        };
-      }
-      return SystemMouseCursors.basic;
-    }
-
     if (gesture.isPanning ||
 
         keyboard.isSpacePressed ||
@@ -1552,6 +1504,7 @@ class InputHandler {
       case 'lasso_selection':
 
       case 'magic_wand':
+      case 'quick_selection':
 
         return SystemMouseCursors.precise;
 
@@ -1560,10 +1513,9 @@ class InputHandler {
         return SystemMouseCursors.precise;
 
       case 'frame':
-
-      case 'move':
-
         return SystemMouseCursors.move;
+      case 'move':
+        return state.layerTransformer.cursor.value;
 
       case ClosedRegionFillTool.toolId:
 

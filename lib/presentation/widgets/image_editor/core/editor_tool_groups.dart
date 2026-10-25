@@ -120,6 +120,7 @@ String editorToolLabel(BuildContext context, EditorTool tool, LayerRole? role) {
     'eraser' => l10n.editor_toolEraser,
     'fill' => l10n.editor_toolFill,
     'magic_wand' => l10n.editor_toolMagicWand,
+    'quick_selection' => l10n.editor_toolQuickSelection,
     'line' => l10n.editor_toolLine,
     'rect_selection' => l10n.editor_toolRectSelect,
     'ellipse_selection' => l10n.editor_toolEllipseSelect,

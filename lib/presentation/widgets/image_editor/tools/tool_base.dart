@@ -4,6 +4,17 @@ import 'package:flutter/services.dart';
 import '../core/editor_state.dart';
 import '../layers/layer_role.dart';
 
+/// 同组内同族的工具在工具栏里收进一个按钮
+enum EditorToolFamily {
+  /// 点一下作用于一片连续区域
+  region,
+
+  /// 局部修饰图片
+  retouch,
+
+  selection,
+}
+
 /// 工具基类
 /// 所有编辑器工具的抽象基类
 abstract class EditorTool {
@@ -40,6 +51,12 @@ abstract class EditorTool {
   /// 行为随图层角色改变：重绘会话里蒙版与图片各有一个入口，点入口会切到对应图层
   bool get followsLayerRole => false;
 
+  /// 为空时单独占一个按钮
+  EditorToolFamily? get family => null;
+
+  /// 不改图层、只服务于重绘的工具；重绘会话里归入重绘组而不是通用组
+  bool get belongsToInpaintGroup => false;
+
   /// 会话与当前图层都允许时才可用；不可用时不响应快捷键
   bool isAvailableIn(EditorState state) =>
       isEnabledInSession(state) && supportsRole(state.activeLayerRole);
@@ -61,6 +78,10 @@ abstract class EditorTool {
     state.cancelStroke();
   }
 
+  /// 单指操作途中第二指落下，单指交给双指手势；默认与取消相同
+  void onPointerHandoffToMultiTouch(EditorState state) =>
+      onPointerCancel(state);
+
   /// 快速停用（同步，无异步操作）
   /// 仅清理内存中的临时状态，不触发任何异步操作
   /// 用于实现即时工具切换
@@ -68,6 +89,26 @@ abstract class EditorTool {
 
   /// 方向键微移；返回 true 表示工具已处理
   bool onArrowNudge(EditorState state, Offset delta) => false;
+
+  /// Enter 确认工具的待定操作；返回 true 表示工具已处理
+  bool onConfirm(EditorState state) => false;
+
+  /// 没有进行中的拖动时按 Esc；返回 true 表示工具已处理
+  bool onEscape(EditorState state) => false;
+
+  /// 触屏双指落下；返回 true 时本次双指手势交给工具，否则照常平移缩放画布。
+  /// [focal] 为文档坐标
+  bool onMultiTouchStart(EditorState state, Offset focal) => false;
+
+  /// [scale] 与 [rotation] 都相对手势开始时，[rotation] 已换算成文档坐标中的方向
+  void onMultiTouchUpdate(
+    EditorState state,
+    Offset focal,
+    double scale,
+    double rotation,
+  ) {}
+
+  void onMultiTouchEnd(EditorState state) {}
 
   /// 延迟激活（在下一帧异步执行）
   /// 用于资源预热、缓存更新等耗时操作
