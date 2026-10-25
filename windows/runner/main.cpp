@@ -1,6 +1,7 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <ole2.h>
 
 #include <string>
 
@@ -217,9 +218,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_SUCCESS;
   }
 
-  // Initialize COM, so that it is available for use in the library and/or
-  // plugins.
-  ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  // Initialize OLE and COM, so that it is available for use in the library and
+  // plugins (such as super_native_extensions drag-and-drop).
+  // OleInitialize internally calls CoInitializeEx(COINIT_APARTMENTTHREADED)
+  // and maintains the OLE reference count across the entire process lifetime,
+  // preventing premature apartment uninitialization crashes on Windows 11.
+  const HRESULT ole_init_hr = ::OleInitialize(nullptr);
+  const bool ole_initialized = SUCCEEDED(ole_init_hr);
+  if (!ole_initialized) {
+    ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  }
 
   flutter::DartProject project(L"data");
   project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
@@ -236,7 +244,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     if (single_instance_mutex != nullptr) {
       CloseHandle(single_instance_mutex);
     }
-    ::CoUninitialize();
+    if (ole_initialized) {
+      ::OleUninitialize();
+    } else {
+      ::CoUninitialize();
+    }
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
@@ -252,6 +264,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CloseHandle(single_instance_mutex);
   }
 
-  ::CoUninitialize();
+  if (ole_initialized) {
+    ::OleUninitialize();
+  } else {
+    ::CoUninitialize();
+  }
   return EXIT_SUCCESS;
 }
