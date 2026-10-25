@@ -1,3 +1,4 @@
+import '../../../widgets/common/anchored_popup_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -74,10 +75,10 @@ class PromptInputToolbar extends ConsumerWidget {
             height: 32,
             child: Row(
               children: [
-                Expanded(
+                const Expanded(
                   child: SizeSection(
                     compact: true,
-                    showTitle: constraints.maxWidth >= 450,
+                    showTitle: false,
                   ),
                 ),
                 const SizedBox(width: 5),
@@ -226,25 +227,11 @@ class PromptInputToolbar extends ConsumerWidget {
     WidgetRef ref, {
     BuildContext? targetContext,
   }) async {
-    RelativeRect? position;
-    if (targetContext != null) {
-      final RenderBox? button = targetContext.findRenderObject() as RenderBox?;
-      final RenderBox? overlay =
-          Overlay.of(context).context.findRenderObject() as RenderBox?;
-      if (button != null && overlay != null) {
-        final buttonPosition =
-            button.localToGlobal(Offset.zero, ancestor: overlay);
-        final buttonSize = button.size;
-        position = RelativeRect.fromLTRB(
-          buttonPosition.dx,
-          0,
-          overlay.size.width - buttonPosition.dx - buttonSize.width,
-          overlay.size.height - buttonPosition.dy + 4,
-        );
-      }
-    }
-    position ??= PromptEditorToolbar.getSettingsButtonPosition(context);
-    if (position == null) return;
+    final RenderBox? button = (targetContext ??
+            PromptEditorToolbar.lastSettingsButtonContext ??
+            context)
+        .findRenderObject() as RenderBox?;
+    if (button == null) return;
     final theme = Theme.of(context);
     final autocomplete = ref.read(autocompleteSettingsProvider);
     final autoFormat = ref.read(autoFormatPromptSettingsProvider);
@@ -265,10 +252,20 @@ class PromptInputToolbar extends ConsumerWidget {
     final hasTagExtraction =
         ref.read(reversePromptProvider).images.isNotEmpty;
 
-    final value = await showMenu<String>(
-      context: context,
-      position: position,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    final value = await showAnchoredMenu<String>(
+      context: targetContext ?? context,
+      targetRenderBox: button,
+      minWidth: 260,
+      maxWidth: 340,
+      rightAlign: false,
+      preferUpward: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: theme.dividerColor.withValues(alpha: 0.6),
+          width: 1,
+        ),
+      ),
       items: [
         _toggleItem(
           context,
@@ -729,37 +726,7 @@ class CompactSeedInput extends ConsumerStatefulWidget {
 }
 
 class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
-  late final TextEditingController _controller;
-  late final FocusNode _focusNode;
   bool _isHovered = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController();
-    _focusNode = FocusNode();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _syncSeedController(int seed) {
-    final nextText = resolveSeedFieldSyncText(
-      currentText: _controller.text,
-      seed: seed,
-      hasFocus: _focusNode.hasFocus,
-    );
-    if (nextText == null) return;
-    _controller.value = _controller.value.copyWith(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: nextText.length),
-      composing: TextRange.empty,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -771,12 +738,10 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
       generationParamsNotifierProvider.notifier,
     ).isSeedLocked;
 
-    _syncSeedController(seed);
-
     const grassGreen = Color(0xFF4CAF50);
 
     return SizedBox(
-      height: 32,
+      height: 28,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -792,90 +757,72 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
-                    _controller.clear();
                     ref
                         .read(generationParamsNotifierProvider.notifier)
                         .updateSeed(-1);
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Container(
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       color: _isHovered
                           ? grassGreen.withValues(alpha: 0.12)
-                          : Colors.transparent,
+                          : grassGreen.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                         color: _isHovered
-                            ? grassGreen.withValues(alpha: 0.35)
-                            : Colors.transparent,
+                            ? grassGreen.withValues(alpha: 0.5)
+                            : grassGreen.withValues(alpha: 0.25),
                         width: 1,
                       ),
                     ),
-                    child: IgnorePointer(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        readOnly: true,
-                        enableInteractiveSelection: false,
-                        canRequestFocus: false,
-                        textAlignVertical: TextAlignVertical.center,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: _isHovered
-                              ? grassGreen
-                              : grassGreen.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w500,
-                        ),
-                        decoration: InputDecoration(
-                          filled: false,
-                          isDense: true,
-                          prefixText: 'Seed: ',
-                          prefixStyle: const TextStyle(
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Seed: ',
+                          style: TextStyle(
                             fontSize: 11.5,
                             color: grassGreen,
                             fontWeight: FontWeight.w600,
+                            height: 1.15,
                           ),
-                          hintText: context.l10n.generation_seedRandom,
-                          hintStyle: TextStyle(
-                            fontSize: 11,
-                            color: grassGreen.withValues(alpha: 0.6),
-                          ),
-                          contentPadding: EdgeInsets.zero,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
                         ),
-                      ),
+                        Flexible(
+                          child: Text(
+                            seed == -1
+                                ? context.l10n.generation_seedRandom
+                                : '$seed',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontFamily: seed == -1 ? null : 'monospace',
+                              color: _isHovered
+                                  ? grassGreen
+                                  : grassGreen.withValues(alpha: 0.95),
+                              fontWeight: FontWeight.w500,
+                              height: 1.15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
           ),
-          // 1. 清空 (设为随机 -1)
-          _SeedActionButton(
-            tooltip: context.l10n.common_clear,
-            icon: Icons.clear_rounded,
-            iconSize: 17,
-            normalColor: theme.colorScheme.onSurfaceVariant,
-            hoverColor: theme.colorScheme.primary,
-            onTap: () {
-              _controller.clear();
-              ref.read(generationParamsNotifierProvider.notifier).updateSeed(-1);
-            },
-          ),
-          const SizedBox(width: 2),
-          // 2. 锁定 / 解锁
+          const SizedBox(width: 4),
+          // 锁定 / 解锁（点击种子框可直接清空为随机，移除多余清空按钮）
           _SeedActionButton(
             tooltip: isLocked
                 ? context.l10n.generation_seedUnlock
                 : context.l10n.generation_seedLock,
             icon: isLocked ? Icons.lock : Icons.lock_open_rounded,
-            iconSize: 17,
+            iconSize: 16,
             normalColor: isLocked
                 ? theme.colorScheme.primary
                 : theme.colorScheme.onSurfaceVariant,
@@ -883,14 +830,6 @@ class _CompactSeedInputState extends ConsumerState<CompactSeedInput> {
                 ? theme.colorScheme.primary.withValues(alpha: 0.8)
                 : theme.colorScheme.primary,
             onTap: () {
-              final inputText = _controller.text.trim();
-              final inputSeed =
-                  inputText.isEmpty ? -1 : (int.tryParse(inputText) ?? -1);
-              if (inputSeed != ref.read(generationParamsNotifierProvider).seed) {
-                ref
-                    .read(generationParamsNotifierProvider.notifier)
-                    .updateSeed(inputSeed);
-              }
               ref
                   .read(generationParamsNotifierProvider.notifier)
                   .toggleSeedLock();

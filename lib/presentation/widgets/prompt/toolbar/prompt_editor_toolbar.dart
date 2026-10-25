@@ -325,6 +325,7 @@ class PromptEditorToolbar extends StatelessWidget {
 
   /// 最后一次点击设置按钮的上下文（用于定位菜单）
   static BuildContext? _lastSettingsButtonContext;
+  static BuildContext? get lastSettingsButtonContext => _lastSettingsButtonContext;
 
   /// 获取设置按钮的位置，用于显示菜单
   ///

@@ -8,9 +8,11 @@ class PromptTokenCountAsyncBar extends StatelessWidget {
   const PromptTokenCountAsyncBar({
     super.key,
     required this.usage,
+    this.compact = false,
   });
 
   final AsyncValue<PromptTokenUsage?> usage;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +21,7 @@ class PromptTokenCountAsyncBar extends StatelessWidget {
       skipLoadingOnRefresh: true,
       data: (usage) => usage == null
           ? const SizedBox.shrink()
-          : PromptTokenCountBar(usage: usage),
+          : PromptTokenCountBar(usage: usage, compact: compact),
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
     );
@@ -30,9 +32,11 @@ class PromptTokenCountBar extends StatelessWidget {
   const PromptTokenCountBar({
     super.key,
     required this.usage,
+    this.compact = false,
   });
 
   final PromptTokenUsage usage;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -51,15 +55,36 @@ class PromptTokenCountBar extends StatelessWidget {
       ),
     );
 
+    final tooltipChild = usage.breakdown.isEmpty
+        ? label
+        : Tooltip(
+            message: _buildTooltipMessage(context),
+            waitDuration: const Duration(milliseconds: 250),
+            child: label,
+          );
+
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: usage.isOverLimit
+              ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: usage.isOverLimit
+                ? theme.colorScheme.error.withValues(alpha: 0.5)
+                : theme.dividerColor,
+            width: 1,
+          ),
+        ),
+        child: tooltipChild,
+      );
+    }
+
     return Align(
       alignment: Alignment.centerRight,
-      child: usage.breakdown.isEmpty
-          ? label
-          : Tooltip(
-              message: _buildTooltipMessage(context),
-              waitDuration: const Duration(milliseconds: 250),
-              child: label,
-            ),
+      child: tooltipChild,
     );
   }
 

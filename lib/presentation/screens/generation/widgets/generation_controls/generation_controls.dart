@@ -168,7 +168,7 @@ class _GenerationControlsState extends ConsumerState<GenerationControls> {
                     : PromptTokenCountTarget.positive,
               ),
             );
-            return PromptTokenCountAsyncBar(usage: tokenUsage);
+            return PromptTokenCountAsyncBar(usage: tokenUsage, compact: true);
           }(),
         ],
         if (showRandomTools) ...[
