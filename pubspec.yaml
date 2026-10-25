@@ -1,7 +1,7 @@
 name: nai_launcher
 description: NovelAI Universal Launcher - 跨平台第三方客户端
 publish_to: "none"
-version: 4.3.0+45
+version: 4.3.1+46
 
 environment:
   sdk: ">=3.10.7 <4.0.0"
@@ -22,7 +22,6 @@ dependencies:
 
   # 网络请求
   dio: ^5.4.0
-  dio_http2_adapter: ^2.3.0
   html: ^0.15.6
   xml: ^6.6.1
 
@@ -36,6 +35,9 @@ dependencies:
   flutter_appauth: ^12.0.2
   google_sign_in: ^7.2.0
   flutter_secure_storage: ^9.2.4
+  # Windows 端用自有实现替换插件的 DPAPI 文件存储
+  flutter_secure_storage_platform_interface: ^1.1.2
+  win32: ^5.15.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   shared_preferences: ^2.2.3
@@ -163,6 +165,13 @@ dev_dependencies:
   path_provider_platform_interface: any
   plugin_platform_interface: any
   sqlite3: ^2.9.4
+  # 安全存储兼容测试以插件原实现为对照，确认新旧版本读写同一文件
+  flutter_secure_storage_windows: ^3.1.2
+dependency_overrides:
+  # 上游 Windows 原生插件注册时就订阅定位，应用一启动即占用定位；
+  # Baseflow/flutter-permission-handler#1394 修复后移除
+  permission_handler_windows:
+    path: packages/permission_handler_windows
 flutter:
   uses-material-design: true
   generate: true

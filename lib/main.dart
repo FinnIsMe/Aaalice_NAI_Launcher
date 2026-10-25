@@ -20,10 +20,13 @@ import 'l10n/app_localizations_ja.dart';
 import 'l10n/app_localizations_zh.dart';
 import 'core/services/desktop_app_shutdown_service.dart';
 import 'core/services/interactive_work_gate.dart';
+import 'core/storage/windows/launcher_windows_secure_storage.dart';
 import 'core/utils/app_error_reporter.dart';
 import 'core/utils/app_locale.dart';
 import 'core/utils/fatal_diagnostics.dart';
 import 'core/utils/app_logger.dart';
+import 'core/utils/drag_export_file_store.dart';
+import 'core/utils/share_temp_directories.dart';
 import 'core/utils/hive_startup_box_opener.dart';
 import 'core/utils/hive_storage_helper.dart';
 import 'core/utils/window_focus_tracker.dart';
@@ -495,12 +498,15 @@ Future<bool> _initializeSystemTray() async {
   }
 }
 
-void _scheduleDeferredStartup(ProviderContainer container) {
+void _scheduleDeferredStartup(
+  ProviderContainer container,
+  DateTime launchedAt,
+) {
   unawaited(
     InteractiveWorkGate.instance.runWhenIdle(
       minimumDelay: const Duration(seconds: 5),
       priority: InteractiveWorkPriority.maintenance,
-      action: () => _runDeferredStartup(container),
+      action: () => _runDeferredStartup(container, launchedAt),
     ),
   );
   unawaited(
@@ -517,7 +523,10 @@ void _scheduleDeferredStartup(ProviderContainer container) {
   );
 }
 
-Future<void> _runDeferredStartup(ProviderContainer container) async {
+Future<void> _runDeferredStartup(
+  ProviderContainer container,
+  DateTime launchedAt,
+) async {
   await _runNonFatalStartupStep(
     'Legacy gallery album import',
     () => container
@@ -547,6 +556,12 @@ Future<void> _runDeferredStartup(ProviderContainer container) async {
     'Temp files cleanup',
     () => TempImageService().cleanupOldTempFiles(),
   );
+  await _runNonFatalStartupStep('Share temp files cleanup', () async {
+    final removed = await ShareTempDirectories.sweepPreviousRuns(launchedAt);
+    if (removed > 0) {
+      AppLogger.i('Removed $removed share temp entries from earlier runs', 'Main');
+    }
+  });
 }
 
 void main() {
@@ -567,10 +582,12 @@ void main() {
 }
 
 Future<void> _bootstrapApplication() async {
+  final launchedAt = DateTime.now();
   if (const bool.fromEnvironment('ENABLE_FLUTTER_DRIVER')) {
     enableFlutterDriverExtension(enableTextEntryEmulation: false);
   }
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows) LauncherWindowsSecureStorage.register();
   WindowsClipboardHistoryKeyFix.instance.install();
   AppErrorReporter.installGlobalHandlers();
 
@@ -625,6 +642,9 @@ Future<void> _bootstrapApplication() async {
   timeago.setLocaleMessages('zh_Hant', timeago.ZhMessages());
   timeago.setLocaleMessages('ja', timeago.JaMessages());
 
+  DesktopAppShutdownService.addCleanupHandler(
+    DragExportFileStore.instance.clear,
+  );
   final desktopWindow = await desktopWindowFuture;
   final container = ProviderContainer(
     overrides: [
@@ -637,7 +657,7 @@ Future<void> _bootstrapApplication() async {
       container: container,
       child: AppBootstrap(
         onWarmupComplete: () {
-          _scheduleDeferredStartup(container);
+          _scheduleDeferredStartup(container, launchedAt);
         },
       ),
     ),

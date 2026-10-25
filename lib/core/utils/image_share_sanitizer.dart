@@ -10,7 +10,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'isolate_pool.dart';
+import 'exif_orientation.dart';
+import 'file_name_sanitizer.dart';
 import 'png_share_source.dart';
+import 'share_temp_directories.dart';
 
 typedef ShareImagePrepareFunction =
     Future<SanitizedShareImage> Function(
@@ -642,8 +645,9 @@ class ImageShareSanitizer {
   }
 
   static Future<File> writeTempShareFile(SanitizedShareImage image) async {
-    final tempDir = await getTemporaryDirectory();
-    final shareDir = Directory(p.join(tempDir.path, 'nai_launcher_share'));
+    final shareDir = await ShareTempDirectories.resolve(
+      ShareTempDirectories.share,
+    );
     if (!await shareDir.exists()) {
       await shareDir.create(recursive: true);
     }
@@ -655,23 +659,30 @@ class ImageShareSanitizer {
     return file;
   }
 
+  /// One folder per cache key, so receivers see the image's own file name.
   static Future<File> writeCachedShareFile(
     String cacheKey,
     SanitizedShareImage image,
   ) async {
-    final tempDir = await getTemporaryDirectory();
-    final shareDir = Directory(
-      p.join(tempDir.path, 'nai_launcher_share_cache'),
+    final shareDir = await ShareTempDirectories.resolve(
+      ShareTempDirectories.shareCache,
     );
-    if (!await shareDir.exists()) {
-      await shareDir.create(recursive: true);
-    }
-
     final safeKey = cacheKey.replaceAll(RegExp(r'[^A-Za-z0-9_.-]+'), '_');
+    final folder = Directory(p.join(shareDir.path, safeKey));
+    await folder.create(recursive: true);
+
     final extension = p.extension(image.fileName).isEmpty
         ? '.png'
         : p.extension(image.fileName).toLowerCase();
-    final target = File(p.join(shareDir.path, '$safeKey$extension'));
+    final target = File(
+      p.join(
+        folder.path,
+        FileNameSanitizer.fileName(
+          p.setExtension(image.fileName, extension),
+          fallback: 'image',
+        ),
+      ),
+    );
     final temporary = File('${target.path}.tmp');
 
     await temporary.writeAsBytes(image.bytes);

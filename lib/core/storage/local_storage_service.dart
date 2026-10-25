@@ -6,6 +6,7 @@ import '../constants/api_constants.dart';
 import '../constants/model_capabilities.dart';
 import '../constants/storage_keys.dart';
 import '../enums/image_model_mode.dart';
+import '../save_naming/image_save_naming.dart';
 
 part 'local_storage_service.g.dart';
 
@@ -256,6 +257,30 @@ class LocalStorageService {
   Future<void> setSyncImagesToSystemGallery(bool value) async {
     await setSetting(StorageKeys.syncImagesToSystemGallery, value);
   }
+  /// 图库保存的子文件夹与文件名规则；未设置时沿用默认规则。
+  ImageSaveNaming getImageSaveNaming() {
+    return ImageSaveNaming(
+      folderTemplate:
+          getSetting<String>(StorageKeys.imageSaveFolderTemplate) ??
+          ImageSaveNaming.defaultFolderTemplate,
+      fileNameTemplate:
+          getSetting<String>(StorageKeys.imageSaveFileNameTemplate) ??
+          ImageSaveNaming.defaultFileNameTemplate,
+    );
+  }
+
+  // 选回默认规则也要写入，云同步才能把“改回默认”带到其他设备。
+  Future<void> setImageSaveNaming(ImageSaveNaming naming) async {
+    await setSetting(
+      StorageKeys.imageSaveFolderTemplate,
+      naming.folderTemplate,
+    );
+    await setSetting(
+      StorageKeys.imageSaveFileNameTemplate,
+      naming.fileNameTemplate,
+    );
+  }
+
 
   /// 获取透明图像的 Alpha 模式（true=Straight，false=Premultiplied）。
   bool getImageStraightAlpha() {
@@ -501,7 +526,24 @@ class LocalStorageService {
     await setSetting(StorageKeys.generationImageMultiSelectEnabled, value);
   }
 
-  // ==================== Resolve Alias On Copy ====================
+  
+  // ==================== Separate Numeric Weight Closing ====================
+
+  /// 获取数字结尾的数值权重是否在闭合 :: 前补空格 (默认关闭)
+  bool getSeparateNumericWeightClosing() {
+    return getSetting<bool>(
+          StorageKeys.separateNumericWeightClosing,
+          defaultValue: false,
+        ) ??
+        false;
+  }
+
+  /// 保存数字结尾的数值权重是否在闭合 :: 前补空格
+  Future<void> setSeparateNumericWeightClosing(bool value) async {
+    await setSetting(StorageKeys.separateNumericWeightClosing, value);
+  }
+
+// ==================== Resolve Alias On Copy ====================
 
   /// 获取复制时是否展开词库别名 (默认关闭)
   bool getResolveAliasOnCopy() {
@@ -517,7 +559,24 @@ class LocalStorageService {
     await setSetting(StorageKeys.resolveAliasOnCopy, value);
   }
 
-  // ==================== Prompt Regex Replace ====================
+  
+  // ==================== Detect Multi Character On Paste ====================
+
+  /// 获取粘贴时是否识别多角色提示词 (默认开启)
+  bool getDetectMultiCharacterOnPaste() {
+    return getSetting<bool>(
+          StorageKeys.detectMultiCharacterOnPaste,
+          defaultValue: true,
+        ) ??
+        true;
+  }
+
+  /// 保存粘贴时是否识别多角色提示词
+  Future<void> setDetectMultiCharacterOnPaste(bool value) async {
+    await setSetting(StorageKeys.detectMultiCharacterOnPaste, value);
+  }
+
+// ==================== Prompt Regex Replace ====================
 
   /// 获取正则替换规则（每项为一条规则的 JSON 字符串）
   ///

@@ -98,6 +98,9 @@ class StorageKeys {
   static const String generationLayoutMode = 'generation_layout_mode';
   static const String mobileGenerationGestureHintCompleted =
       'mobile_generation_gesture_hint_completed';
+  // Last confirmed metadata import categories stay on this device.
+  static const String metadataImportLastSelection =
+      'metadata_import_last_selection';
   static const String historyClickBehavior = 'history_click_behavior';
   static const String previewTransparencyBackground =
       'preview_transparency_background';
@@ -156,6 +159,9 @@ class StorageKeys {
   static const String autoSaveImages = 'auto_save_images';
   static const String syncImagesToSystemGallery =
       'sync_images_to_system_gallery';
+  static const String imageSaveFolderTemplate = 'image_save_folder_template';
+  static const String imageSaveFileNameTemplate =
+      'image_save_file_name_template';
   static const String imageStraightAlpha = 'image_straight_alpha';
   static const String shareStripMetadata = 'share_strip_metadata';
   static const String shareWatermark = 'share_watermark';
@@ -198,7 +204,11 @@ class StorageKeys {
   static const String autoFormatPrompt = 'auto_format_prompt';
   static const String highlightEmphasis = 'highlight_emphasis';
   static const String sdSyntaxAutoConvert = 'sd_syntax_auto_convert';
+  static const String separateNumericWeightClosing =
+      'separate_numeric_weight_closing';
   static const String resolveAliasOnCopy = 'resolve_alias_on_copy';
+  static const String detectMultiCharacterOnPaste =
+      'detect_multi_character_on_paste';
   static const String enablePromptWeightScroll = 'enable_prompt_weight_scroll';
   static const String promptRegexRules = 'prompt_regex_rules'; // 规则JSON字符串列表
 
